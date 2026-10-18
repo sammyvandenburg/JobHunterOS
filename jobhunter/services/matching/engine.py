@@ -97,7 +97,7 @@ def rules_explanation(job: dict, result) -> MatchExplanation:
         summary = f"{group_word}: {result.exclusion_reason}"
         reasons = [{"text": result.exclusion_reason or "Excluded by a hard rule.", "fact_ids": []}]
     else:
-        lead = result.reasons[0]["text"] if result.reasons else "The role fits your direction."
+        lead = result.reasons[0]["text"] if result.reasons else "This job fits what you want."
         summary = f"{group_word}: {lead}"
         reasons = result.reasons or [{"text": lead, "fact_ids": []}]
     return MatchExplanation(

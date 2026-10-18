@@ -77,11 +77,40 @@ def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids:
         lock.release()
 
 
+def user_regions(db: Database) -> set[str]:
+    """Regions implied by the person's work countries: 'na', 'eu', or both. Empty = unknown."""
+    from jobhunter.services import preferences as prefs_svc
+    from jobhunter.services.preferences import EUROPE, NORTH_AMERICA
+
+    codes = set(prefs_svc.get(db).work_countries or [])
+    out = set()
+    if codes & NORTH_AMERICA:
+        out.add("na")
+    if codes & EUROPE:
+        out.add("eu")
+    return out
+
+
 def _enabled_sources(db: Database, source_ids: list[str] | None) -> list[dict]:
     if source_ids:
         marks = ",".join("?" for _ in source_ids)
         return db.fetchall(f"SELECT * FROM watch_sources WHERE id IN ({marks})", tuple(source_ids))
-    return db.fetchall("SELECT * FROM watch_sources WHERE enabled = 1 ORDER BY id")
+    rows = db.fetchall(
+        "SELECT w.*, e.regions_json FROM watch_sources w LEFT JOIN employers e ON e.id = w.employer_id WHERE w.enabled = 1 ORDER BY w.id"
+    )
+    regions = user_regions(db)
+    if not regions:
+        return rows
+    kept = []
+    for r in rows:
+        # Feeds are region-tagged by kind; employer boards by the employer's hiring regions.
+        if r["kind"] == "arbeitnow" and "eu" not in regions:
+            continue
+        emp_regions = set(json.loads(r.get("regions_json") or "[]"))
+        if emp_regions and not (emp_regions & regions):
+            continue
+        kept.append(r)
+    return kept
 
 
 def _should_skip(source: dict) -> str | None:

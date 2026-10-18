@@ -67,11 +67,11 @@ TOTAL_COMP = re.compile(r"(total compensation|total comp|otc|on-target|ote\b|inc
 
 # Relevance: role families. Titles decide most; descriptions resolve "uncertain".
 TITLE_RELEVANT = re.compile(
-    r"\b(devops|dev ops|platform|sre|site reliability|reliability|infrastructure|infra|cloud|systems? engineer|systems? administrator|sysadmin|linux|production engineer|kubernetes|k8s|release engineer|build engineer|automation engineer|observability|network(ing)? engineer|it operations|operations engineer|cloud ops|cloudops|devsecops|mlops|dataops|platform operations|technical operations|solutions? engineer|deployment engineer|infrastructure architect|cloud architect|system reliability|virtuali[sz]ation|storage engineer|datacenter|data center|hpc)\b",
+    r"\b(devops|dev ops|platform|sre|site reliability|reliability|infrastructure|infra|cloud|systems? engineer|systems? administrator|sysadmin|linux|production engineer|kubernetes|k8s|release engineer|build engineer|automation engineer|observability|network(ing)? engineer|it operations|operations engineer|cloud ops|cloudops|devsecops|mlops|dataops|platform operations|technical operations|deployment engineer|infrastructure architect|cloud architect|system reliability|virtuali[sz]ation|storage engineer|datacenter|data center|hpc)\b",
     re.I,
 )
 TITLE_IRRELEVANT = re.compile(
-    r"\b(sales|account (executive|manager)|marketing|recruiter|recruiting|talent|hr\b|people (ops|partner)|legal|counsel|finance|accountant|controller|payroll|designer|ux|ui\b|product manager|product owner|copywriter|content|customer (success|support|service)|support specialist|business development|bdr|sdr|partnerships|community manager|social media|data scientist|machine learning engineer|research scientist|ios|android|mobile|frontend|front-end|front end|react|qa engineer|test engineer|quality assurance|technical writer|office manager|executive assistant|chief of staff|project manager|scrum master|agile coach|procurement|logistics|warehouse|driver|nurse|physician|teacher|intern(ship)? - (sales|marketing)|graphic|video editor|animator|game designer|economist|actuary|underwriter|claims|compliance officer|auditor|tax)\b",
+    r"\b(sales|solutions? (engineer|architect|consultant)|pre-?sales|customer experience|cx\b|growth|account (executive|manager)|marketing|recruiter|recruiting|talent|hr\b|people (ops|partner)|legal|counsel|finance|accountant|controller|payroll|designer|ux|ui\b|product manager|product owner|copywriter|content|customer (success|support|service)|support specialist|business development|bdr|sdr|partnerships|community manager|social media|data scientist|machine learning engineer|research scientist|ios|android|mobile|frontend|front-end|front end|react|qa engineer|test engineer|quality assurance|technical writer|office manager|executive assistant|chief of staff|project manager|scrum master|agile coach|procurement|logistics|warehouse|driver|nurse|physician|teacher|intern(ship)? - (sales|marketing)|graphic|video editor|animator|game designer|economist|actuary|underwriter|claims|compliance officer|auditor|tax)\b",
     re.I,
 )
 DESC_INFRA = re.compile(
@@ -231,17 +231,17 @@ def seniority_of(title: str, description: str) -> tuple[str, int | None]:
 def classify_relevance(title: str, description: str) -> tuple[str, str]:
     t = title or ""
     if TITLE_IRRELEVANT.search(t) and not TITLE_RELEVANT.search(t):
-        return "irrelevant", "The title is for a different kind of role."
+        return "irrelevant", "This is a different kind of job."
     if TITLE_RELEVANT.search(t):
-        if re.search(r"\b(sales|account executive|marketing|recruit)", t, re.I):
-            return "irrelevant", "The title is a sales or recruiting role, even though it mentions cloud."
-        return "relevant", "The title matches infrastructure, platform, cloud, SRE, or DevOps work."
+        if re.search(r"\b(sales|account executive|marketing|recruit|solutions? engineer|pre-?sales|customer experience|cx)\b", t, re.I):
+            return "irrelevant", "This is a sales, customer, or recruiting role, even though it mentions cloud or platform."
+        return "relevant", "This is the kind of work you are looking for."
     hits = len(set(h.lower() for h in DESC_INFRA.findall(description or "")))
     if re.search(r"\b(software|backend|back-end|full ?stack|data engineer|security engineer|engineer)\b", t, re.I) and hits >= 3:
-        return "uncertain", "The title is broader, but the description is full of infrastructure work."
+        return "uncertain", "The title is broad, but the work described is infrastructure work."
     if hits >= 5:
-        return "uncertain", "The title is unusual, but the description looks like infrastructure work."
-    return "irrelevant", "Neither the title nor the description points to infrastructure work."
+        return "uncertain", "Unusual title, but the work looks like infrastructure work."
+    return "irrelevant", "Not infrastructure work."
 
 
 def normalize(raw: RawPosting) -> Normalized:
@@ -284,7 +284,7 @@ def normalize(raw: RawPosting) -> Normalized:
             names = _country_names(codes, tags)
             restriction = f"Remote, but only in {names}"
         elif not restriction:
-            restriction = "Remote, but the allowed countries are not stated"
+            restriction = "Remote, but they don't say which countries"
     # Salary
     sal = parse_salary(raw.salary_text or "")
     if sal["min"] is None and raw.salary_min is not None:

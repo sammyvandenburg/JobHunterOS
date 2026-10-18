@@ -16,14 +16,14 @@ def bucket(job: dict, ref: datetime | None = None) -> tuple[str, str]:
     if age is None:
         seen = days_ago(job.get("first_seen_at"), ref)
         seen_txt = f"first seen by Hunter {int(seen)} day(s) ago" if seen is not None else "first seen by Hunter recently"
-        return "unknown", f"Posting date unknown ({seen_txt})"
+        return "unknown", f"No posting date ({seen_txt})"
     if age <= 2:
-        return "fresh", "Posted in the past 48 hours"
+        return "fresh", "Posted in the last 2 days"
     if age <= 7:
         return "recent", f"Posted {int(age)} days ago"
     if age <= WINDOW_DAYS:
         return "older", f"Posted {int(age)} days ago"
-    return "old", f"Posted {int(age)} days ago (older than {WINDOW_DAYS} days)"
+    return "old", f"Posted {int(age)} days ago (older than 2 weeks)"
 
 
 def freshness_bonus(b: str) -> float:
@@ -35,6 +35,6 @@ def verification_label(job: dict) -> str:
     if av == "closed":
         return "No longer listed: " + (job.get("availability_note") or "")
     if av == "unverified":
-        return "Couldn't verify recently: " + (job.get("availability_note") or "the source could not be checked")
+        return "Could not check it recently: " + (job.get("availability_note") or "the site could not be reached")
     checked = job.get("last_checked_at") or job.get("last_seen_at")
-    return f"Listed when last checked ({(checked or '')[:10]})"
+    return f"Still listed on {(checked or '')[:10]}"

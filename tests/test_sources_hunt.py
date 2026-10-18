@@ -181,3 +181,17 @@ def test_import_text_detects_ats_links():
     assert detect_ats_link("https://jobs.lever.co/palantir/abc-def")["site"] == "palantir"
     assert detect_ats_link("https://jobs.ashbyhq.com/ashby/uuid")["board"] == "ashby"
     assert detect_ats_link("https://www.linkedin.com/jobs/view/123") is None
+
+
+def test_boards_outside_your_region_are_not_searched(ctx, db, client, seeded_sources):
+    import json as _json
+
+    approve_profile(db, ctx, countries="NL, DE")
+    db.execute("UPDATE employers SET regions_json = ? WHERE canonical_name = 'northwind cloud'", (_json.dumps(["na"]),))
+    db.execute("UPDATE employers SET regions_json = ? WHERE canonical_name = 'fabrikam mobility'", (_json.dumps(["eu"]),))
+    ids = {s["id"] for s in hunt._enabled_sources(db, None)}
+    assert "greenhouse:northwind" not in ids and "lever:fabrikam" in ids and "ashby:contoso" in ids  # unknown regions still searched
+    assert "remotive:devops" in ids and "arbeitnow:eu" in ids
+    approve_profile(db, ctx, countries="US")
+    ids = {s["id"] for s in hunt._enabled_sources(db, None)}
+    assert "arbeitnow:eu" not in ids and "greenhouse:northwind" in ids and "lever:fabrikam" not in ids

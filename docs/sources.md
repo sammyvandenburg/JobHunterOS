@@ -19,6 +19,9 @@ Greenhouse's official documentation lists a single base URL; a regional EU host 
 ## Starter catalogue
 `catalog/employers.yaml` lists 85 employers (49 Greenhouse, 10 Lever, 26 Ashby) across North America and Europe with their ATS, board token, careers URL, and the date each board answered a read-only request. "Checked" means the board returned a list of postings that day; it says nothing about current hiring for your kind of role. Hunter syncs the catalogue into its database on first use (`uv run jobhunter sources sync-catalog` re-syncs without touching your changes). Add your own: `uv run jobhunter sources add --kind greenhouse --token acme --name "Acme"` then `sources check greenhouse:acme`.
 
+## Which boards are searched
+Boards are skipped when the employer's hiring regions (from the catalogue) do not overlap the person's countries (North America vs Europe); boards with unknown regions and the Remotive feed are always searched; the Arbeitnow (Europe) feed is skipped for people who can only work in North America.
+
 ## Discovery
 Jobs from Remotive, Arbeitnow, or Adzuna create employer records with origin `discovered`. When such a job links to a public Greenhouse, Lever, or Ashby board, Hunter reads that board once; if it answers, the board becomes a watched source (at most five new boards per hunt). The dashboard's Search health page shows how many employers were discovered this way.
 

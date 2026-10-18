@@ -2,18 +2,18 @@
 {% block title %}What needs my attention{% endblock %}
 {% block content %}
 <section class="card">
-  <h1>What needs your attention</h1>
+  <h1>Needs your attention</h1>
   {% if att.setup_pending %}<p><strong>Setup:</strong> {{ att.setup_pending.question }} <a href="/profile">Continue setup</a></p>{% endif %}
-  {% if not att['items'] and not att.setup_pending %}<p>Nothing right now. Enjoy the quiet.</p>{% endif %}
+  {% if not att['items'] and not att.setup_pending %}<p>Nothing right now. All good.</p>{% endif %}
   <ul class="attention">
   {% for it in att['items'] %}
     <li>
       <p>{{ it.text }}</p>
       {% if it.kind == 'suggestion' %}
-        <form method="post" action="/do/feedback/{{ it.key }}" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button name="answer" value="yes" class="primary">Yes</button><button name="answer" value="no">No, keep showing them</button></form>
+        <form method="post" action="/do/feedback/{{ it.key }}" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button name="answer" value="yes" class="primary">Yes</button><button name="answer" value="no">No, keep them</button></form>
       {% elif it.kind == 'email_confirmation' %}
-        <form method="post" action="/do/email/{{ it.email_id }}/confirm" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">{% if it.job_id %}<input type="hidden" name="job_id" value="{{ it.job_id }}"><button class="primary">Yes, link it</button>{% else %}<label>Job id <input type="number" name="job_id" required></label><button class="primary">Link</button>{% endif %}</form>
-        <form method="post" action="/do/email/{{ it.email_id }}/reject" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>No, ignore it</button></form>
+        <form method="post" action="/do/email/{{ it.email_id }}/confirm" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">{% if it.job_id %}<input type="hidden" name="job_id" value="{{ it.job_id }}"><button class="primary">Yes</button>{% else %}<label>Job id <input type="number" name="job_id" required></label><button class="primary">Link</button>{% endif %}</form>
+        <form method="post" action="/do/email/{{ it.email_id }}/reject" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>No</button></form>
       {% elif it.kind == 'question' %}
         <form method="post" action="/do/profile/answer" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ it.key }}"><input type="text" name="answer" placeholder="Your answer" required><button class="primary">Answer</button></form>
         <form method="post" action="/do/profile/skip" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ it.key }}"><button>Skip</button></form>

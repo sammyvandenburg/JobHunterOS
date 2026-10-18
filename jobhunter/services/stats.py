@@ -38,9 +38,10 @@ def totals(db: Database) -> dict:
 
 
 def summary_line(t: dict) -> str:
-    parts = [f"{t['found']} jobs found", f"{t['recommended']} recommended", f"{t['applied']} applications"]
+    parts = [f"{t['recommended']} jobs worth a look", f"{t['applied']} applied"]
     if t["recruiter_replies"]:
-        parts.append(f"{t['recruiter_replies']} recruiter replies")
+        parts.append(f"{t['recruiter_replies']} repl{'y' if t['recruiter_replies'] == 1 else 'ies'}")
     if t["interviews"]:
         parts.append(f"{t['interviews']} interview{'s' if t['interviews'] != 1 else ''}")
+    parts.append(f"{t['found']} found in total")
     return " · ".join(parts)

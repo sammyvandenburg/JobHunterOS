@@ -105,12 +105,8 @@ def rule_based_answers(job: dict, facts: list[Fact]) -> ApplicationDraft:
             )
         )
     for q in SCREENING_QUESTIONS:
-        answers.append(DraftAnswer(question=q, answer="", fact_ids=[], needs_user=True, note="Only you can answer this. Hunter never guesses it."))
-    missing = [
-        "Confirm work authorization and sponsorship for this job's country.",
-        "Decide your salary expectation if the form asks (Hunter does not fill it).",
-        "Equal-opportunity or demographic questions: answer them yourself or skip; Hunter never completes them.",
-    ]
+        answers.append(DraftAnswer(question=q, answer="", fact_ids=[], needs_user=True, note="Only you can answer this one."))
+    missing = ["Questions about gender, background, or disability: answer them yourself or skip them. Hunter never does."]
     if job.get("remote_restriction"):
         missing.append(f"Check the location rule: {job['remote_restriction']}.")
     return ApplicationDraft(answers=answers, intro=None, missing=missing)
@@ -146,14 +142,16 @@ def prepare(ctx: AppContext, db: Database, job_id: int, use_model: bool = False)
             except model_provider.ModelError:
                 created_by = "rules (Claude unavailable)"
     _, problems = validate_draft(db, job, draft)
+    fit = fit_report(job, facts, years=float(profile["targets"].get("professional_years_relevant") or 0))
     package = {
+        "fit": fit,
         "job": {"id": job["id"], "title": job["title"], "employer": job.get("employer_name"), "apply_url": job.get("apply_url") or job.get("direct_url") or job.get("discovery_url")},
-        "cv": {"document_id": cv["id"], "path": cv["stored_path"], "sha256": cv["sha256"], "version": cv["version"], "unchanged": bool(integrity and integrity[0]["ok"])} if cv else None,
+        "cv": {"document_id": cv["id"], "path": cv["stored_path"], "filename": cv["original_filename"], "sha256": cv["sha256"], "version": cv["version"], "unchanged": bool(integrity and integrity[0]["ok"])} if cv else None,
         "project_links": links,
         "draft": draft.model_dump(mode="json"),
         "created_by": created_by,
         "validation_problems": problems,
-        "reminder": "Hunter prepares; you submit. Opening the form or copying a draft is not an application until you say 'I applied'.",
+        "reminder": "Hunter prepares, you apply. When you have sent it, press 'I applied'.",
     }
     with db.tx():
         draft_id = db.insert("drafts", {"job_id": job_id, "kind": "package", "content_json": json.dumps(package), "validation_json": json.dumps(problems), "created_by": created_by, "created_at": now_iso()})
@@ -240,6 +238,113 @@ def list_drafts(db: Database, job_id: int | None = None) -> list[dict]:
     for r in rows:
         r["content"] = json.loads(r["content_json"])
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Who they want / how you fit / how to present yourself
+# ---------------------------------------------------------------------------
+REQ_HEADINGS = re.compile(r"^(what you('ll)? bring|what we('re| are) looking for|requirements|qualifications|you have|about you|who you are|must have|you are|what you need|skills|experience)\b", re.I)
+RESP_HEADINGS = re.compile(r"^(what you('ll| will) do|responsibilities|the role|your role|you will|what you'll be doing|in this role)\b", re.I)
+SKIP_LINE = re.compile(r"^(we offer|benefits|perks|about us|our company|equal opportunity|diversity)", re.I)
+
+
+def _lines(desc: str) -> list[str]:
+    out = []
+    for raw in (desc or "").splitlines():
+        ln = raw.strip(" •-*–·\t")
+        if 12 <= len(ln) <= 220:
+            out.append(ln)
+    return out
+
+
+def _section(desc: str, heading_rx, limit: int = 6) -> list[str]:
+    lines = _lines(desc)
+    out: list[str] = []
+    active = False
+    for ln in lines:
+        if heading_rx.match(ln):
+            active = True
+            continue
+        if active and (REQ_HEADINGS.match(ln) or RESP_HEADINGS.match(ln) or SKIP_LINE.match(ln)):
+            if out:
+                break
+            active = True
+            continue
+        if active:
+            out.append(ln)
+            if len(out) >= limit:
+                break
+    return out
+
+
+def fit_report(job: dict, facts: list[Fact], years: float | None = None) -> dict:
+    """Plain-language view: who they want, what you match, what you miss, how to present yourself."""
+    from jobhunter.services.matching.scoring import candidate_skills, job_tools, tool_label
+    from jobhunter.services.normalize import seniority_of
+
+    desc = job.get("description_text") or ""
+    title = job.get("title") or ""
+    skills = candidate_skills(facts)
+    tools = sorted(job_tools(desc, title))
+    have = [t for t in tools if t in skills]
+    miss = [t for t in tools if t not in skills]
+    seniority, years_required = seniority_of(title, desc)
+    roles = [f for f in facts if f.category == "role" and f.experience_kind == "professional"]
+    projects = [f for f in facts if f.category == "project"]
+    certs = [f for f in facts if f.category == "certification"]
+
+    want = _section(desc, REQ_HEADINGS, 6)
+    doing = _section(desc, RESP_HEADINGS, 4)
+    who = []
+    level_word = {"intern": "an intern", "junior": "someone early in their career", "mid": "someone who can work on their own", "senior": "an experienced engineer who can lead work", "staff": "a very senior engineer who sets direction"}.get(seniority, "an engineer")
+    who.append(f"They want {level_word}" + (f" with about {years_required}+ years." if years_required else "."))
+    if tools:
+        who.append("Tools they name: " + ", ".join(tool_label(t) for t in tools[:8]) + ("." if len(tools) <= 8 else " and more."))
+    who += [f"They say: {w}" for w in want[:4]]
+    if doing:
+        who.append("Day to day: " + "; ".join(doing[:3]) + ".")
+
+    match_lines = []
+    if have:
+        match_lines.append("Your CV shows " + ", ".join(tool_label(t) for t in have[:6]) + ".")
+    if roles:
+        match_lines.append(f"You have paid experience: {roles[0].text}.")
+    if certs:
+        match_lines.append("Certified: " + ", ".join(c.text for c in certs[:2]) + ".")
+    if projects and (miss or not roles):
+        match_lines.append(f"Project work you can point to: {projects[0].text[:120]}.")
+
+    miss_lines = []
+    if miss:
+        miss_lines.append("They mention " + ", ".join(tool_label(t) for t in miss[:6]) + ". Your CV does not show " + ("it" if len(miss) == 1 else "these") + ".")
+    if years_required and years is not None and years_required > years + 1:
+        miss_lines.append(f"They ask for about {years_required} years. You have about {years:g}.")
+    if not roles:
+        miss_lines.append("You have no paid experience yet. Be open about that, and show your projects.")
+
+    total = len(tools) + (1 if years_required else 0)
+    got = len(have) + (1 if (years_required and years is not None and years >= years_required - 1) else 0)
+    if total:
+        fit_line = f"You match {got} of {total} things they ask for."
+    else:
+        fit_line = "They do not list many specific tools. Your fit depends on your story."
+
+    present = []
+    if have:
+        present.append("Lead with " + ", ".join(tool_label(t) for t in have[:3]) + ". Say where you used " + ("it" if len(have) == 1 else "them") + " and what happened.")
+    for m in miss[:2]:
+        needle = m.replace("argocd", "argo").split(" ")[0]
+        related = next((p for p in projects if needle in p.text.lower()), None)
+        if related:
+            present.append(f"For {tool_label(m)}: mention your project '{related.text[:60]}'.")
+        else:
+            present.append(f"For {tool_label(m)}: say honestly you have not used it at work, and name the closest thing you have used.")
+    if seniority in {"senior", "staff"} and roles:
+        present.append("Show ownership: one example where you were responsible for a system, not just a task.")
+    if not roles and projects:
+        present.append("Describe one project as if it were a job: what broke, what you fixed, what you learned.")
+    present.append("Keep it short and honest. Hunter never adds things your CV does not say.")
+    return {"who_they_want": who, "you_match": match_lines, "you_miss": miss_lines, "fit_line": fit_line, "how_to_present": present}
 
 
 # ---------------------------------------------------------------------------

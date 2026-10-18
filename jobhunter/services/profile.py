@@ -222,7 +222,7 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
                     Fact(
                         id=nid("r"),
                         category="role",
-                        text=f"{title_line.strip()} ({start} to {end})",
+                        text=(title_line.strip() if title_line is line else f"{title_line.strip()} ({start} to {end})"),
                         confidence="explicit",
                         experience_kind=kind,  # type: ignore[arg-type]
                         start=start,

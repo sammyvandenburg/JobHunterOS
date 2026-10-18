@@ -3,41 +3,29 @@
 {% block content %}
 <section class="card narrow">
   <h1>Let's get you set up.</h1>
-  <p>Hunter works from your finished CV and LinkedIn profile. It never rewrites them. Answer one question at a time; you can stop and come back.</p>
+  <p>Hunter finds jobs that fit you and helps you apply. It works from your finished CV and LinkedIn profile and never changes them. Four short steps.</p>
   {% if step.key == 'readiness' %}
-    <h2>{{ step.question }}</h2>
-    <p class="muted">{{ step.help }}</p>
+    <h2>Step 1 of 4: {{ step.question }}</h2>
     <form method="post" action="/do/setup/answer" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="readiness">
-      <button name="value" value="yes" class="primary">Yes, they are finished</button>
+      <button name="value" value="yes" class="primary">Yes, both are finished</button>
       <button name="value" value="no">Not yet</button>
     </form>
-  {% elif step.key == 'cv' %}
-    <h2>{{ step.question }}</h2>
-    <form method="post" action="/do/upload" enctype="multipart/form-data">
-      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="cv">
-      <label>Your CV file (PDF, DOCX, Markdown, or text; max 10 MB) <input type="file" name="file" accept=".pdf,.docx,.md,.txt" required></label>
-      <button class="primary">Upload CV</button>
+  {% elif step.key == 'documents' %}
+    <h2>Step 2 of 4: Give me two files</h2>
+    <ol class="steps">
+      <li><strong>Your CV</strong> (PDF or Word).</li>
+      <li><strong>Your LinkedIn profile as PDF.</strong> Open your LinkedIn profile in the browser, click <strong>More</strong> under your name, then <strong>Save to PDF</strong>.</li>
+    </ol>
+    {% if step.missing and step.missing|length == 1 %}<p class="warn">Still missing: {{ step.missing[0] }}.</p>{% endif %}
+    <form method="post" action="/do/upload-both" enctype="multipart/form-data" class="big-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Your CV <input type="file" name="cv" accept=".pdf,.docx,.md,.txt"></label>
+      <label>Your LinkedIn PDF <input type="file" name="linkedin" accept=".pdf,.docx,.md,.txt"></label>
+      <p><button class="primary">Upload</button></p>
     </form>
-  {% elif step.key == 'linkedin_url' %}
-    <h2>{{ step.question }}</h2>
-    <form method="post" action="/do/setup/answer">
-      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="linkedin_url">
-      <label>Profile URL <input type="url" name="value" placeholder="https://www.linkedin.com/in/your-name" required></label>
-      <button class="primary">Save</button>
-    </form>
-  {% elif step.key == 'linkedin_content' %}
-    <h2>{{ step.question }}</h2>
-    <p class="muted">{{ step.help }} In LinkedIn: Me → Settings → Data privacy → Get a copy of your data, or open your profile and choose More → Save to PDF.</p>
-    <form method="post" action="/do/upload" enctype="multipart/form-data">
-      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="linkedin">
-      <label>Export or saved PDF <input type="file" name="file" accept=".pdf,.docx,.md,.txt"></label>
-      <p class="muted">or</p>
-      <label>Paste the text of your profile <textarea name="text" rows="8"></textarea></label>
-      <button class="primary">Save</button>
-    </form>
+    <p class="muted">Both files stay on this computer. Max 10 MB each.</p>
   {% endif %}
-  <p class="muted">Prefer the terminal? Open Claude Code in this repository and run <code>/jobhunter</code>.</p>
-  {% if status.done %}<p class="muted">Done so far: {{ status.done|join(', ') }}</p>{% endif %}
+  <p class="muted">Prefer to talk? Open Claude Code in this folder and type <code>/jobhunter</code>.</p>
 </section>
 {% endblock %}

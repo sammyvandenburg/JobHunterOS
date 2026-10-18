@@ -26,18 +26,27 @@ def _import(ctx, db, **kw):
     return res["job_ids"][0]
 
 
-def test_acc09_unknown_salary_sponsorship_not_excluded_but_explicit_is(ctx, db):
-    approve_profile(db, ctx, countries="NL, DE", sponsorship="yes")
+def test_acc09_unknown_salary_not_excluded_but_wrong_country_is_visible(ctx, db):
+    approve_profile(db, ctx, countries="NL, DE, FR", sponsorship="unset")
     p = prefs_svc.get(db)
     p.salary_min, p.salary_currency, p.salary_period, p.salary_strength = 50000, "EUR", "year", "nice"
     prefs_svc.save(db, p)
-    unknown = _import(ctx, db, external_id="u1", location_text="Paris, France")  # not in work countries, sponsorship unknown
+    unknown = _import(ctx, db, external_id="u1", location_text="Paris, France")  # salary unknown
     j = _job(db, unknown)
     assert j["match_group"] != "excluded", j
-    assert any("visa" in g.lower() or "Salary not listed" in g for g in j["gaps"])
-    explicit = _import(ctx, db, external_id="u2", employer_name="Beta", url="https://job-boards.greenhouse.io/beta/jobs/2", location_text="Paris, France", description_text="Kubernetes, Terraform. We cannot offer visa sponsorship.")
-    j2 = _job(db, explicit)
-    assert j2["match_group"] == "excluded" and "sponsor" in j2["exclusion_reason"].lower()
+    assert any("Salary not listed" in g for g in j["gaps"])
+    # Outside the person's countries: left out, with the reason visible (not hidden).
+    outside = _import(ctx, db, external_id="u2", employer_name="Beta", url="https://job-boards.greenhouse.io/beta/jobs/2", location_text="Madrid, Spain")
+    j2 = _job(db, outside)
+    assert j2["match_group"] == "excluded" and "Spain" in j2["exclusion_reason"] and "Netherlands" in j2["exclusion_reason"]
+    # Visa is never asked; only when someone sets it under More options does a 'no sponsorship' job get excluded.
+    p = prefs_svc.get(db)
+    p.needs_sponsorship = "yes"
+    p.work_countries = ["NL"]
+    prefs_svc.save(db, p)
+    explicit = _import(ctx, db, external_id="u3", employer_name="Gamma", url="https://job-boards.greenhouse.io/gamma/jobs/3", location_text="Remote", remote_type="remote", description_text="Kubernetes, Terraform. We cannot offer visa sponsorship.")
+    j3 = _job(db, explicit)
+    assert j3["match_group"] == "excluded" and "sponsor" in j3["exclusion_reason"].lower()
 
 
 def test_acc10_remote_in_one_country_is_not_worldwide(ctx, db):
@@ -58,7 +67,7 @@ def test_acc11_related_titles_and_missing_tool_not_rejected(ctx, db):
     j = _job(db, jid)
     assert j["relevance"] == "relevant"
     assert j["match_group"] in {"good", "worth_a_shot", "backup"}
-    assert any("no evidence for yet" in g for g in j["gaps"])
+    assert any("does not show" in g for g in j["gaps"])
     jid2 = _import(ctx, db, external_id="t2", title="Backend Engineer", location_text="Amsterdam, Netherlands", description_text="You will own Kubernetes clusters, Terraform modules, AWS accounts, CI/CD pipelines and on-call for the platform.")
     assert _job(db, jid2)["relevance"] == "uncertain"
 
@@ -78,7 +87,7 @@ def test_acc12b_experienced_candidate_gets_senior_stretch(ctx, db):
     senior = _import(ctx, db, external_id="s4", title="Staff Platform Engineer", location_text="Amsterdam, Netherlands", description_text="Kubernetes, Terraform, AWS, Argo CD, Prometheus, Grafana, Linux, Python, CI/CD. 5+ years.")
     j = _job(db, senior)
     assert j["match_group"] in {"good", "worth_a_shot"}
-    assert any("step up" in g.lower() or "level above" in g.lower() for g in j["gaps"])
+    assert any("level above" in g.lower() for g in j["gaps"])
 
 
 def test_acc15_fit_outranks_freshness_and_old_kept_separately(ctx, db):

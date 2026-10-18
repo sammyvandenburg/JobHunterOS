@@ -37,15 +37,31 @@ class ScoreResult:
     components: dict = field(default_factory=dict)
 
 
+_NEEDLE_TO_KEY = {n.strip(): k for k, needles in SKILL_VOCAB.items() for n in needles}
+TOOL_LABELS = {"monitoring": "monitoring (Prometheus, Grafana)", "argocd": "Argo CD / GitOps", "ci/cd": "CI/CD pipelines", "on-call": "on-call", "aws": "AWS", "gcp": "Google Cloud", "azure": "Azure", "sql": "SQL databases"}
+
+
 def job_tools(description: str, title: str) -> set[str]:
+    """Tools the job names, as canonical skill keys (the same keys the CV skills use)."""
     text = f" {title.lower()} {description.lower()} "
     found = set()
     for skill, needles in SKILL_VOCAB.items():
+        if skill == "cloud":
+            continue  # too generic to count as a tool
         if any(n in text for n in needles):
             found.add(skill)
     for m in DESC_INFRA.findall(description.lower()):
-        found.add(m.lower())
+        key = _NEEDLE_TO_KEY.get(m.lower().strip())
+        if key:
+            if key != "cloud":
+                found.add(key)
+        elif m.lower() not in {"sre", "iac", "infrastructure as code", "load balanc", "vpc", "eks", "gke", "aks"}:
+            found.add(m.lower())
     return found
+
+
+def tool_label(key: str) -> str:
+    return TOOL_LABELS.get(key, key)
 
 
 def candidate_skills(facts: list[Fact]) -> dict[str, Fact]:
@@ -81,14 +97,14 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
         rel = 25.0
         if _direction_match(title, targets):
             rel += 5.0
-            res.reasons.append({"text": "This is the kind of role you said you want.", "fact_ids": []})
+            res.reasons.append({"text": "This is the kind of job you said you want.", "fact_ids": []})
         else:
-            res.reasons.append({"text": "The role is infrastructure, platform, cloud, SRE, or DevOps work.", "fact_ids": []})
+            res.reasons.append({"text": "This is infrastructure work, the kind you are looking for.", "fact_ids": []})
     elif relevance == "uncertain":
         rel = 12.0
-        res.reasons.append({"text": "The title is broader, but the work described is infrastructure work.", "fact_ids": []})
+        res.reasons.append({"text": "The title is a bit different, but the work is infrastructure work.", "fact_ids": []})
     else:
-        return _exclude(res, "This is not an infrastructure, platform, cloud, SRE, or DevOps role.")
+        return _exclude(res, "This is not an infrastructure, platform, cloud, SRE, or DevOps job.")
     res.components["relevance"] = rel
 
     # 2. Skills overlap -------------------------------------------------------
@@ -104,9 +120,9 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
     res.components["skills"] = skill_score
     if have:
         ids = [skills[t].id for t in have[:3]]
-        res.reasons.append({"text": "You have evidence for " + ", ".join(sorted(have)[:5]) + (" and more" if len(have) > 5 else "") + ".", "fact_ids": ids})
+        res.reasons.append({"text": "Your CV shows " + ", ".join(tool_label(t) for t in sorted(have)[:5]) + (" and more" if len(have) > 5 else "") + ", which they ask for.", "fact_ids": ids})
     if missing:
-        res.gaps.append("Tools named in the job you have no evidence for yet: " + ", ".join(sorted(missing)[:6]) + ".")
+        res.gaps.append("They mention " + ", ".join(tool_label(t) for t in sorted(missing)[:5]) + ". Your CV does not show " + ("it" if len(missing) == 1 else "these") + " yet.")
 
     # 3. Level fit --------------------------------------------------------------
     seniority, years_required = seniority_of(title, desc)
@@ -117,43 +133,42 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
         if cand_level in {"entry", "unknown"} and not professional_roles:
             level_score = 8.0
         else:
-            return _exclude(res, "This is an internship; it is below the level you are aiming for.")
+            return _exclude(res, "This is an internship, below what you are aiming for.")
     elif diff == 0:
         level_score = 15.0
-        res.reasons.append({"text": "The level matches your experience.", "fact_ids": [f.id for f in professional_roles[:2]]})
+        res.reasons.append({"text": "The level fits your experience.", "fact_ids": [f.id for f in professional_roles[:2]]})
     elif diff == 1:
         if professional_roles or cand_level == "entry":
             level_score = 8.0 if professional_roles else 4.0
-            res.reasons.append({"text": "A step up from your current level; worth a try with your experience." if professional_roles else "A step up; your projects can support the application.", "fact_ids": [f.id for f in professional_roles[:2]]})
-            res.gaps.append("The role is one level above your experience; expect questions about ownership and scale.")
+            res.reasons.append({"text": "A step up from where you are now. Worth a try." if professional_roles else "A step up. Your projects can back you up.", "fact_ids": [f.id for f in professional_roles[:2]]})
+            res.gaps.append("One level above your experience. Expect questions about what you owned and how big it was.")
         else:
             level_score = 2.0
     elif diff >= 2:
         if not professional_roles and seniority in {"senior", "staff"}:
-            return _exclude(res, "This role asks for senior experience, and your profile has no paid experience yet. It is not a fair shot right now.")
+            return _exclude(res, "They want senior experience and your CV has no paid experience yet. Not a fair shot right now.")
         if not professional_roles:
-            # Entry-level candidate, plain mid-level title: a stretch, shown honestly.
             level_score = 2.0 if (years_required is None or years_required <= 2) else -8.0
-            res.gaps.append("The job does not say junior; expect questions about hands-on experience, and lean on your project evidence.")
+            res.gaps.append("The job does not say junior. Lean on your project work when you apply.")
         else:
             level_score = -12.0
-            res.gaps.append("This role is two or more levels above your experience.")
+            res.gaps.append("Two or more levels above your experience.")
     elif diff == -1:
         level_score = 6.0
-        res.gaps.append("This is a step below your current level; it could still be a good employer.")
+        res.gaps.append("A step below your current level. Could still be a good employer.")
     else:
         level_score = -6.0
-        res.gaps.append("This role is well below your level.")
+        res.gaps.append("Well below your level.")
     if years_required is not None:
         if years_required > years + 3:
             level_score -= 8.0
-            res.gaps.append(f"The job asks for about {years_required} years; your profile shows about {years:g}. That is not automatic rejection, but be ready to explain.")
+            res.gaps.append(f"They ask for about {years_required} years. Your CV shows about {years:g}. Not a no, but be ready to explain.")
         elif years_required > years + 1:
             level_score -= 3.0
-            res.gaps.append(f"The job mentions {years_required} years of experience; you have about {years:g}.")
+            res.gaps.append(f"They mention {years_required} years. You have about {years:g}.")
     res.components["level"] = level_score
 
-    # 4. Eligibility --------------------------------------------------------------
+    # 4. Location (your countries decide) ---------------------------------------------
     elig = {"countries": "unknown", "sponsorship": job.get("sponsorship") or "unknown", "remote_restriction": job.get("remote_restriction")}
     elig_score = 0.0
     work = set(prefs.work_countries or [])
@@ -163,39 +178,31 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
             elig["countries"] = "yes"
         else:
             elig["countries"] = "no"
-            if remote_type == "remote":
-                return _exclude(res, f"{job.get('remote_restriction') or 'Remote, but only in ' + country_names(codes)}. You said you can work in {country_names(sorted(work))}.", elig)
-            if elig["sponsorship"] == "no":
-                return _exclude(res, "The job is in a country where you cannot work yet, and the employer says it does not sponsor visas.", elig)
-            if prefs.relocation == "no":
-                return _exclude(res, "The job is in a country where you cannot work yet, and you said you do not want to move.", elig)
-            elig_score -= 8.0
-            res.gaps.append("Work location: the job is in a country where you may need a visa. Sponsorship: " + ("offered" if elig["sponsorship"] == "yes" else "not stated") + ".")
-    elif codes and not work:
-        res.gaps.append("I don't know yet where you can work, so I can't check this job's location rule.")
-        elig_score -= 3.0
+            where = job.get("remote_restriction") if remote_type == "remote" else f"This job is in {country_names(codes)}"
+            return _exclude(res, f"{where}. You said you can work in {country_names(sorted(work))}.", elig)
     elif remote_type == "remote" and not codes:
-        res.gaps.append("Remote, but the allowed countries are not stated. Check before applying.")
+        res.gaps.append("Remote, but they don't say which countries. Check before you apply.")
+        elig_score -= 2.0
+    elif not codes:
+        res.gaps.append("No location given. Check before you apply.")
         elig_score -= 2.0
     if prefs.needs_sponsorship == "yes" and elig["sponsorship"] == "no" and elig["countries"] != "yes":
         return _exclude(res, "You need visa sponsorship and this employer says it does not sponsor.", elig)
-    if elig["sponsorship"] == "unknown" and prefs.needs_sponsorship == "yes" and elig["countries"] != "yes":
-        res.gaps.append("Visa sponsorship: not stated. Ask before investing time.")
     res.components["eligibility"] = elig_score
 
     # 5. Preferences ----------------------------------------------------------------
     pref_score = 0.0
     if prefs.remote == "required" and remote_type == "onsite":
-        return _exclude(res, "This job is on-site and you said remote is required.", elig)
+        return _exclude(res, "This job is in the office and you said remote is a must.", elig)
     if prefs.remote in {"required", "preferred"}:
         if remote_type == "remote":
             pref_score += 5.0
-            res.reasons.append({"text": "Remote, which you prefer.", "fact_ids": []})
+            res.reasons.append({"text": "Remote, like you want.", "fact_ids": []})
         elif remote_type == "hybrid":
             pref_score += 1.0
         elif remote_type == "onsite":
             pref_score -= 6.0
-            res.gaps.append("On-site, while you prefer remote.")
+            res.gaps.append("In the office, while you prefer remote.")
     sal_note = _salary_check(job, prefs)
     if sal_note["status"] == "below" and prefs.salary_strength == "must":
         return _exclude(res, sal_note["text"], elig)
@@ -217,7 +224,7 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
     fresh = freshness.freshness_bonus(b)
     res.components["freshness"] = fresh
     if b == "old":
-        res.gaps.append("Posted more than 14 days ago; it may already be filled.")
+        res.gaps.append("Posted more than 14 days ago. It may be filled already.")
 
     total = rel + skill_score + level_score + elig_score + pref_score + fresh
     res.score = round(total, 1)
@@ -229,7 +236,7 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
     elif total >= THRESHOLDS["backup"] and relevance == "relevant":
         res.group = "backup"
     else:
-        return _exclude(res, "The fit is weak: " + (res.gaps[0] if res.gaps else "few of the job's needs match your evidence."), elig)
+        return _exclude(res, "Not a good fit: " + (res.gaps[0] if res.gaps else "little of what they ask for shows in your CV."), elig)
     res.next_step = _next_step(res, job)
     res.reasons = res.reasons[:3]
     return res
@@ -239,7 +246,7 @@ def _exclude(res: ScoreResult, reason: str, elig: dict | None = None) -> ScoreRe
     res.group = "excluded"
     res.exclusion_reason = reason
     res.eligibility = elig or res.eligibility
-    res.next_step = "Nothing to do unless you disagree; you can still open it."
+    res.next_step = "Nothing to do, unless you disagree. You can still open it."
     return res
 
 
@@ -250,25 +257,25 @@ def _salary_check(job: dict, prefs: Preferences) -> dict:
         return {"status": "listed", "text": ""}
     jmin, jmax, jcur, jper = job.get("salary_min"), job.get("salary_max"), job.get("salary_currency"), job.get("salary_period")
     if not jmin and not jmax:
-        return {"status": "unknown", "text": "Salary not listed; your minimum could not be checked."}
+        return {"status": "unknown", "text": "Salary not listed, so I could not check it against your minimum."}
     if not jcur or jcur != prefs.salary_currency or (jper or "year") != (prefs.salary_period or "year"):
-        return {"status": "incomparable", "text": f"Salary is listed in {jcur or 'an unknown currency'} per {jper or 'unknown period'}; I did not convert it to compare with your minimum."}
+        return {"status": "incomparable", "text": f"Salary is in {jcur or 'another currency'} per {jper or 'unknown period'}. I did not convert it, so compare it yourself."}
     hi = jmax or jmin
     if hi is not None and hi < prefs.salary_min:
-        return {"status": "below", "text": f"The listed range tops out at {hi:,.0f} {jcur}, below your minimum of {prefs.salary_min:,.0f} {prefs.salary_currency}."}
-    return {"status": "overlap", "text": "The listed salary range reaches your minimum."}
+        return {"status": "below", "text": f"The pay tops out at {hi:,.0f} {jcur}, below your minimum of {prefs.salary_min:,.0f} {prefs.salary_currency}."}
+    return {"status": "overlap", "text": "The pay reaches your minimum."}
 
 
 def _next_step(res: ScoreResult, job: dict) -> str:
-    if res.eligibility.get("countries") == "no" or any("visa" in g.lower() for g in res.gaps):
-        return "Check the work-location and visa rule first, then decide."
+    if any("which countries" in g for g in res.gaps):
+        return "Open the job and check which countries they allow. Then press Help me apply."
     if any("Salary not listed" in g for g in res.gaps):
-        return "Open the job and look for the salary; then ask me to help you apply."
+        return "Open the job to look for the pay. Then press Help me apply."
     if res.group == "good":
-        return "Ask me to help you apply."
+        return "Press Help me apply."
     if res.group == "worth_a_shot":
-        return "Read the full description and decide if the stretch is right for you."
-    return "Save it as a backup and focus on the better matches first."
+        return "Read the job. If it feels right, press Help me apply."
+    return "Save it for later. Look at the better matches first."
 
 
 def region_of(codes: list[str]) -> list[str]:

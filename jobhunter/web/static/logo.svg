@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="KubeCraft">
+  <g fill="none" stroke="#ff7a00" stroke-width="12">
+    <circle cx="100" cy="100" r="70"/>
+    <circle cx="100" cy="100" r="28" fill="#ff7a00" stroke="none"/>
+    <path d="M100 8v34M100 158v34M8 100h34M158 100h34M35 35l24 24M141 141l24 24M165 35l-24 24M59 141l-24 24"/>
+  </g>
+  <g fill="#ff7a00">
+    <path d="M100 52l8 14h-16zM100 148l-8-14h16zM52 100l14-8v16zM148 100l-14 8v-16zM66 66l15 1-1 15zM134 134l-15-1 1-15zM134 66l-1 15-15-1zM66 134l1-15 15 1z"/>
+  </g>
+</svg>

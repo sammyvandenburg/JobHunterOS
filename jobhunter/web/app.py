@@ -79,8 +79,10 @@ def create_app(ctx: AppContext) -> FastAPI:
         d = db()
         try:
             nxt = onboarding.next_step(d)
-            if nxt and not ctx.demo and nxt["key"] in {"readiness", "cv", "linkedin_url", "linkedin_content"}:
-                return render(request, "welcome.html", step=nxt, status=onboarding.status(d))
+            if nxt and not ctx.demo and nxt["key"] in {"readiness", "documents"}:
+                return render(request, "welcome.html", step=nxt, status=onboarding.status(d), hide_summary=True)
+            if nxt and not ctx.demo and nxt["key"] in {"profile_approve", "basics"}:
+                return RedirectResponse("/profile", status_code=303)
             return _jobs_page(request, d, "new")
         finally:
             d.close()
@@ -101,7 +103,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         group = q.get("group") or None
         query = q.get("q") or None
         sort = q.get("sort") or "best"
-        res = views.list_jobs(d, view=view, group=group, query=query, page=page, per_page=10, sort=sort)
+        res = views.list_jobs(d, view=view, group=group, query=query, page=page, per_page=25, sort=sort)
         last = hunt.last_run(d)
         sched = schedule.describe(d)
         return render(request, "jobs.html", view=view, res=res, last_run=last, sched=sched, old_count=views.list_jobs(d, view="old", per_page=1)["total"] if view == "new" else 0)
@@ -116,6 +118,21 @@ def create_app(ctx: AppContext) -> FastAPI:
             return render(request, "job.html", job=j)
         finally:
             d.close()
+
+    @app.get("/go/{job_id}")
+    def go(job_id: int):
+        d = db()
+        try:
+            try:
+                res = actions.open_job(d, job_id)
+            except actions.ActionError:
+                return PlainTextResponse("Job not found", status_code=404)
+        finally:
+            d.close()
+        url = res.get("url") or ""
+        if url.startswith("https://") or url.startswith("http://"):
+            return RedirectResponse(url, status_code=303)
+        return PlainTextResponse("This job has no link. Try 'Where this job was seen' on the job page.", status_code=404)
 
     @app.get("/attention", response_class=HTMLResponse)
     def attention_page(request: Request):
@@ -196,7 +213,7 @@ def create_app(ctx: AppContext) -> FastAPI:
                 msg = "Removed from saved."
             elif action == "dismiss":
                 res = actions.dismiss_job(d, job_id, reason or None, note or None)
-                msg = "Okay, I won't show this one again." + (" I have a question for you on the attention page." if res.get("suggestions") else "")
+                msg = "Okay, I will not show this one again." + (" I have a quick question for you under Needs attention." if res.get("suggestions") else "")
             elif action == "undismiss":
                 actions.dismiss_job(d, job_id, undo=True)
                 msg = "Back in your list."
@@ -205,7 +222,7 @@ def create_app(ctx: AppContext) -> FastAPI:
                 msg = "Recorded: you applied."
             elif action == "prepare":
                 drafts.prepare(ctx, d, job_id)
-                msg = "Application materials prepared below."
+                msg = "Here is your help to apply (below)."
             elif action == "stage" and stage:
                 actions.set_stage(d, job_id, stage, actor="user", occurred_at=when or None, allow_backwards=True)
                 msg = f"Stage set to {stage}."
@@ -282,7 +299,54 @@ def create_app(ctx: AppContext) -> FastAPI:
                 msg = str(exc)
         finally:
             d.close()
-        target = "/profile" if key not in {"readiness", "cv", "linkedin_url", "linkedin_content"} else "/"
+        target = "/profile" if key not in {"readiness", "documents"} else "/"
+        return RedirectResponse(f"{target}?msg={_q(msg)}", status_code=303)
+
+    @app.post("/do/upload-both")
+    async def upload_both(request: Request, csrf: str = Form(...), cv: UploadFile | None = None, linkedin: UploadFile | None = None):
+        bad = guard(request, csrf)
+        if bad:
+            return bad
+        d = db()
+        msgs = []
+        try:
+            for kind, f in (("cv", cv), ("linkedin", linkedin)):
+                if f and f.filename:
+                    data = await f.read(MAX_DOCUMENT_BYTES + 1)
+                    try:
+                        row = docs.add_document(d, ctx.paths, kind, data, f.filename, f.content_type)
+                        label = "CV" if kind == "cv" else "LinkedIn PDF"
+                        msgs.append({"ok": f"{label}: read OK.", "empty": f"{label}: I could not read text from it. {row['extraction_notes']}", "failed": f"{label}: could not read it. {row['extraction_notes']}", "unsupported": f"{label}: {row['extraction_notes']}"}[row["extraction_status"]])
+                    except docs.DocumentError as exc:
+                        msgs.append(f"{'CV' if kind == 'cv' else 'LinkedIn PDF'}: {exc}")
+            if not msgs:
+                msgs.append("Choose at least one file.")
+            built = onboarding.ensure_profile_draft(d)
+            ready, missing = onboarding.documents_ready(d)
+            if built:
+                msgs.append("I built your profile. Please check it.")
+            elif not ready:
+                msgs.append("Still missing: " + ", ".join(missing) + ".")
+        finally:
+            d.close()
+        return RedirectResponse(("/profile" if ready else "/") + f"?msg={_q(' '.join(msgs))}", status_code=303)
+
+    @app.post("/do/setup/basics")
+    def setup_basics(request: Request, csrf: str = Form(...), location: str = Form(""), countries: str = Form(""), salary: str = Form(""), remote: str = Form(""), frequency: str = Form(""), notify: str = Form("")):
+        bad = guard(request, csrf)
+        if bad:
+            return bad
+        d = db()
+        try:
+            try:
+                res = onboarding.basics(d, location=location or None, countries=countries or None, salary=salary or "skip", remote=remote or None, frequency=frequency or None, notify=notify or None)
+                msg = "All set. " + (res.get("note") or "") + " Press Find jobs now."
+                target = "/"
+            except onboarding.AnswerError as exc:
+                msg = str(exc)
+                target = "/profile"
+        finally:
+            d.close()
         return RedirectResponse(f"{target}?msg={_q(msg)}", status_code=303)
 
     @app.post("/do/upload")
@@ -329,11 +393,11 @@ def create_app(ctx: AppContext) -> FastAPI:
                 if action == "build":
                     draft = profile_svc.build_rule_based_draft(d)
                     res = profile_svc.save_draft(d, draft, built_by="rules")
-                    msg = f"Draft built with {res['facts']} facts. Review it, then approve."
+                    msg = "I rebuilt your profile from your files. Please check it."
                 elif action == "approve":
                     profile_svc.approve(d, summary_override=summary or None)
                     consent.grant(d, "profile_approved", {})
-                    msg = "Profile approved."
+                    msg = "Thanks. Your profile is approved."
                 elif action == "answer" and key and answer:
                     profile_svc.answer_question(d, key, answer)
                     msg = "Thanks, noted."
@@ -342,7 +406,7 @@ def create_app(ctx: AppContext) -> FastAPI:
                     msg = "Skipped."
                 elif action == "correct" and text:
                     profile_svc.add_user_fact(d, text)
-                    msg = "Correction added to your profile (your documents are unchanged)."
+                    msg = "Got it. I added that to your profile. Your files are unchanged."
                 elif action == "rematch":
                     res = engine.run_matching(ctx, d)
                     msg = f"Re-matched: {res.get('computed', 0)} job(s) updated." if res.get("status") == "ok" else res.get("reason", "Not matched.")

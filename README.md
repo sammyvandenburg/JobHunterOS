@@ -33,10 +33,10 @@ Your private data lives in `~/.jobhunteros` (change with `JOBHUNTER_HOME`). Noth
 
 | You say | Hunter does |
 |---|---|
-| "Let's get set up" | Confirms your CV and LinkedIn profile are finished, reads the files you give it, builds a profile with evidence for every fact, asks only the missing questions, and waits for your approval. |
+| "Let's get set up" | Four steps: finished? → your CV and LinkedIn PDF → "does this look right?" → six quick basics in one go (where you live, your countries, pay, remote, how often, how to tell you). |
 | "Find jobs" | Reads 85 validated employer job boards (Greenhouse, Lever, Ashby) plus discovery feeds (Remotive, Arbeitnow; Adzuna optional) that introduce new employers, removes duplicates across sources, checks dates, and matches against your approved profile. |
-| "Show me the best options" | Good matches, Worth a shot, Backup options. Each with location and the real remote rule, salary as stated, freshness, verification, reasons tied to your facts, gaps, links, and one next step. No percentages. |
-| "Help me apply" | Prepares your unchanged CV, project links, draft answers from approved facts, and a checklist of what only you can answer. You submit. |
+| "Show me the best options" | Good matches, Worth a shot, Backup options, only in the countries you can work in. Each with the real remote rule, pay as stated, freshness, plain reasons tied to your CV, things to check, links, and one next step. No percentages. |
+| "Help me apply" | Shows who they are looking for, how well you fit and why, how to present yourself, draft answers from your CV, and what only you can answer. You apply yourself. |
 | "I applied" / "they replied" | Tracks the pipeline from your confirmations or from job-search emails you let it read (Gmail, read-only, optional). Automated receipts never count as replies. |
 | "Look every day" | A local worker runs hunts on your schedule and, if you ask, emails a digest to one confirmed address. Dashboard-only is the default. |
 | "Interview confirmed" | Exports an InterviewOS hand-off (Markdown) with the vacancy snapshot, the exact CV version, what was actually sent versus drafts, evidence, and gaps. |

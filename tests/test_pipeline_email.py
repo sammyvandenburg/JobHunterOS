@@ -182,3 +182,16 @@ def test_followups_stop_after_reply_or_rejection(ctx, db):
     assert not drafts.due_followups(db)
     with pytest.raises(drafts.DraftError):
         drafts.schedule_followup(db, jid)
+
+
+def test_help_me_apply_explains_fit_in_plain_words(ctx, db):
+    approve_profile(db, ctx)
+    jid = _seed_job(ctx, db)
+    db.execute("UPDATE jobs SET description_text = ? WHERE id = ?", ("What you bring\nExperience running Kubernetes in production\nTerraform and AWS\nPulumi is a plus\n5+ years in infrastructure\nWhat you'll do\nOwn the platform\nBe on call", jid))
+    pkg = drafts.prepare(ctx, db, jid)
+    fit = pkg["fit"]
+    assert fit["fit_line"].startswith("You match")
+    assert any("Tools they name" in w for w in fit["who_they_want"]) and any("They say:" in w for w in fit["who_they_want"])
+    assert any("kubernetes" in m for m in fit["you_match"])
+    assert any("pulumi" in m for m in fit["you_miss"])
+    assert fit["how_to_present"] and all(len(p) < 220 for p in fit["how_to_present"])

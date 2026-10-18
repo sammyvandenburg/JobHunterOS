@@ -127,6 +127,11 @@ def test_acc29_dashboard_cannot_bypass_consent_or_read_files(ctx, db, tmp_path):
     # Uploads reject unsupported types and are the only document path.
     r = c.post("/do/upload", data={"csrf": csrf, "kind": "cv"}, files={"file": ("x.exe", b"MZ", "application/octet-stream")}, headers=H, follow_redirects=False)
     assert "Unsupported" in r.headers["location"]
+    r = c.post("/do/upload-both", data={"csrf": csrf}, files={"cv": ("x.exe", b"MZ", "application/octet-stream")}, headers=H, follow_redirects=False)
+    assert "Unsupported" in r.headers["location"]
+    # Open job is a plain link that records the open and redirects to the job's own site.
+    r = c.get("/go/1", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("https://job-boards.greenhouse.io/")
     # Sync is refused when no mailbox is connected.
     r = c.post("/do/digest", data={"csrf": csrf, "action": "sync"}, headers=H, follow_redirects=False)
     assert "not%20connected" in r.headers["location"]
@@ -198,10 +203,10 @@ def test_acc33_empty_states_and_totals_are_honest(ctx, db):
     app = create_app(ctx)
     c = TestClient(app, base_url="http://127.0.0.1:8765")
     html = c.get("/").text
-    assert "0 jobs found" in html and "Let's get you set up" in html
+    assert "Let's get you set up" in html and "jobs worth a look" not in html  # no fake numbers before setup
     approve_profile(db, ctx)
     html = c.get("/").text
-    assert "No hunt has run yet" in html or "Find jobs now" in html
+    assert "0</strong> jobs worth a look" in html and ("No search yet" in html or "Find jobs now" in html)
     t = stats.totals(db)
     assert t == {**t, "found": 0, "recommended": 0, "applied": 0, "interviews": 0}
     # Demo mode is labelled on every page.

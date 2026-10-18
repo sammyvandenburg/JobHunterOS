@@ -114,6 +114,12 @@ def cmd_setup(args):
         except onboarding.AnswerError as exc:
             raise CliError(str(exc)) from exc
         emit(args, res)
+    elif args.setup_cmd == "basics":
+        try:
+            res = onboarding.basics(db, location=args.location, countries=args.countries, salary=args.salary, remote=args.remote, frequency=args.frequency, notify=args.notify, timezone=args.timezone, linkedin_url=args.linkedin)
+        except onboarding.AnswerError as exc:
+            raise CliError(str(exc)) from exc
+        emit(args, res)
 
 
 def cmd_docs(args):
@@ -127,7 +133,11 @@ def cmd_docs(args):
                 raise CliError(f"File not found: {p}")
             row = docs.add_document(db, ctx.paths, args.kind, p.read_bytes(), p.name, label=args.label)
             note = {"ok": "Read it fine.", "empty": "I could not read text from it: " + (row["extraction_notes"] or ""), "failed": "Could not read it: " + (row["extraction_notes"] or ""), "unsupported": row["extraction_notes"]}[row["extraction_status"]]
-            emit(args, {"document": row, "note": note})
+            from jobhunter.services import onboarding
+
+            built = onboarding.ensure_profile_draft(db)
+            ready, missing = onboarding.documents_ready(db)
+            emit(args, {"document": {k: row[k] for k in ("id", "kind", "version", "original_filename", "extraction_status")}, "note": note, "still_missing": missing, "profile_built": built is not None, "next": onboarding.next_step(db) if ready else None})
         elif args.docs_cmd == "list":
             emit(args, docs.list_documents(db, current_only=not args.all))
         elif args.docs_cmd == "text":
@@ -744,6 +754,15 @@ def build_parser() -> argparse.ArgumentParser:
     a = ss.add_parser("answer")
     a.add_argument("key")
     a.add_argument("value", nargs="+")
+    b = ss.add_parser("basics", help="the combined answer: location, countries, salary, remote, frequency, notify")
+    b.add_argument("--location")
+    b.add_argument("--countries")
+    b.add_argument("--salary")
+    b.add_argument("--remote")
+    b.add_argument("--frequency")
+    b.add_argument("--notify")
+    b.add_argument("--timezone")
+    b.add_argument("--linkedin")
     s.set_defaults(fn=cmd_setup)
 
     d = sub.add_parser("docs", help="your original documents")

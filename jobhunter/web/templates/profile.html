@@ -2,88 +2,89 @@
 {% block title %}Profile &amp; settings{% endblock %}
 {% block content %}
 <h1>Profile &amp; settings</h1>
-{% if next_step %}<section class="card"><h2>Setup: {{ next_step.question }}</h2>{% if next_step.help %}<p class="muted">{{ next_step.help }}</p>{% endif %}
-  {% if next_step.kind in ['yesno','choice'] %}
-    <form method="post" action="/do/setup/answer" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ next_step.key }}">
-    {% for c in (next_step.choices or ['yes','no']) %}<button name="value" value="{{ c }}" {% if loop.first %}class="primary"{% endif %}>{{ c }}</button>{% endfor %}</form>
-  {% elif next_step.kind in ['text','optional_text'] %}
-    <form method="post" action="/do/setup/answer" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ next_step.key }}"><input type="text" name="value" required><button class="primary">Save</button>{% if next_step.optional %}<button name="value" value="skip">Skip</button>{% endif %}</form>
-  {% elif next_step.kind == 'file' %}
-    <form method="post" action="/do/upload" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="{{ 'cv' if next_step.key == 'cv' else 'linkedin' }}"><input type="file" name="file" accept=".pdf,.docx,.md,.txt"><button class="primary">Upload</button></form>
-  {% elif next_step.kind == 'info' %}
-    <form method="post" action="/do/profile/build" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Build my profile</button></form>
-  {% endif %}
-</section>{% endif %}
+{% if next_step and next_step.key == 'basics' %}
+<section class="card"><h2>Last step: a few quick things</h2>
+  <form method="post" action="/do/setup/basics" class="big-form"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Where do you live? <span class="hint">city and country</span><input type="text" name="location" required></label>
+    <label>Which countries can you work in? <span class="hint">for example "EU" or "Netherlands and Germany"</span><input type="text" name="countries" required></label>
+    <label>Lowest salary you would be happy with? <span class="hint">optional, for example "55000 EUR a year"</span><input type="text" name="salary" placeholder="skip"></label>
+    <label>Remote work <select name="remote"><option value="don't mind">Don't mind</option><option value="nice to have">Nice to have</option><option value="must have">Must have</option></select></label>
+    <label>How often should I look for jobs? <select name="frequency"><option value="daily">Every day</option><option value="only when asked">Only when I ask</option></select></label>
+    <label>How should I tell you? <select name="notify"><option value="dashboard">In this dashboard only</option><option value="daily email">Also a daily email</option></select></label>
+    <p class="muted">Timezone detected: {{ next_step.detected_timezone }}. Change it later under More options if it is wrong.</p>
+    <p><button class="primary">Save and finish</button></p>
+  </form>
+</section>
+{% elif next_step and next_step.key == 'profile_approve' %}
+<section class="card"><h2>Step 3 of 4</h2><p>Look at your profile below. If it is right, press <strong>Yes, this looks right</strong>.</p></section>
+{% elif next_step %}
+<section class="card"><h2>Setup is not finished</h2><p>{{ next_step.question }} <a href="/">Continue</a></p></section>
+{% endif %}
 
 <section class="card" id="profile">
   <h2>Here is what I understand about you</h2>
-  {% if not profile %}<p>No profile yet. Add your CV, then build the profile.</p>
-    <form method="post" action="/do/profile/build" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Build my profile</button></form>
+  {% if not profile %}<p>No profile yet. Give me your CV and LinkedIn PDF first (on the home page).</p>
   {% else %}
-    <p class="muted">Version {{ profile.version }} · {{ profile.status }} · built by {{ profile.built_by }}{% if profile.approved_at %} · approved {{ profile.approved_at[:10] }}{% endif %}</p>
-    {% if profile.needs_review %}<p class="warn">{{ profile.needs_review.reason }} Please review and approve again.</p>{% endif %}
+    {% if profile.needs_review %}<p class="warn">{{ profile.needs_review.reason }} Please check it and press yes again.</p>{% endif %}
     <p>{{ profile.summary }}</p>
-    {% if profile.targets %}<p class="muted">Direction: {{ profile.targets.direction|join(', ') or 'not set' }} · Level: {{ profile.targets.level }} · Paid experience: about {{ profile.targets.professional_years_relevant or 0 }} years</p>{% endif %}
-    {% if profile.open_questions %}<h3>Questions for you</h3><ul>{% for q in profile.open_questions %}<li>{{ q.question }}<form method="post" action="/do/profile/answer" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ q.key }}"><input type="text" name="answer" required><button>Answer</button></form></li>{% endfor %}</ul>{% endif %}
-    {% if profile.warnings %}<details><summary>{{ profile.warnings|length }} note(s) from evidence checking</summary><ul>{% for w in profile.warnings %}<li>{{ w }}</li>{% endfor %}</ul></details>{% endif %}
+    {% if profile.targets %}<p class="muted">Direction: {{ profile.targets.direction|join(', ') or 'not set yet' }} · Level: {{ profile.targets.level }} · Paid experience: about {{ profile.targets.professional_years_relevant or 0 }} years</p>{% endif %}
+    {% if profile.open_questions %}<h3>Quick questions</h3><ul>{% for q in profile.open_questions %}<li>{{ q.question }}<form method="post" action="/do/profile/answer" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ q.key }}"><input type="text" name="answer" required><button>Answer</button></form></li>{% endfor %}</ul>{% endif %}
     <div class="actions">
       {% if profile.status != 'approved' or profile.needs_review %}<form method="post" action="/do/profile/approve"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Yes, this looks right</button></form>{% endif %}
-      <form method="post" action="/do/profile/build"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Rebuild from documents</button></form>
-      <form method="post" action="/do/profile/rematch"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Re-match jobs</button></form>
+      <form method="post" action="/do/profile/rematch"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Re-check my matches</button></form>
     </div>
-    <form method="post" action="/do/profile/correct" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="text" name="text" placeholder="Something wrong? Tell me, e.g. 'I left Demo Logistics in Nov 2021'" size="60" required><button>Add correction</button></form>
-    <details class="more"><summary>All facts and their evidence</summary>
-      {% for cat, facts in profile.facts_by_category.items() %}<h4>{{ cat }}</h4><ul class="facts-list">{% for f in facts %}<li><code>{{ f.id }}</code> {{ f.text }} <span class="muted">({{ f.kind }}, {{ f.confidence }}{% if f.status != 'confirmed' %}, {{ f.status }}{% endif %}){% for e in f.evidence %} · {{ e.type }}: {{ e.ref }}{% if e.quote %} "{{ e.quote[:80] }}"{% endif %}{% endfor %}</span></li>{% endfor %}</ul>{% endfor %}
+    <form method="post" action="/do/profile/correct" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="text" name="text" placeholder="Something wrong? Tell me in a sentence." size="60" required><button>Fix it</button></form>
+    <details class="more"><summary>Every fact and where it comes from</summary>
+      {% for cat, facts in profile.facts_by_category.items() %}<h4>{{ cat }}</h4><ul>{% for f in facts %}<li>{{ f.text }} <span class="muted">({{ f.kind }}{% if f.status != 'confirmed' %}, {{ f.status }}{% endif %}){% for e in f.evidence %} · {{ e.type }}{% if e.quote %}: "{{ e.quote[:80] }}"{% endif %}{% endfor %}</span></li>{% endfor %}</ul>{% endfor %}
+      {% if profile.warnings %}<p class="muted">Notes: {{ profile.warnings|join(' ') }}</p>{% endif %}
+      <form method="post" action="/do/profile/build" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Rebuild from my files</button></form>
     </details>
   {% endif %}
 </section>
 
 <section class="card" id="documents">
-  <h2>Your documents (never changed by Hunter)</h2>
-  <ul>{% for d in documents %}<li>{{ d.kind|upper if d.kind == 'cv' else d.kind }} v{{ d.version }}: {{ d.original_filename }} · {{ d.byte_size }} bytes · SHA-256 {{ d.sha256[:12] }}… · {{ 'read OK' if d.extraction_status == 'ok' else d.extraction_notes }}</li>{% else %}<li class="muted">None yet.</li>{% endfor %}</ul>
-  {% if linkedin_url %}<p class="muted">LinkedIn URL on file: {{ linkedin_url }}</p>{% endif %}
-  <form method="post" action="/do/upload" enctype="multipart/form-data" class="inline">
+  <h2>Your files (never changed by Hunter)</h2>
+  <ul>{% for d in documents %}<li>{{ 'CV' if d.kind == 'cv' else d.kind|capitalize }} v{{ d.version }}: {{ d.original_filename }} · {{ 'read OK' if d.extraction_status == 'ok' else d.extraction_notes }}</li>{% else %}<li class="muted">None yet.</li>{% endfor %}</ul>
+  <form method="post" action="/do/upload-both" enctype="multipart/form-data" class="inline">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Add <select name="kind"><option value="cv">a new CV version</option><option value="linkedin">LinkedIn export or text</option><option value="project">project document</option></select></label>
-    <input type="file" name="file" accept=".pdf,.docx,.md,.txt">
-    <input type="url" name="url" placeholder="LinkedIn URL (optional)">
+    <label>New CV <input type="file" name="cv" accept=".pdf,.docx,.md,.txt"></label>
+    <label>New LinkedIn PDF <input type="file" name="linkedin" accept=".pdf,.docx,.md,.txt"></label>
     <button>Upload</button>
   </form>
-  <p class="muted">A new CV creates a new version and asks you to review the profile again. The old file stays untouched.</p>
+  <p class="muted">A new file makes a new version and asks you to check your profile again. Old files are kept untouched.</p>
 </section>
 
 <section class="card" id="preferences">
-  <h2>Preferences</h2>
+  <h2>What you told me</h2>
   <ul>{% for line in pref_lines %}<li>{{ line }}</li>{% endfor %}</ul>
   <form method="post" action="/do/prefs" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Change <select name="key"><option value="current_location">current location</option><option value="work_countries">countries where I can work</option><option value="needs_sponsorship">need sponsorship (yes/no/not sure)</option><option value="relocation">willing to relocate (yes/no/not sure)</option><option value="timezone">timezone</option><option value="salary_min">minimum salary (e.g. 55000 EUR per year)</option><option value="remote">remote (required/preferred/no preference)</option></select></label>
+    <label>Change <select name="key"><option value="current_location">where I live</option><option value="work_countries">countries I can work in</option><option value="salary_min">lowest salary (e.g. 55000 EUR a year)</option><option value="remote">remote (must have / nice to have / don't mind)</option><option value="timezone">timezone</option></select></label>
     <input type="text" name="value" required>
-    <label>Strength <select name="strength"><option value="nice">nice to have</option><option value="must">must have</option></select></label>
+    <label>How strict <select name="strength"><option value="nice">nice to have</option><option value="must">must have</option></select></label>
     <button>Save</button>
   </form>
   <details class="more"><summary>More options</summary>
     <form method="post" action="/do/prefs" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
-      <label>Other preference <select name="key"><option value="fewer_consultancy">fewer consultancy jobs (yes/no)</option><option value="cloud_provider">preferred cloud provider</option><option value="on_call">on-call okay (yes/no)</option><option value="employment_type">employment type</option><option value="language">working language</option><option value="industry">industry</option><option value="max_commute">max commute</option></select></label>
+      <label><select name="key"><option value="needs_sponsorship">I need a visa (yes/no)</option><option value="relocation">I would move for a job (yes/no)</option><option value="fewer_consultancy">fewer consultancy jobs (yes/no)</option><option value="cloud_provider">preferred cloud</option><option value="on_call">on-call okay (yes/no)</option><option value="employment_type">employment type</option><option value="language">working language</option><option value="industry">industry</option></select></label>
       <input type="text" name="value" required>
-      <label>Strength <select name="strength"><option value="nice">nice to have</option><option value="must">must have</option></select></label>
+      <label>How strict <select name="strength"><option value="nice">nice to have</option><option value="must">must have</option></select></label>
       <button>Save</button>
     </form>
-    {% if feedback.suggestions %}<p>Suggestions from your dismissals: {% for s in feedback.suggestions %}{{ s.question }} {% endfor %}(answer them on the attention page)</p>{% endif %}
   </details>
 </section>
 
 <section class="card" id="consent">
   <h2>What you allowed</h2>
-  <ul>{% for c in consents %}<li>{{ '✔' if c.granted else '✖' }} {{ c.description }}{% if c.granted_at %} <span class="muted">({{ c.granted_at[:10] }})</span>{% endif %}</li>{% endfor %}</ul>
+  <ul>{% for c in consents %}<li>{{ '✔' if c.granted else '✖' }} {{ c.description }}</li>{% endfor %}</ul>
 </section>
 
 <section class="card" id="data">
   <h2>Your data</h2>
-  <p>Everything is stored on this computer. Model calls (when you enable them or use Claude Code) send minimized job and profile text to Anthropic; local storage does not make those calls local.</p>
+  <p>Everything is stored on this computer. Nothing is shared with KubeCraft.</p>
   <div class="actions">
     <form method="post" action="/do/data/export"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Export everything</button></form>
-    <form method="post" action="/do/data/backup"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Back up the database</button></form>
-    <form method="post" action="/do/data/delete" data-confirm="This deletes your local Hunter data (documents, jobs, history, tokens). Backups you made are kept. Continue?"><input type="hidden" name="csrf" value="{{ csrf }}"><label>Type DELETE <input type="text" name="confirm" pattern="DELETE" required></label><button class="danger">Delete my data</button></form>
+    <form method="post" action="/do/data/backup"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Back up</button></form>
+    <form method="post" action="/do/data/delete" data-confirm="This deletes your Hunter data on this computer. Continue?"><input type="hidden" name="csrf" value="{{ csrf }}"><label>Type DELETE <input type="text" name="confirm" pattern="DELETE" required></label><button class="danger">Delete my data</button></form>
   </div>
 </section>
 {% endblock %}

@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Hunter{% endblock %} · JobHunterOS</title>
+<title>{% block title %}Hunter{% endblock %} · KubeCraft JobHunterOS</title>
 <link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 </head>
 <body>
-{% if demo %}<div class="banner demo" role="status">Demo mode: everything here is synthetic example data. Nothing was fetched from the internet and nothing is real.</div>{% endif %}
+{% if demo %}<div class="banner demo" role="status">Demo mode: all of this is made-up example data. Nothing here is real.</div>{% endif %}
 <header class="top">
-  <a class="brand" href="/">Hunter</a>
+  <a class="brand" href="/"><img src="/static/logo.svg" alt=""> Hunter <small>by KubeCraft</small></a>
   <nav aria-label="Main">
     {% for key, label in nav %}<a href="/jobs/{{ key }}" {% if view is defined and view == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
     <a href="/attention" {% if request.url.path == '/attention' %}aria-current="page"{% endif %}>Needs attention{% if attention_count %} <span class="pill">{{ attention_count }}</span>{% endif %}</a>
@@ -20,12 +21,12 @@
     <a href="/health">Search health</a>
   </nav>
 </header>
-<p class="summary-line" title="Lifetime totals from stored records">{{ totals.found }} jobs found · {{ totals.recommended }} recommended · {{ totals.applied }} application{{ '' if totals.applied == 1 else 's' }}{% if totals.recruiter_replies %} · {{ totals.recruiter_replies }} recruiter repl{{ 'y' if totals.recruiter_replies == 1 else 'ies' }}{% endif %}{% if totals.interviews %} · {{ totals.interviews }} interview{{ '' if totals.interviews == 1 else 's' }}{% endif %} <span class="muted">(lifetime)</span></p>
+{% if not hide_summary %}<p class="summary-line" title="Counted from what really happened"><strong>{{ totals.recommended }}</strong> jobs worth a look · <strong>{{ totals.applied }}</strong> applied{% if totals.recruiter_replies %} · <strong>{{ totals.recruiter_replies }}</strong> repl{{ 'y' if totals.recruiter_replies == 1 else 'ies' }}{% endif %}{% if totals.interviews %} · <strong>{{ totals.interviews }}</strong> interview{{ '' if totals.interviews == 1 else 's' }}{% endif %} <span class="muted">· {{ totals.found }} found in total</span></p>{% endif %}
 {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 <main>
 {% block content %}{% endblock %}
 </main>
-<footer class="foot">JobHunterOS {{ version }} · Local dashboard on your computer only · <a href="/profile#data">Export or delete my data</a></footer>
+<footer class="foot">KubeCraft JobHunterOS {{ version }} · Runs only on your computer · <a href="/profile#data">Export or delete my data</a></footer>
 <script src="/static/app.js"></script>
 </body>
 </html>

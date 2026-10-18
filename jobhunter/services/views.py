@@ -8,7 +8,6 @@ import math
 from jobhunter.config import POLICY_VERSION
 from jobhunter.db import Database
 from jobhunter.services import actions, freshness, hunt
-from jobhunter.services.matching.engine import group_label
 from jobhunter.util import truncate
 
 BASE_SELECT = (
@@ -79,9 +78,9 @@ def summarize(r: dict) -> dict:
         "title": r["title"],
         "employer": r.get("employer_name") or ("Confidential employer" if r.get("employer_confidential") else "Unknown employer"),
         "group": r.get("match_group"),
-        "group_label": group_label(r["match_group"]) if r.get("match_group") else "Not matched yet",
+        "group_label": {"good": "Good match", "worth_a_shot": "Worth a shot", "backup": "Backup option", "excluded": "Left out", "uncertain": "Not sure"}.get(r.get("match_group") or "", "Not checked yet"),
         "score": r.get("score"),
-        "location": r.get("location_text") or "Location not stated",
+        "location": r.get("location_text") or "No location given",
         "remote_type": r.get("remote_type"),
         "remote_restriction": r.get("remote_restriction"),
         "salary": r.get("salary_text") or "Not listed",
@@ -91,7 +90,7 @@ def summarize(r: dict) -> dict:
         "availability": r.get("availability"),
         "explanation": r.get("explanation_text"),
         "explanation_source": r.get("explanation_source"),
-        "explanation_label": {"rules": "Rule-based explanation (no AI)", "claude": "Explained by Claude", "pending": "Explanation pending", "failed": "Rule-based explanation (Claude unavailable)"}.get(r.get("explanation_source") or "pending", ""),
+        "explanation_label": {"rules": "Explained by Hunter's rules (no AI used)", "claude": "Explained by Claude", "pending": "Explanation coming", "failed": "Explained by Hunter's rules (Claude was not available)"}.get(r.get("explanation_source") or "pending", ""),
         "reasons": expl.get("reasons", []),
         "gaps": expl.get("gaps", []) or json.loads(r.get("gaps_json") or "[]"),
         "next_step": r.get("next_step"),
@@ -122,6 +121,9 @@ def job_detail(db: Database, job_id: int) -> dict | None:
     s["observations"] = db.fetchall("SELECT source_id, external_id, url, first_observed_at, last_observed_at FROM job_observations WHERE job_id = ? ORDER BY first_observed_at", (job_id,))
     s["history"] = actions.history(db, job_id)
     s["drafts"] = db.fetchall("SELECT id, kind, status, created_by, created_at, sent_confirmed_at FROM drafts WHERE job_id = ? ORDER BY id DESC", (job_id,))
+    pkg = db.fetchone("SELECT content_json FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (job_id,))
+    s["package"] = json.loads(pkg["content_json"]) if pkg else None
+    s["outreach"] = [{**r, "content": json.loads(r["content_json"])} for r in db.fetchall("SELECT id, kind, status, content_json FROM drafts WHERE job_id = ? AND kind IN ('outreach','followup') ORDER BY id DESC LIMIT 5", (job_id,))]
     s["application"] = db.fetchone("SELECT * FROM applications WHERE job_id = ?", (job_id,))
     s["source_note"] = _source_note(s["observations"])
     return s
@@ -149,7 +151,7 @@ def attention(db: Database) -> dict:
     items: list[dict] = []
     needs_review = db.get_setting("profile.needs_review")
     if needs_review:
-        items.append({"kind": "profile_review", "text": "A new document was added. Please review and approve your profile again.", "action": "jobhunter profile show"})
+        items.append({"kind": "profile_review", "text": "You added a new file. Please check your profile and press yes again.", "action": "jobhunter profile show"})
     for q in profile_svc.open_questions(db)[:3]:
         items.append({"kind": "question", "text": q["question"], "action": f"jobhunter profile answer {q['key']} \"...\"", "key": q["key"]})
     last = hunt.last_run(db)
@@ -169,7 +171,7 @@ def attention(db: Database) -> dict:
         from jobhunter.services.schedule import describe
 
         if "running" not in describe(db)["worker"]:
-            items.append({"kind": "worker", "text": "Your schedule is on, but no worker is running, so nothing happens in the background.", "action": "jobhunter worker run   (or see jobhunter schedule install --print)"})
+            items.append({"kind": "worker", "text": "Daily searching is on, but the worker is not running, so nothing happens by itself. Start it with one command.", "action": "jobhunter worker run   (or see jobhunter schedule install --print)"})
     g = gmail.describe(db)
     if g["read"]["connected"] and g["read"].get("last_error"):
         items.append({"kind": "mailbox", "text": f"Mailbox sync problem: {g['read']['last_error']}", "action": "jobhunter email sync"})

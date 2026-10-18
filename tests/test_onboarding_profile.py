@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from jobhunter.cli import main
 from jobhunter.services import consent, onboarding
 from jobhunter.services import documents as docs
@@ -18,23 +16,32 @@ from tests.conftest import ENTRY_CV, SAMPLE_CV, approve_profile
 def test_acc01_fresh_clone_starts_setup(ctx, db, capsys):
     assert main(["--home", str(ctx.paths.home), "setup", "next", "--json"]) == 0
     out = capsys.readouterr().out
-    assert "readiness" in out and "finished JobMagnetOS" in out
+    assert "readiness" in out and "JobMagnetOS" in out
 
 
 def test_acc02_resume_without_repeating(ctx, db):
+    from tests.conftest import LINKEDIN_TEXT
+
     assert onboarding.next_step(db)["key"] == "readiness"
     onboarding.answer(db, "readiness", "yes")
-    assert onboarding.next_step(db)["key"] == "cv"
+    nxt = onboarding.next_step(db)
+    assert nxt["key"] == "documents" and nxt["missing"] == ["CV", "LinkedIn PDF"]
     docs.add_text_document(db, ctx.paths, "cv", SAMPLE_CV, "cv")
-    onboarding.answer(db, "linkedin_url", "https://www.linkedin.com/in/sam-example")
-    # "Restart": a new DB connection sees the same state and does not re-ask answered steps.
+    # "Restart": a new DB connection sees the same state and only asks for what is missing.
     from jobhunter.db import connect
 
     db2 = connect(ctx.paths.db_path)
     nxt = onboarding.next_step(db2)
-    assert nxt["key"] == "linkedin_content"
-    st = onboarding.status(db2)
-    assert {"readiness", "cv", "linkedin_url"} <= set(st["done"])
+    assert nxt["key"] == "documents" and nxt["missing"] == ["LinkedIn PDF"]
+    docs.add_text_document(db2, ctx.paths, "linkedin", LINKEDIN_TEXT, "linkedin")
+    nxt = onboarding.next_step(db2)
+    assert nxt["key"] == "profile_approve" and nxt.get("summary")  # profile built automatically
+    assert {"readiness", "documents"} <= set(onboarding.status(db2)["done"])
+    onboarding.answer(db2, "profile_approve", "yes")
+    assert onboarding.next_step(db2)["key"] == "basics"
+    res = onboarding.basics(db2, location="Rotterdam, Netherlands", countries="EU", salary="skip", remote="nice to have", frequency="every day", notify="dashboard")
+    assert res["timezone"] and onboarding.next_step(db2) is None
+    assert len(onboarding.STEPS) == 4
     db2.close()
 
 
@@ -56,7 +63,7 @@ def test_acc03_live_hunting_requires_readiness_and_approval(ctx, db):
     # A new CV version re-opens the review gate.
     docs.add_text_document(db, ctx.paths, "cv", SAMPLE_CV + "\nExtra line about Go programming.", "cv-v2")
     ok, why = onboarding.live_hunting_allowed(db, demo=False)
-    assert not ok and "review" in why
+    assert not ok and "look at your profile" in why
     # Demo mode is allowed but clearly separate.
     assert onboarding.live_hunting_allowed(db, demo=True)[0]
 
@@ -64,13 +71,14 @@ def test_acc03_live_hunting_requires_readiness_and_approval(ctx, db):
 def test_acc04_linkedin_url_alone_is_not_content(ctx, db):
     consent.grant(db, "readiness", {})
     docs.add_text_document(db, ctx.paths, "cv", SAMPLE_CV, "cv")
-    onboarding.answer(db, "linkedin_url", "https://www.linkedin.com/in/sam-example")
-    assert onboarding.next_step(db)["key"] == "linkedin_content"
+    db.set_setting("linkedin.url", "https://www.linkedin.com/in/sam-example")
+    nxt = onboarding.next_step(db)
+    assert nxt["key"] == "documents" and nxt["missing"] == ["LinkedIn PDF"] and "Save to PDF" in nxt["help"]
     draft = profile_svc.build_rule_based_draft(db)
     joined = " ".join(f.text for f in draft.facts) + " ".join(e.ref for f in draft.facts for e in f.evidence)
     assert "linkedin.com" not in joined
-    with pytest.raises(onboarding.AnswerError):
-        onboarding.answer(db, "linkedin_url", "https://example.com/not-linkedin")
+    res = onboarding.basics(db, location="Rotterdam", countries="NL", linkedin_url="https://example.com/not-linkedin")
+    assert "did not look right" in res["note"] and db.get_setting("linkedin.url") == "https://www.linkedin.com/in/sam-example"
 
 
 def test_acc05_cv_bytes_and_hash_unchanged(ctx, db, tmp_path):
@@ -127,12 +135,12 @@ def test_acc07_conflicts_and_overlaps(ctx, db):
 
 
 def test_acc08_salary_and_remote_can_stay_unset(ctx, db):
-    approve_profile(db, ctx)
-    onboarding.answer(db, "salary_min", "skip")
-    onboarding.answer(db, "remote", "skip")
+    approve_profile(db, ctx, sponsorship="unset")
+    onboarding.basics(db, location="Rotterdam", countries="EU", salary="skip", remote="skip")
     p = prefs_svc.get(db)
     assert p.salary_min is None and p.salary_strength == "unset" and p.remote == "no_preference"
-    assert onboarding.next_step(db)["key"] in {"hunt_frequency", "github", "notify_mode"}
+    assert p.needs_sponsorship == "unset"  # never asked during setup
+    assert onboarding.next_step(db) is None
 
 
 def test_profile_submit_rejects_unsupported_quote(ctx, db):
