@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ view|capitalize }} jobs{% endblock %}
+{% block content %}
+<section class="toolbar">
+  <h1>{% for key, label in nav %}{% if key == view %}{{ label }}{% endif %}{% endfor %}{% if view not in ['new','saved','applied','interviews','finished'] %}{{ view|capitalize }}{% endif %}</h1>
+  <form method="get" class="inline search" role="search">
+    <input type="search" name="q" value="{{ res.query or '' }}" placeholder="Search title, employer, place" aria-label="Search jobs">
+    {% if view == 'new' %}<select name="group" aria-label="Group"><option value="">All groups</option><option value="good" {% if res.group=='good' %}selected{% endif %}>Good matches</option><option value="worth_a_shot" {% if res.group=='worth_a_shot' %}selected{% endif %}>Worth a shot</option><option value="backup" {% if res.group=='backup' %}selected{% endif %}>Backup options</option></select>{% endif %}
+    <select name="sort" aria-label="Sort"><option value="best">Best first</option><option value="newest" {% if request.query_params.get('sort')=='newest' %}selected{% endif %}>Newest first</option><option value="employer" {% if request.query_params.get('sort')=='employer' %}selected{% endif %}>By employer</option></select>
+    <button>Apply</button>
+  </form>
+  {% if view == 'new' %}
+  <form method="post" action="/do/hunt" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Find jobs now</button></form>
+  {% endif %}
+</section>
+{% if view == 'new' %}
+<p class="muted">
+  {% if last_run %}Last hunt: {{ last_run.finished_at or last_run.started_at }} ({{ last_run.status }}){% if last_run.stats and last_run.stats.sources_failed %} · <a href="/health">{{ last_run.stats.sources_failed }} source(s) could not be checked</a>{% endif %}{% else %}No hunt has run yet.{% endif %}
+  · Next planned: {{ sched.next_run_at or 'not scheduled' }} · Worker: {{ sched.worker }}
+</p>
+{% endif %}
+{% if not res['items'] %}
+  <section class="card empty">
+    {% if view == 'new' %}
+      {% if not last_run %}<p>Nothing yet. Press <strong>Find jobs now</strong> to run your first hunt. The search can take a minute.</p>
+      {% elif last_run.status in ['failed'] %}<p><strong>The last search failed</strong>, so an empty list does not mean there are no jobs. See <a href="/health">Search health</a>.</p>
+      {% else %}<p>No new recommended jobs right now.{% if old_count %} There are <a href="/jobs/old">{{ old_count }} older or undated match(es)</a>.{% endif %} Also see <a href="/jobs/excluded">what I left out and why</a>.</p>{% endif %}
+    {% elif view == 'saved' %}<p>Nothing saved yet. Use <strong>Save</strong> on a job to keep it here.</p>
+    {% elif view == 'applied' %}<p>No applications recorded. When you apply, press <strong>I applied</strong> so I can track it.</p>
+    {% elif view == 'interviews' %}<p>No interviews recorded yet.</p>
+    {% elif view == 'finished' %}<p>Nothing finished yet (offers, rejections, withdrawals).</p>
+    {% else %}<p>Nothing here.</p>{% endif %}
+  </section>
+{% endif %}
+<ul class="jobs">
+{% for j in res['items'] %}
+  <li class="card job group-{{ j.group or 'none' }}">
+    <div class="job-head">
+      <h2><a href="/job/{{ j.id }}">{{ j.title }}</a></h2>
+      <span class="group">{{ j.group_label }}</span>
+    </div>
+    <p class="employer">{{ j.employer }}{% if j.stage %} · <span class="stage">{{ j.stage }}</span>{% endif %}</p>
+    <p class="meta">{{ j.location }}{% if j.remote_restriction %} · {{ j.remote_restriction }}{% endif %} · Salary: {{ j.salary }}</p>
+    <p class="meta">{{ j.freshness_label }} · {{ j.verification }}{% if j.freshness == 'fresh' and j.group == 'good' %} · <strong>Fresh strong match</strong>{% endif %}</p>
+    {% if j.explanation %}<p class="why">{{ j.explanation }} <span class="muted">({{ j.explanation_label }})</span></p>{% endif %}
+    {% if j.gaps %}<ul class="gaps">{% for g in j.gaps[:2] %}<li>{{ g }}</li>{% endfor %}</ul>{% endif %}
+    {% if j.next_step %}<p class="next"><strong>Next:</strong> {{ j.next_step }}</p>{% endif %}
+    <div class="actions">
+      <form method="post" action="/do/job/{{ j.id }}/open"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Open job</button></form>
+      {% if not j.stage %}<form method="post" action="/do/job/{{ j.id }}/prepare"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Help me apply</button></form>{% endif %}
+      {% if j.saved %}<form method="post" action="/do/job/{{ j.id }}/unsave"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Unsave</button></form>{% else %}<form method="post" action="/do/job/{{ j.id }}/save"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Save</button></form>{% endif %}
+      {% if j.dismissed %}<form method="post" action="/do/job/{{ j.id }}/undismiss"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Interested again</button></form>{% else %}<form method="post" action="/do/job/{{ j.id }}/dismiss" class="dismiss"><input type="hidden" name="csrf" value="{{ csrf }}"><select name="reason" aria-label="Reason"><option value="">Not interested</option><option value="consultancy">It's consultancy</option><option value="too_senior">Too senior</option><option value="too_junior">Too junior</option><option value="location">Location</option><option value="salary">Salary</option><option value="employer">Employer</option><option value="other">Other</option></select><button>Not interested</button></form>{% endif %}
+      {% if not j.stage or j.stage == 'prepared' %}<form method="post" action="/do/job/{{ j.id }}/applied" data-confirm="Record that you applied to this job yourself?"><input type="hidden" name="csrf" value="{{ csrf }}"><button>I applied</button></form>{% endif %}
+    </div>
+  </li>
+{% endfor %}
+</ul>
+{% if res.pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if res.page > 1 %}<a href="?page={{ res.page - 1 }}&q={{ res.query or '' }}&group={{ res.group or '' }}">Previous</a>{% endif %}
+  <span>Page {{ res.page }} of {{ res.pages }} ({{ res.total }} jobs)</span>
+  {% if res.page < res.pages %}<a href="?page={{ res.page + 1 }}&q={{ res.query or '' }}&group={{ res.group or '' }}">Next</a>{% endif %}
+</nav>
+{% endif %}
+{% if view == 'new' %}
+<details class="more"><summary>More views</summary>
+  <p><a href="/jobs/old">Older or undated matches</a> · <a href="/jobs/excluded">Not recommended (and why)</a> · <a href="/jobs/uncertain">Uncertain relevance</a> · <a href="/jobs/dismissed">Dismissed</a> · <a href="/jobs/closed">No longer listed</a> · <a href="/jobs/all">Everything found</a></p>
+</details>
+{% endif %}
+{% endblock %}

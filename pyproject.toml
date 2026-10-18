@@ -1,0 +1,56 @@
+[project]
+name = "jobhunteros"
+version = "0.1.0"
+description = "JobHunterOS: Hunter, a private job-hunt companion for KubeCraft students and graduates."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pypdf>=4.2",
+    "pyyaml>=6.0",
+    "keyring>=25.0",
+    "cryptography>=43.0",
+    "google-auth>=2.30",
+    "google-auth-oauthlib>=1.2",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.5",
+]
+api = [
+    "anthropic>=1.0",
+]
+browser = [
+    "playwright>=1.45",
+]
+
+[project.scripts]
+jobhunter = "jobhunter.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jobhunter"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008"]

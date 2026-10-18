@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Search health{% endblock %}
+{% block content %}
+<h1>Search health</h1>
+<section class="card"><p>Last successful hunt: {{ sched.last_run_at or 'never' }} · Next planned: {{ sched.next_run_at or 'not scheduled' }} · Worker: {{ sched.worker }} · Mailbox: {{ 'connected' if gmail.read.connected else 'not connected' }}{% if gmail.read.connected %} (last sync {{ gmail.read.last_sync_at or 'never' }}){% endif %}</p>
+<p class="muted">Employers known: {{ employers.n }} ({{ employers.discovered or 0 }} discovered automatically through feeds, the rest from the starter list or you).</p></section>
+<section class="card"><h2>Sources</h2>
+<table class="table"><thead><tr><th>Source</th><th>Type</th><th>Status</th><th>Last worked</th></tr></thead><tbody>
+{% for s in sources %}<tr class="{{ 'off' if not s.enabled }}"><td>{{ s.id }}</td><td>{{ s.provider }}{% if s.origin == 'discovered' %} <span class="pill">discovered</span>{% endif %}</td><td>{{ s.plain_status }}</td><td>{{ (s.last_success_at or 'never')[:16] }}</td></tr>{% endfor %}
+</tbody></table>
+<p class="muted">Employer boards (Greenhouse, Lever, Ashby) are read directly from the employer's own job board. Remotive and Arbeitnow are feeds that introduce new employers; jobs found there link back to the feed and Hunter tries to find the employer's own listing. LinkedIn and Indeed only come in through emails or text you give Hunter. Enable or add sources from the terminal: <code>uv run jobhunter sources list</code>.</p>
+</section>
+<section class="card"><h2>Recent hunts</h2>
+<table class="table"><thead><tr><th>When</th><th>Trigger</th><th>Result</th><th>Details</th></tr></thead><tbody>
+{% for r in runs %}<tr><td>{{ r.started_at[:16] }}</td><td>{{ r.trigger }}</td><td>{{ r.status }}</td><td>{% if r.stats %}{{ r.stats.postings_fetched or r.stats.imported or 0 }} postings looked at, {{ r.stats.jobs_new or 0 }} new jobs, {{ r.stats.sources_failed or 0 }} source(s) failed{% endif %}{% if r.error %} · {{ r.error }}{% endif %}</td></tr>{% else %}<tr><td colspan="4" class="muted">No hunts yet.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

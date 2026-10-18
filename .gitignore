@@ -1,0 +1,60 @@
+# Private user state must never enter Git. The app stores everything under
+# ~/.jobhunteros (or $JOBHUNTER_HOME); these patterns are a safety net in case
+# someone points JOBHUNTER_HOME inside the repository.
+.jobhunteros/
+jobhunter-data/
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Documents, exports, and anything derived from personal data
+*.pdf
+*.docx
+cv*
+CV*
+linkedin*
+exports/
+handoffs/
+digests/
+*.log
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+config.local.toml
+secrets.json
+client_secret*.json
+token*.json
+credentials*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Claude Code local state (per-user)
+.claude/settings.local.json
+.claude/scheduled_tasks.json
+
+# Test artifacts
+tests/_live_output/
+playwright-report/
+test-results/

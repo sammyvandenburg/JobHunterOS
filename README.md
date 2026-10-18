@@ -1,0 +1,84 @@
+# JobHunterOS
+
+Hunter is a private job-hunt companion for KubeCraft students and graduates looking for DevOps, Platform Engineering, SRE, Cloud, and Infrastructure work in North America and Europe.
+
+The experience: **Learn about me. Find suitable jobs. Show me the best options. Help me act. Remember what happened.**
+
+Hunter starts from your finished CV and LinkedIn profile. It does not rewrite, score, or tailor them. It builds a factual profile you approve, then runs a broad, explainable job hunt, keeps a dashboard and application tracker, and prepares (never submits) applications.
+
+## What you need
+
+- A computer you control (Linux, macOS, or Windows) that stays on when you want scheduled hunts.
+- Python 3.11 or newer and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+- [Claude Code](https://code.claude.com/) for the conversational experience. The dashboard and CLI work without it.
+- Internet access to the public job boards (no paid search service needed).
+
+## Start (three commands)
+
+```bash
+git clone <this repository> && cd JobHunterOS
+uv sync                      # installs locked dependencies into .venv
+uv run jobhunter doctor      # checks your environment and explains any fix
+```
+
+Then either:
+
+- **In Claude Code:** open this folder and run `/jobhunter`. Hunter asks one question at a time, builds your profile, and finds jobs.
+- **In a browser:** `uv run jobhunter dashboard` opens http://127.0.0.1:8765/ (local only).
+- **Just to look around:** `uv run jobhunter --demo demo seed` then `uv run jobhunter --demo dashboard`. Demo data is synthetic and lives in a separate folder; every page says so.
+
+Your private data lives in `~/.jobhunteros` (change with `JOBHUNTER_HOME`). Nothing personal is ever written into this repository.
+
+## What Hunter does
+
+| You say | Hunter does |
+|---|---|
+| "Let's get set up" | Confirms your CV and LinkedIn profile are finished, reads the files you give it, builds a profile with evidence for every fact, asks only the missing questions, and waits for your approval. |
+| "Find jobs" | Reads 85 validated employer job boards (Greenhouse, Lever, Ashby) plus discovery feeds (Remotive, Arbeitnow; Adzuna optional) that introduce new employers, removes duplicates across sources, checks dates, and matches against your approved profile. |
+| "Show me the best options" | Good matches, Worth a shot, Backup options. Each with location and the real remote rule, salary as stated, freshness, verification, reasons tied to your facts, gaps, links, and one next step. No percentages. |
+| "Help me apply" | Prepares your unchanged CV, project links, draft answers from approved facts, and a checklist of what only you can answer. You submit. |
+| "I applied" / "they replied" | Tracks the pipeline from your confirmations or from job-search emails you let it read (Gmail, read-only, optional). Automated receipts never count as replies. |
+| "Look every day" | A local worker runs hunts on your schedule and, if you ask, emails a digest to one confirmed address. Dashboard-only is the default. |
+| "Interview confirmed" | Exports an InterviewOS hand-off (Markdown) with the vacancy snapshot, the exact CV version, what was actually sent versus drafts, evidence, and gaps. |
+
+## Commands you will actually use
+
+```bash
+uv run jobhunter next                 # next setup question or next useful actions
+uv run jobhunter hunt run             # find jobs now
+uv run jobhunter jobs list            # best new matches (views: new, saved, applied, interviews, finished, old, excluded)
+uv run jobhunter jobs show <id>
+uv run jobhunter apply prepare <id>   # application package (nothing is submitted)
+uv run jobhunter act applied <id>     # you applied; Hunter records it
+uv run jobhunter dashboard            # local dashboard
+uv run jobhunter schedule show        # how often, when to tell you, worker health
+uv run jobhunter worker run           # the background worker (keep it running, or install a service)
+uv run jobhunter status               # honest lifetime totals
+uv run jobhunter --help               # everything else; add --json to any command
+```
+
+## Documentation
+
+- [docs/setup.md](docs/setup.md): environment checks, platforms, first run, updating.
+- [docs/sources.md](docs/sources.md): every job source, its access method, terms, limits, and verification date.
+- [docs/email.md](docs/email.md): digests, Gmail read-only connection, OAuth setup, what the permissions really grant.
+- [docs/scheduling.md](docs/scheduling.md): the worker, service templates, host-awake limits, safe disabling.
+- [docs/model.md](docs/model.md): how Claude is used in-session and (optionally) unattended; authentication and cost.
+- [docs/privacy.md](docs/privacy.md): what leaves your machine, storage, backups, deletion, security model.
+- [docs/troubleshooting.md](docs/troubleshooting.md).
+- [docs/architecture.md](docs/architecture.md), [docs/status.md](docs/status.md) (implemented / fixture-tested / live-tested / not available), [docs/assumptions.md](docs/assumptions.md).
+
+## Tests
+
+```bash
+uv sync --extra dev
+uv run pytest                          # unit, integration, and dashboard tests (synthetic fixtures, no network)
+uv sync --extra browser && uv run playwright install chromium && uv run pytest tests/test_browser.py   # browser smoke test (skipped when no browser; set JOBHUNTER_CHROMIUM=/path/to/chrome to use an existing one)
+JOBHUNTER_LIVE=1 uv run pytest tests/live    # a handful of read-only live source checks, on purpose only
+```
+
+## Not in this version
+
+Automatic application submission, browser form automation, LinkedIn or Indeed scraping, a cloud always-on mode, multi-user hosting, billing, or any InterviewOS curriculum content. Where something is not connected, Hunter says so instead of pretending.
+
+Private repository. No open-source licence is granted; third-party packages keep their own licences (see `uv.lock`).

@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Digest preview{% endblock %}
+{% block content %}
+<section class="card"><h1>Digest preview</h1>
+<p>To: <strong>{{ recipient or 'no confirmed address yet' }}</strong> · Transport: {{ transport.detail }}</p>
+{% if digest %}<p><strong>{{ digest.subject }}</strong></p><pre class="desc">{{ digest.text }}</pre>{% else %}<p>Nothing new worth emailing right now.</p>{% endif %}
+<p><a href="/connections">Back to connections</a></p></section>
+{% endblock %}

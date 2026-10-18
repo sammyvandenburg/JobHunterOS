@@ -1,0 +1,107 @@
+# Starter employer catalogue for JobHunterOS.
+#
+# Every entry below was checked on `checked` by reading its public job board
+# API once (read-only). "Reachable" means the board answered with a list of
+# postings on that date. It says nothing about whether the employer is hiring
+# for your kind of role right now; Hunter finds that out on each hunt.
+#
+# Fields: name, ats (greenhouse|lever|ashby), token (board token / site / board
+# name), region (na|eu|both: where the employer mainly hires, not a promise),
+# careers (public careers page), checked (YYYY-MM-DD).
+version: 2026-10-18
+employers:
+  # ---- Greenhouse ---------------------------------------------------------
+  - {name: GitLab, ats: greenhouse, token: gitlab, region: both, careers: https://about.gitlab.com/jobs/, checked: 2026-10-18}
+  - {name: Cloudflare, ats: greenhouse, token: cloudflare, region: both, careers: https://www.cloudflare.com/careers/, checked: 2026-10-18}
+  - {name: Datadog, ats: greenhouse, token: datadog, region: both, careers: https://careers.datadoghq.com/, checked: 2026-10-18}
+  - {name: Elastic, ats: greenhouse, token: elastic, region: both, careers: https://jobs.elastic.co/, checked: 2026-10-18}
+  - {name: Grafana Labs, ats: greenhouse, token: grafanalabs, region: both, careers: https://grafana.com/about/careers/, checked: 2026-10-18}
+  - {name: Twilio, ats: greenhouse, token: twilio, region: both, careers: https://www.twilio.com/en-us/company/jobs, checked: 2026-10-18}
+  - {name: MongoDB, ats: greenhouse, token: mongodb, region: both, careers: https://www.mongodb.com/careers, checked: 2026-10-18}
+  - {name: Fastly, ats: greenhouse, token: fastly, region: both, careers: https://www.fastly.com/about/careers, checked: 2026-10-18}
+  - {name: Coinbase, ats: greenhouse, token: coinbase, region: both, careers: https://www.coinbase.com/careers, checked: 2026-10-18}
+  - {name: Figma, ats: greenhouse, token: figma, region: both, careers: https://www.figma.com/careers/, checked: 2026-10-18}
+  - {name: Canonical, ats: greenhouse, token: canonical, region: both, careers: https://canonical.com/careers, checked: 2026-10-18}
+  - {name: Reddit, ats: greenhouse, token: reddit, region: both, careers: https://www.redditinc.com/careers, checked: 2026-10-18}
+  - {name: Discord, ats: greenhouse, token: discord, region: na, careers: https://discord.com/careers, checked: 2026-10-18}
+  - {name: Airbnb, ats: greenhouse, token: airbnb, region: both, careers: https://careers.airbnb.com/, checked: 2026-10-18}
+  - {name: Lyft, ats: greenhouse, token: lyft, region: na, careers: https://www.lyft.com/careers, checked: 2026-10-18}
+  - {name: Pinterest, ats: greenhouse, token: pinterest, region: both, careers: https://www.pinterestcareers.com/, checked: 2026-10-18}
+  - {name: Databricks, ats: greenhouse, token: databricks, region: both, careers: https://www.databricks.com/company/careers, checked: 2026-10-18}
+  - {name: Samsara, ats: greenhouse, token: samsara, region: both, careers: https://www.samsara.com/company/careers, checked: 2026-10-18}
+  - {name: Brex, ats: greenhouse, token: brex, region: na, careers: https://www.brex.com/careers, checked: 2026-10-18}
+  - {name: Toast, ats: greenhouse, token: toast, region: both, careers: https://careers.toasttab.com/, checked: 2026-10-18}
+  - {name: Affirm, ats: greenhouse, token: affirm, region: both, careers: https://www.affirm.com/careers, checked: 2026-10-18}
+  - {name: Asana, ats: greenhouse, token: asana, region: both, careers: https://asana.com/jobs, checked: 2026-10-18}
+  - {name: PagerDuty, ats: greenhouse, token: pagerduty, region: both, careers: https://careers.pagerduty.com/, checked: 2026-10-18}
+  - {name: Cockroach Labs, ats: greenhouse, token: cockroachlabs, region: both, careers: https://www.cockroachlabs.com/careers/, checked: 2026-10-18}
+  - {name: Vercel, ats: greenhouse, token: vercel, region: both, careers: https://vercel.com/careers, checked: 2026-10-18}
+  - {name: Chainguard, ats: greenhouse, token: chainguard, region: both, careers: https://www.chainguard.dev/careers, checked: 2026-10-18}
+  - {name: Tailscale, ats: greenhouse, token: tailscale, region: na, careers: https://tailscale.com/careers, checked: 2026-10-18}
+  - {name: PlanetScale, ats: greenhouse, token: planetscale, region: na, careers: https://planetscale.com/careers, checked: 2026-10-18}
+  - {name: Stripe, ats: greenhouse, token: stripe, region: both, careers: https://stripe.com/jobs, checked: 2026-10-18}
+  - {name: Okta, ats: greenhouse, token: okta, region: both, careers: https://www.okta.com/company/careers/, checked: 2026-10-18}
+  - {name: Twitch, ats: greenhouse, token: twitch, region: na, careers: https://www.twitch.tv/jobs/, checked: 2026-10-18}
+  - {name: Roblox, ats: greenhouse, token: roblox, region: na, careers: https://careers.roblox.com/, checked: 2026-10-18}
+  - {name: Intercom, ats: greenhouse, token: intercom, region: both, careers: https://www.intercom.com/careers, checked: 2026-10-18}
+  - {name: Instacart, ats: greenhouse, token: instacart, region: na, careers: https://instacart.careers/, checked: 2026-10-18}
+  - {name: Robinhood, ats: greenhouse, token: robinhood, region: na, careers: https://careers.robinhood.com/, checked: 2026-10-18}
+  - {name: Flexport, ats: greenhouse, token: flexport, region: both, careers: https://www.flexport.com/careers/, checked: 2026-10-18}
+  - {name: Honeycomb, ats: greenhouse, token: honeycomb, region: na, careers: https://www.honeycomb.io/careers, checked: 2026-10-18}
+  - {name: Thoughtworks, ats: greenhouse, token: thoughtworks, region: both, careers: https://www.thoughtworks.com/careers, checked: 2026-10-18}
+  - {name: Adyen, ats: greenhouse, token: adyen, region: eu, careers: https://careers.adyen.com/, checked: 2026-10-18}
+  - {name: Celonis, ats: greenhouse, token: celonis, region: eu, careers: https://www.celonis.com/careers/, checked: 2026-10-18}
+  - {name: Contentful, ats: greenhouse, token: contentful, region: eu, careers: https://www.contentful.com/careers/, checked: 2026-10-18}
+  - {name: N26, ats: greenhouse, token: n26, region: eu, careers: https://n26.com/en/careers, checked: 2026-10-18}
+  - {name: GetYourGuide, ats: greenhouse, token: getyourguide, region: eu, careers: https://careers.getyourguide.com/, checked: 2026-10-18}
+  - {name: Bitpanda, ats: greenhouse, token: bitpanda, region: eu, careers: https://www.bitpanda.com/en/career, checked: 2026-10-18}
+  - {name: Typeform, ats: greenhouse, token: typeform, region: eu, careers: https://www.typeform.com/careers/, checked: 2026-10-18}
+  - {name: SumUp, ats: greenhouse, token: sumup, region: eu, careers: https://www.sumup.com/careers/, checked: 2026-10-18}
+  - {name: Dataiku, ats: greenhouse, token: dataiku, region: both, careers: https://www.dataiku.com/careers/, checked: 2026-10-18}
+  - {name: HelloFresh, ats: greenhouse, token: hellofresh, region: both, careers: https://careers.hellofresh.com/, checked: 2026-10-18}
+  - {name: Wolt, ats: greenhouse, token: wolt, region: eu, careers: https://careers.wolt.com/, checked: 2026-10-18}
+  # ---- Lever --------------------------------------------------------------
+  - {name: Palantir, ats: lever, token: palantir, region: both, careers: https://www.palantir.com/careers/, checked: 2026-10-18}
+  - {name: BlaBlaCar, ats: lever, token: blablacar, region: eu, careers: https://blog.blablacar.com/jobs, checked: 2026-10-18}
+  - {name: Qonto, ats: lever, token: qonto, region: eu, careers: https://qonto.com/en/careers, checked: 2026-10-18}
+  - {name: Aircall, ats: lever, token: aircall, region: both, careers: https://aircall.io/careers/, checked: 2026-10-18}
+  - {name: Contentsquare, ats: lever, token: contentsquare, region: both, careers: https://contentsquare.com/careers/, checked: 2026-10-18}
+  - {name: Scaleway, ats: lever, token: scaleway, region: eu, careers: https://www.scaleway.com/en/careers/, checked: 2026-10-18}
+  - {name: Swile, ats: lever, token: swile, region: eu, careers: https://www.swile.co/en/careers, checked: 2026-10-18}
+  - {name: Malt, ats: lever, token: malt, region: eu, careers: https://www.malt.com/about/jobs, checked: 2026-10-18}
+  - {name: MoonPay, ats: lever, token: moonpay, region: both, careers: https://www.moonpay.com/careers, checked: 2026-10-18}
+  - {name: Veeva, ats: lever, token: veeva, region: both, careers: https://careers.veeva.com/, checked: 2026-10-18}
+  # ---- Ashby --------------------------------------------------------------
+  - {name: Ashby, ats: ashby, token: ashby, region: both, careers: https://www.ashbyhq.com/careers, checked: 2026-10-18}
+  - {name: Linear, ats: ashby, token: linear, region: both, careers: https://linear.app/careers, checked: 2026-10-18}
+  - {name: Ramp, ats: ashby, token: ramp, region: na, careers: https://ramp.com/careers, checked: 2026-10-18}
+  - {name: Notion, ats: ashby, token: notion, region: both, careers: https://www.notion.so/careers, checked: 2026-10-18}
+  - {name: OpenAI, ats: ashby, token: openai, region: both, careers: https://openai.com/careers, checked: 2026-10-18}
+  - {name: PostHog, ats: ashby, token: posthog, region: both, careers: https://posthog.com/careers, checked: 2026-10-18}
+  - {name: Supabase, ats: ashby, token: supabase, region: both, careers: https://supabase.com/careers, checked: 2026-10-18}
+  - {name: Replit, ats: ashby, token: replit, region: na, careers: https://replit.com/careers, checked: 2026-10-18}
+  - {name: Vanta, ats: ashby, token: vanta, region: both, careers: https://www.vanta.com/careers, checked: 2026-10-18}
+  - {name: Modal, ats: ashby, token: modal, region: both, careers: https://modal.com/careers, checked: 2026-10-18}
+  - {name: Render, ats: ashby, token: render, region: na, careers: https://render.com/careers, checked: 2026-10-18}
+  - {name: Cursor, ats: ashby, token: cursor, region: na, careers: https://cursor.com/careers, checked: 2026-10-18}
+  - {name: Perplexity, ats: ashby, token: perplexity, region: both, careers: https://www.perplexity.ai/careers, checked: 2026-10-18}
+  - {name: Cohere, ats: ashby, token: cohere, region: both, careers: https://cohere.com/careers, checked: 2026-10-18}
+  - {name: n8n, ats: ashby, token: n8n, region: eu, careers: https://n8n.io/careers/, checked: 2026-10-18}
+  - {name: Lovable, ats: ashby, token: lovable, region: eu, careers: https://lovable.dev/careers, checked: 2026-10-18}
+  - {name: Duffel, ats: ashby, token: duffel, region: eu, careers: https://duffel.com/careers, checked: 2026-10-18}
+  - {name: ElevenLabs, ats: ashby, token: elevenlabs, region: both, careers: https://elevenlabs.io/careers, checked: 2026-10-18}
+  - {name: Quantexa, ats: ashby, token: quantexa, region: both, careers: https://www.quantexa.com/careers/, checked: 2026-10-18}
+  - {name: Railway, ats: ashby, token: railway, region: both, careers: https://railway.com/careers, checked: 2026-10-18}
+  - {name: Snyk, ats: ashby, token: snyk, region: both, careers: https://snyk.io/careers/, checked: 2026-10-18}
+  - {name: WorkOS, ats: ashby, token: workos, region: na, careers: https://workos.com/careers, checked: 2026-10-18}
+  - {name: Miro, ats: ashby, token: miro, region: both, careers: https://miro.com/careers/, checked: 2026-10-18}
+  - {name: Webflow, ats: ashby, token: webflow, region: na, careers: https://webflow.com/careers, checked: 2026-10-18}
+  - {name: Zapier, ats: ashby, token: zapier, region: both, careers: https://zapier.com/jobs, checked: 2026-10-18}
+  - {name: Neon, ats: ashby, token: neon, region: both, careers: https://neon.com/careers, checked: 2026-10-18}
+
+# Discovery feeds that introduce employers outside this list.
+feeds:
+  - {id: "remotive:devops", kind: remotive, config: {categories: [devops]}, note: "Remote jobs; attribution to Remotive required; 24h delay."}
+  - {id: "arbeitnow:eu", kind: arbeitnow, config: {feed: eu, max_pages: 4}, note: "Europe (Germany first); newest pages only."}
+  - {id: "arbeitnow:uk", kind: arbeitnow, config: {feed: uk, max_pages: 2}, note: "UK feed."}
+  - {id: "adzuna:multi", kind: adzuna, config: {countries: [gb, us, ca, de, nl, fr, at], max_pages: 1}, note: "Optional; needs free Adzuna keys.", enabled: false}

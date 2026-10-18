@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Hunter{% endblock %} · JobHunterOS</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+{% if demo %}<div class="banner demo" role="status">Demo mode: everything here is synthetic example data. Nothing was fetched from the internet and nothing is real.</div>{% endif %}
+<header class="top">
+  <a class="brand" href="/">Hunter</a>
+  <nav aria-label="Main">
+    {% for key, label in nav %}<a href="/jobs/{{ key }}" {% if view is defined and view == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+    <a href="/attention" {% if request.url.path == '/attention' %}aria-current="page"{% endif %}>Needs attention{% if attention_count %} <span class="pill">{{ attention_count }}</span>{% endif %}</a>
+  </nav>
+  <nav class="secondary" aria-label="Settings">
+    <a href="/profile">Profile &amp; settings</a>
+    <a href="/connections">Connections</a>
+    <a href="/health">Search health</a>
+  </nav>
+</header>
+<p class="summary-line" title="Lifetime totals from stored records">{{ totals.found }} jobs found · {{ totals.recommended }} recommended · {{ totals.applied }} application{{ '' if totals.applied == 1 else 's' }}{% if totals.recruiter_replies %} · {{ totals.recruiter_replies }} recruiter repl{{ 'y' if totals.recruiter_replies == 1 else 'ies' }}{% endif %}{% if totals.interviews %} · {{ totals.interviews }} interview{{ '' if totals.interviews == 1 else 's' }}{% endif %} <span class="muted">(lifetime)</span></p>
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer class="foot">JobHunterOS {{ version }} · Local dashboard on your computer only · <a href="/profile#data">Export or delete my data</a></footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Data deleted{% endblock %}
+{% block content %}
+<section class="card"><h1>Your local data was deleted</h1>
+<ul>{% for k, v in result.deleted.items() %}<li>{{ k }}: {{ v }}</li>{% endfor %}</ul>
+{% if result.backups_kept %}<p>Backups kept (delete them yourself if you want): {{ result.backups_kept|join(', ') }}</p>{% endif %}
+<ul>{% for l in result.limits %}<li>{{ l }}</li>{% endfor %}</ul>
+<p>Restart the dashboard to begin again.</p></section>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Let's get you set up{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Let's get you set up.</h1>
+  <p>Hunter works from your finished CV and LinkedIn profile. It never rewrites them. Answer one question at a time; you can stop and come back.</p>
+  {% if step.key == 'readiness' %}
+    <h2>{{ step.question }}</h2>
+    <p class="muted">{{ step.help }}</p>
+    <form method="post" action="/do/setup/answer" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="readiness">
+      <button name="value" value="yes" class="primary">Yes, they are finished</button>
+      <button name="value" value="no">Not yet</button>
+    </form>
+  {% elif step.key == 'cv' %}
+    <h2>{{ step.question }}</h2>
+    <form method="post" action="/do/upload" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="cv">
+      <label>Your CV file (PDF, DOCX, Markdown, or text; max 10 MB) <input type="file" name="file" accept=".pdf,.docx,.md,.txt" required></label>
+      <button class="primary">Upload CV</button>
+    </form>
+  {% elif step.key == 'linkedin_url' %}
+    <h2>{{ step.question }}</h2>
+    <form method="post" action="/do/setup/answer">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="linkedin_url">
+      <label>Profile URL <input type="url" name="value" placeholder="https://www.linkedin.com/in/your-name" required></label>
+      <button class="primary">Save</button>
+    </form>
+  {% elif step.key == 'linkedin_content' %}
+    <h2>{{ step.question }}</h2>
+    <p class="muted">{{ step.help }} In LinkedIn: Me → Settings → Data privacy → Get a copy of your data, or open your profile and choose More → Save to PDF.</p>
+    <form method="post" action="/do/upload" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="linkedin">
+      <label>Export or saved PDF <input type="file" name="file" accept=".pdf,.docx,.md,.txt"></label>
+      <p class="muted">or</p>
+      <label>Paste the text of your profile <textarea name="text" rows="8"></textarea></label>
+      <button class="primary">Save</button>
+    </form>
+  {% endif %}
+  <p class="muted">Prefer the terminal? Open Claude Code in this repository and run <code>/jobhunter</code>.</p>
+  {% if status.done %}<p class="muted">Done so far: {{ status.done|join(', ') }}</p>{% endif %}
+</section>
+{% endblock %}
