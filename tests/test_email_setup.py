@@ -264,6 +264,16 @@ def test_disconnect_from_dashboard_keeps_history_and_recipient(ctx, db, google):
     assert "No email transport" in _flash(r) and len(google.sent) == 1
 
 
+def test_two_test_emails_in_the_same_second_both_send(ctx, db, google):
+    approve_profile(db, ctx)
+    c = _client(ctx)
+    connect_gmail(c, google)
+    notifications.confirm_suggested_recipient(db)
+    first, second = notifications.send_test(ctx, db), notifications.send_test(ctx, db)
+    assert first["status"] == "sent" and second["status"] == "sent" and first["notification_id"] != second["notification_id"]
+    assert len(google.sent) == 2
+
+
 def test_recipient_allowlist_holds_for_gmail_transport(ctx, db, google):
     approve_profile(db, ctx)
     c = _client(ctx)
@@ -279,20 +289,25 @@ def test_client_config_sources_and_unavailable_state(ctx, db, monkeypatch, googl
     assert google_client.resolve_client(ctx.paths)["source"] == "environment"
     monkeypatch.delenv("JOBHUNTER_GOOGLE_CLIENT_ID")
     monkeypatch.delenv("JOBHUNTER_GOOGLE_CLIENT_SECRET")
-    # No file, and KubeCraft's copy is not reachable over plain http: the page says so and hides the button.
+    # No file, and KubeCraft's copy is not reachable over plain http. The page never waits on the network:
+    # the button is there, the click fetches, and a failed fetch is a plain message.
     monkeypatch.setenv("JOBHUNTER_GOOGLE_CLIENT_URL", google.base + "/google-oauth-client.json")
-    assert google_client.describe(ctx.paths)["available"] is False
+    fetches: list[str] = []
+    real_fetch = google_client._fetch
+    monkeypatch.setattr(google_client, "_fetch", lambda url: (fetches.append(url), real_fetch(url))[1])
+    assert google_client.describe(ctx.paths)["available"] is False and fetches == []
     c = _client(ctx)
     page = c.get("/connections").text
-    assert "not available yet" in page and "/connect/gmail/start?purpose=send" not in page
+    assert fetches == [] and "/connect/gmail/start?purpose=send" in page and "fetched from KubeCraft when you press Connect Gmail" in page
     assert "Try again in a minute" in _flash(c.get(f"/connect/gmail/start?purpose=send&csrf={_csrf(c)}", follow_redirects=False))
+    assert fetches == [google.base + "/google-oauth-client.json"]
     # The JSON Google lets you download, dropped in the private folder, is enough.
     f = google_client.client_file(ctx.paths)
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps({"installed": {"client_id": CLIENT_ID, "client_secret": "from-file", "redirect_uris": ["http://localhost"]}}))
     got = google_client.resolve_client(ctx.paths, fetch=False)
     assert got == {"client_id": CLIENT_ID, "client_secret": "from-file", "source": "file"}
-    assert google_client.describe(ctx.paths)["available"] is True and "/connect/gmail/start?purpose=send" in c.get("/connections").text
+    assert google_client.describe(ctx.paths)["available"] is True and "from file" in c.get("/connections").text
     # Nothing in the repository holds a client secret.
     from pathlib import Path
 

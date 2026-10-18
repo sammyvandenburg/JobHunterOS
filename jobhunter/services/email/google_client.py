@@ -95,7 +95,7 @@ def _fetch(url: str) -> dict | None:
     try:
         import httpx
 
-        r = httpx.get(url, timeout=10, follow_redirects=False, headers={"Accept": "application/json"})
+        r = httpx.get(url, timeout=6, follow_redirects=False, headers={"Accept": "application/json"})
         if r.status_code != 200:
             return None
         return _parse(r.json())
@@ -104,16 +104,15 @@ def _fetch(url: str) -> dict | None:
 
 
 def describe(paths: Paths) -> dict:
-    """For the Connections page: is sign-in possible, and where did the client come from? Never raises."""
+    """For the Connections page: where the client comes from, if it is already on this machine. Never fetches
+    (page loads must not wait on the network) and never raises; the Connect Gmail click does the fetch."""
+    url = os.environ.get(ENV_URL, CLIENT_CONFIG_URL)
     try:
         c = resolve_client(paths, fetch=False)
     except ClientConfigError:
-        try:
-            c = resolve_client(paths, fetch=True)
-        except ClientConfigError as exc:
-            return {"available": False, "source": None, "client_id_hint": None, "problem": str(exc), "config_url": os.environ.get(ENV_URL, CLIENT_CONFIG_URL)}
+        return {"available": False, "source": None, "client_id_hint": None, "problem": None, "config_url": url, "note": "Hunter fetches KubeCraft's Google sign-in details when you press Connect Gmail."}
     cid = c["client_id"]
-    return {"available": True, "source": c["source"], "client_id_hint": ("…" + cid[-30:]) if len(cid) > 30 else cid, "problem": None, "config_url": os.environ.get(ENV_URL, CLIENT_CONFIG_URL)}
+    return {"available": True, "source": c["source"], "client_id_hint": ("…" + cid[-30:]) if len(cid) > 30 else cid, "problem": None, "config_url": url, "note": None}
 
 
 def pkce_pair() -> tuple[str, str]:

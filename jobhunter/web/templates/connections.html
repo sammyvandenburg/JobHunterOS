@@ -16,10 +16,7 @@
 
 <section class="card" id="email">
   <h2>Email me jobs</h2>
-  {% if not client.available %}
-    <p class="warn">Email setup is not available yet: KubeCraft has not published the Google sign-in details Hunter needs. Nothing is wrong on your side.</p>
-    <p class="muted small">You can still use Hunter in the dashboard and in Claude Code. Advanced: SMTP below.</p>
-  {% elif not gmail.send.connected %}
+  {% if not gmail.send.connected %}
     <p>One click, then Google asks you to allow Hunter to <strong>send email as you</strong>. That is all it asks. Hunter does not read your inbox with this.</p>
     <a class="btn btn-primary btn-lg" href="/connect/gmail/start?purpose=send&amp;csrf={{ csrf }}">{{ icon('send') }} Connect Gmail</a>
     <p class="muted small mt-8">Google will say "Hunter by KubeCraft wants to send email on your behalf". You can take the permission back any time, here or at myaccount.google.com.</p>
@@ -97,7 +94,7 @@
     {% if gmail.read.last_error %}<p class="warn">{{ gmail.read.last_error }}</p>{% endif %}
   {% else %}
     <p>If you want, Hunter can read your job-search emails (application receipts, interview invitations, job alerts) and keep your applications up to date. This is a separate Google permission; sending emails never needs it.</p>
-    {% if client.available %}<a class="btn" href="/connect/gmail/start?purpose=read&amp;csrf={{ csrf }}">Connect Gmail (read-only)</a>{% else %}<p class="muted small">Not available until KubeCraft publishes the Google sign-in details.</p>{% endif %}
+    <a class="btn" href="/connect/gmail/start?purpose=read&amp;csrf={{ csrf }}">Connect Gmail (read-only)</a>
     <p class="muted small">No Gmail? Paste or save a job-search email and import it: <code>uv run jobhunter email import --file message.txt</code>.</p>
   {% endif %}
   {% if pending %}<h3>Emails waiting for your confirmation</h3><ul>{% for p in pending %}<li>{{ p.received_at[:10] if p.received_at else '' }} · {{ p.subject }} · looks like a <strong>{{ p.classification }}</strong>{% if p.suggested %} for {{ p.suggested.title }} at {{ p.suggested.employer_name }}{% endif %} — <a href="/attention">decide</a></li>{% endfor %}</ul>{% endif %}
@@ -117,6 +114,6 @@
 <details class="more card" id="advanced"><summary>Advanced: SMTP instead of Gmail, and where secrets are kept</summary>
   <p>If you do not use Gmail, Hunter can send through any mail server: <code>uv run jobhunter digest smtp --host smtp.example.com --port 587 --username you@example.com --from-address you@example.com</code> (it asks for the password and stores it in the secret store). Current transport: {{ digest.transport.detail }}.</p>
   <p>{{ secrets.note }}{% if not secrets.encrypted %} Set <code>JOBHUNTER_SECRETS_PASSPHRASE</code> to encrypt the file, or install an OS keyring.{% endif %}</p>
-  <p class="muted small">Sign-in details come from: {{ client.source or 'not available' }}{% if client.client_id_hint %} ({{ client.client_id_hint }}){% endif %}.</p>
+  <p class="muted small">Google sign-in details: {% if client.available %}from {{ client.source }}{% if client.client_id_hint %} ({{ client.client_id_hint }}){% endif %}{% else %}fetched from KubeCraft when you press Connect Gmail{% endif %}.</p>
 </details>
 {% endblock %}

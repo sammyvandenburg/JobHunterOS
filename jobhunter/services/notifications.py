@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import timedelta
@@ -278,7 +279,8 @@ def send_test(ctx: AppContext, db: Database) -> dict:
         f"Sent {stamp[:16].replace('T', ' ')} UTC. Nothing else was sent and no job was applied to.\n"
     )
     html = "<p>Hi,</p><p>This is a test from <strong>Hunter</strong>, your KubeCraft job-hunt companion.<br>If you can read this, your job emails will arrive here.</p><p style=\"color:#666\">Nothing else was sent and no job was applied to.</p>"
-    digest = Digest(subject="Hunter test: your job emails work", text=text, html=html, job_ids=[], content_hash=sha256_text(f"test|{stamp}"))
+    # Every press is its own test email: the outbox key must not collide for two presses in the same second.
+    digest = Digest(subject="Hunter test: your job emails work", text=text, html=html, job_ids=[], content_hash=sha256_text(f"test|{stamp}|{secrets.token_hex(8)}"))
     nid, why_not = _claim(db, digest, addr, "", False)
     if why_not:
         return why_not
