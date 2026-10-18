@@ -9,7 +9,11 @@ def totals(db: Database) -> dict:
     q = db.fetchone
     found = q("SELECT COUNT(*) AS n FROM jobs")["n"]
     relevant = q("SELECT COUNT(*) AS n FROM jobs WHERE relevance IN ('relevant','uncertain')")["n"]
-    recommended = q("SELECT COUNT(DISTINCT job_id) AS n FROM recommendations")["n"]
+    from jobhunter.services import views  # local import: views imports stats lazily too
+
+    # Recommended = jobs recommended right now (the exact set the Recommended card and New jobs open),
+    # not every job that was ever scored into a group.
+    recommended = views.current_recommended_count(db)
     applied = q("SELECT COUNT(DISTINCT job_id) AS n FROM events WHERE kind = 'applied' AND reverted_by IS NULL")["n"]
     contacted = q("SELECT COUNT(DISTINCT job_id) AS n FROM events WHERE kind = 'contacted' AND reverted_by IS NULL")["n"]
     replies = q(
@@ -38,7 +42,7 @@ def totals(db: Database) -> dict:
         "interviews": interviews,
         "offers": offers,
         "hunts": q("SELECT COUNT(*) AS n FROM hunt_runs WHERE trigger IN ('manual','scheduled','demo')")["n"],
-        "label": "Lifetime totals",
+        "label": "Lifetime totals, except Recommended, which is what is on your list right now",
     }
 
 

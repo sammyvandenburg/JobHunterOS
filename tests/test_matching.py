@@ -67,7 +67,7 @@ def test_acc11_related_titles_and_missing_tool_not_rejected(ctx, db):
     j = _job(db, jid)
     assert j["relevance"] == "relevant"
     assert j["match_group"] in {"good", "worth_a_shot", "backup"}
-    assert any("does not show" in g for g in j["gaps"])
+    assert any("not in your profile" in g for g in j["gaps"])
     jid2 = _import(ctx, db, external_id="t2", title="Backend Engineer", location_text="Amsterdam, Netherlands", description_text="You will own Kubernetes clusters, Terraform modules, AWS accounts, CI/CD pipelines and on-call for the platform.")
     assert _job(db, jid2)["relevance"] == "uncertain"
 
@@ -87,7 +87,7 @@ def test_acc12b_experienced_candidate_gets_senior_stretch(ctx, db):
     senior = _import(ctx, db, external_id="s4", title="Staff Platform Engineer", location_text="Amsterdam, Netherlands", description_text="Kubernetes, Terraform, AWS, Argo CD, Prometheus, Grafana, Linux, Python, CI/CD. 5+ years.")
     j = _job(db, senior)
     assert j["match_group"] in {"good", "worth_a_shot"}
-    assert any("level above" in g.lower() for g in j["gaps"])
+    assert any("level above" in g.lower() or "levels above" in g.lower() for g in j["gaps"])
 
 
 def test_acc15_fit_outranks_freshness_and_old_kept_separately(ctx, db):

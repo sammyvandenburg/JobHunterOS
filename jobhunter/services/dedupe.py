@@ -9,7 +9,7 @@ different locations stay separate. Source observations are always preserved.
 from __future__ import annotations
 
 import re
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from jobhunter.util import normalize_company
 
@@ -23,7 +23,12 @@ def normalize_title(title: str) -> str:
     return t
 
 
+TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_id", "gclid", "fbclid", "msclkid", "trk", "trackingid", "refid", "ref", "lipi", "midtoken", "midsig", "trkemail", "otptoken", "eid", "li", "from", "tk", "alid", "ihl", "src", "source", "gh_src", "lever-source", "lever-origin", "ashby_jid_src", "mc_cid", "mc_eid", "_hsenc", "_hsmi", "origin", "campaign"}
+
+
 def canonical_url(url: str | None) -> str | None:
+    """Same job, same canonical link. Tracking parameters are dropped; parameters that name the
+    vacancy (?id=100, ?jobId=…, ?gh_jid=…) are kept, so ?id=100 and ?id=200 stay different jobs."""
     if not url:
         return None
     try:
@@ -35,7 +40,25 @@ def canonical_url(url: str | None) -> str | None:
         host = host[4:]
     path = re.sub(r"/+$", "", p.path or "")
     path = re.sub(r"/apply$|/application$", "", path)
-    return urlunparse(("https", host, path, "", "", ""))
+    kept = sorted((k, v) for k, v in parse_qsl(p.query, keep_blank_values=False) if k.lower() not in TRACKING_PARAMS)
+    query = urlencode(kept)
+    return urlunparse(("https", host, path, "", query, ""))
+
+
+_CITY_NOISE = re.compile(r"\b(remote|hybrid|on-?site|office|hq|headquarters|flexible|or|and|the)\b", re.I)
+
+
+def city_of(location_text: str | None) -> str | None:
+    """The city part of a location string, or None when there is no usable city ("Remote", "Netherlands")."""
+    if not location_text:
+        return None
+    first = re.split(r"[,/|;()\-–—]", location_text)[0]
+    first = _CITY_NOISE.sub(" ", first)
+    first = re.sub(r"[^a-zA-Zäöüéèáàíóúñçß .'’]+", " ", first)
+    first = re.sub(r"\s+", " ", first).strip().lower()
+    if len(first) < 3 or first in {"netherlands", "germany", "united states", "usa", "uk", "united kingdom", "europe", "eu", "worldwide", "anywhere", "global"}:
+        return None
+    return first
 
 
 def location_bucket(country_codes: list[str], remote_type: str) -> str:
@@ -69,8 +92,12 @@ def description_similarity(a: str, b: str) -> float:
     return len(sa & sb) / len(sa | sb)
 
 
-def same_job(existing: dict, employer_name: str | None, title: str, codes: list[str], remote_type: str, requisition_id: str | None, urls: list[str | None], description: str) -> bool:
-    """Decide whether a new observation is the same vacancy as an existing job."""
+def same_job(existing: dict, employer_name: str | None, title: str, codes: list[str], remote_type: str, requisition_id: str | None, urls: list[str | None], description: str, location_text: str | None = None) -> bool:
+    """Decide whether a new observation is the same vacancy as an existing job.
+
+    Strong evidence merges (same canonical link, or same requisition id at the same employer).
+    Otherwise it must be the same employer, the same title, a compatible country, and the same city
+    when both name one; two offices of the same company are two jobs."""
     ex_req = (existing.get("requisition_id") or "").strip().lower()
     new_req = (requisition_id or "").strip().lower()
     if ex_req and new_req and ex_req != new_req:
@@ -89,6 +116,11 @@ def same_job(existing: dict, employer_name: str | None, title: str, codes: list[
         return False
     if ex_req and new_req and ex_req == new_req:
         return True
+    ex_city, new_city = city_of(existing.get("location_text")), city_of(location_text)
+    if ex_city and new_city and ex_city != new_city:
+        return False
+    if (existing.get("remote_type") or "unknown") != "unknown" and remote_type != "unknown" and existing.get("remote_type") != remote_type:
+        return False
     # Same employer, same title, compatible location: confirm with description similarity when both exist.
     ex_desc = existing.get("description_text") or ""
     if ex_desc and description:

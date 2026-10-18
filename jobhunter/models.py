@@ -59,6 +59,12 @@ class ProfileTargets(BaseModel):
     level: Literal["entry", "junior", "mid", "senior", "staff", "unknown"] = "unknown"
     stretch_ok: bool = True
     notes: str | None = None
+    # Derived from role facts (never typed in): what the paid work actually was.
+    professional_years_total: float = 0.0
+    professional_years_relevant: float = 0.0  # infrastructure / systems work, incl. IT roles that owned infrastructure
+    professional_years_adjacent: float = 0.0  # general IT support, software, or unclear IT roles
+    responsibility: Literal["none", "contributor", "owner", "lead"] = "none"
+    experience_note: str | None = None
 
 
 class ProfileDraft(BaseModel):
@@ -94,6 +100,7 @@ class Preferences(BaseModel):
     salary_period: Literal["year", "month", "hour"] | None = None
     salary_strength: Literal["must", "nice", "unset"] = "unset"
     remote: Literal["required", "preferred", "no_preference", "unset"] = "unset"
+    work_modes: list[str] = Field(default_factory=lambda: ["remote", "hybrid", "onsite"])  # which arrangements are acceptable at all
     regions: list[str] = Field(default_factory=lambda: ["na", "eu"])
     # "More options"
     extras: dict[str, Preference] = Field(default_factory=dict)

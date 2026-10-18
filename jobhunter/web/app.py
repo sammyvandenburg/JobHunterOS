@@ -72,7 +72,7 @@ LIST_PAGES = {
     "finished": ("Finished", "Offers, rejections, and withdrawn applications.", "flag", "Nothing finished yet", "Finished applications will show here."),
     "old": ("Older matches", "Recommended jobs posted more than 14 days ago, or without a date.", "clock", "No older matches", "Everything recommended is recent."),
     "excluded": ("Left out, and why", "Jobs Hunter decided not to recommend. The reason is shown on each one.", "x", "Nothing was left out", ""),
-    "uncertain": ("Not sure if relevant", "The title was unusual but the work might fit.", "alert", "Nothing uncertain", ""),
+    "uncertain": ("Needs checking", "Hunter could not tell where these jobs allow people to be, or the title is unusual. Open each one and check it yourself.", "alert", "Nothing to check", "Jobs with an unclear location or an unusual title will wait here."),
     "dismissed": ("Not interested", "Jobs you dismissed. You can bring any back.", "x", "Nothing dismissed", ""),
     "closed": ("No longer listed", "Jobs that disappeared from their source.", "clock", "Nothing closed", ""),
     "all": ("Everything found", "Every unique vacancy Hunter has seen.", "briefcase", "Nothing found yet", "Run a search first."),
@@ -555,6 +555,7 @@ def create_app(ctx: AppContext) -> FastAPI:
                 elif action == "approve":
                     profile_svc.approve(d, summary_override=summary or None)
                     consent.grant(d, "profile_approved", {})
+                    engine.rematch_quietly(ctx, d)
                     msg = "Thanks. Your profile is approved."
                 elif action == "answer" and key and answer:
                     profile_svc.answer_question(d, key, answer)
@@ -563,8 +564,9 @@ def create_app(ctx: AppContext) -> FastAPI:
                     profile_svc.skip_question(d, key)
                     msg = "Skipped."
                 elif action == "correct" and text:
-                    profile_svc.add_user_fact(d, text)
-                    msg = "Got it. I added that to your profile. Your files are unchanged."
+                    res = profile_svc.correct(d, text)
+                    engine.rematch_quietly(ctx, d)
+                    msg = ("Thanks. " + (res.get("note") or "Noted.") + " Your files are unchanged." + (" Your matches were checked again." if res.get("approved") else "")).strip()
                 elif action == "rematch":
                     res = engine.run_matching(ctx, d)
                     msg = f"Re-checked: {res.get('computed', 0)} job(s) updated." if res.get("status") == "ok" else res.get("reason", "Not matched.")

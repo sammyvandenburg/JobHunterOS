@@ -23,8 +23,17 @@ MAX_MODEL_EXPLANATIONS_PER_RUN = 12
 RANK_LIMIT_FOR_MODEL = 20
 
 
-def cache_key(job: dict, profile_id: int, prefs_hash: str) -> str:
-    return sha256_text(stable_json({"j": job.get("description_hash"), "t": job.get("title"), "l": job.get("location_text"), "s": job.get("salary_text"), "p": profile_id, "v": POLICY_VERSION, "pr": prefs_hash}))
+JOB_MATERIAL_FIELDS = ("description_hash", "title", "employer_name", "location_text", "salary_text", "salary_min", "salary_max", "salary_currency", "salary_period", "country_codes_json", "remote_type", "remote_restriction", "location_confidence", "relevance", "sponsorship", "posted_at", "availability")
+
+
+def profile_fingerprint(profile: dict) -> str:
+    """The content of the profile, not its row id: a correction or a new revision changes it, a re-save does not."""
+    facts = [f.model_dump(mode="json") for f in profile["facts"]]
+    return sha256_text(stable_json({"facts": facts, "targets": profile.get("targets")}))
+
+
+def cache_key(job: dict, profile_key: int | str, prefs_hash: str) -> str:
+    return sha256_text(stable_json({"j": {k: job.get(k) for k in JOB_MATERIAL_FIELDS}, "p": profile_key, "v": POLICY_VERSION, "pr": prefs_hash}))
 
 
 def _prefs_hash(db: Database) -> str:
@@ -45,11 +54,18 @@ def run_matching(ctx: AppContext, db: Database, hunt_run_id: int | None = None, 
         rows = db.fetchall(f"SELECT * FROM jobs WHERE id IN ({marks})", tuple(job_ids))
     else:
         rows = db.fetchall("SELECT * FROM jobs WHERE relevance IN ('relevant','uncertain') AND availability != 'closed'")
+    pkey = profile_fingerprint(profile)
     scored = computed = reused = 0
     presented: list[tuple[int, int, str]] = []
     with db.tx():
+        # Jobs reclassified as not infrastructure work keep a match row only as "excluded", so they leave every list.
+        db.execute(
+            "UPDATE matches SET match_group = 'excluded', exclusion_reason = COALESCE((SELECT relevance_reason FROM jobs WHERE jobs.id = matches.job_id), 'Not infrastructure work.'), computed_at = ? "
+            "WHERE profile_version_id = ? AND policy_version = ? AND match_group != 'excluded' AND job_id IN (SELECT id FROM jobs WHERE relevance = 'irrelevant')",
+            (now_iso(), profile["id"], POLICY_VERSION),
+        )
         for job in rows:
-            ck = cache_key(job, profile["id"], phash)
+            ck = cache_key(job, pkey, phash)
             existing = db.fetchone("SELECT * FROM matches WHERE job_id = ? AND profile_version_id = ? AND policy_version = ?", (job["id"], profile["id"], POLICY_VERSION))
             if existing and existing["cache_key"] == ck:
                 reused += 1
@@ -92,10 +108,13 @@ def run_matching(ctx: AppContext, db: Database, hunt_run_id: int | None = None, 
 
 
 def rules_explanation(job: dict, result) -> MatchExplanation:
-    group_word = {"good": "Good match", "worth_a_shot": "Worth a shot", "backup": "Backup option", "excluded": "Not recommended"}[result.group]
+    group_word = {"good": "Good match", "worth_a_shot": "Worth a shot", "backup": "Backup option", "excluded": "Not recommended", "uncertain": "Needs checking"}[result.group]
     if result.group == "excluded":
         summary = f"{group_word}: {result.exclusion_reason}"
         reasons = [{"text": result.exclusion_reason or "Excluded by a hard rule.", "fact_ids": []}]
+    elif result.group == "uncertain":
+        summary = f"{group_word}: {result.exclusion_reason or 'the location is unclear.'}"
+        reasons = result.reasons or [{"text": "The work fits, but the location needs checking.", "fact_ids": []}]
     else:
         lead = result.reasons[0]["text"] if result.reasons else "This job fits what you want."
         summary = f"{group_word}: {lead}"
@@ -254,3 +273,11 @@ def maybe_model_explanations(ctx: AppContext, db: Database, use_model: bool | No
 
 def group_label(group: str) -> str:
     return {"good": "Good matches", "worth_a_shot": "Worth a shot", "backup": "Backup options", "excluded": "Not recommended", "uncertain": "Uncertain"}.get(group, group)
+
+
+def rematch_quietly(ctx: AppContext, db: Database) -> dict:
+    """Re-score everything after a profile, preference, or policy change. Never raises; nothing is re-fetched."""
+    try:
+        return run_matching(ctx, db)
+    except Exception as exc:  # pragma: no cover - defensive: a scoring bug must not block saving preferences
+        return {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}

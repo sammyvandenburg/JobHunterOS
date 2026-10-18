@@ -17,35 +17,12 @@ from datetime import date
 from jobhunter.db import Database
 from jobhunter.models import EvidenceRef, Fact, ProfileDraft, ProfileQuestion, ProfileTargets
 from jobhunter.services import documents as docs
-from jobhunter.util import now_iso
 
 # ---------------------------------------------------------------------------
 # Vocabularies (kept small on purpose; the model can add facts with evidence)
 # ---------------------------------------------------------------------------
-SKILL_VOCAB: dict[str, list[str]] = {
-    "kubernetes": ["kubernetes", "k8s", "eks", "aks", "gke", "openshift"],
-    "docker": ["docker", "containers", "containerd", "podman"],
-    "terraform": ["terraform", "opentofu"],
-    "ansible": ["ansible"],
-    "helm": ["helm"],
-    "argocd": ["argo cd", "argocd", "gitops", "flux"],
-    "aws": ["aws", "amazon web services", "ec2", "s3", "iam", "eks", "lambda", "cloudformation"],
-    "azure": ["azure", "aks", "azure devops"],
-    "gcp": ["gcp", "google cloud", "gke"],
-    "linux": ["linux", "ubuntu", "debian", "rhel", "centos", "bash", "shell scripting"],
-    "ci/cd": ["ci/cd", "cicd", "jenkins", "gitlab ci", "github actions", "pipelines", "circleci", "tekton"],
-    "python": ["python"],
-    "go": ["golang", " go "],
-    "monitoring": ["prometheus", "grafana", "datadog", "observability", "monitoring", "opentelemetry", "elk", "loki", "alerting"],
-    "networking": ["networking", "tcp/ip", "dns", "load balancing", "vpc", "firewall", "vpn"],
-    "security": ["security", "iam", "vault", "secrets management", "cis benchmark"],
-    "sql": ["postgresql", "postgres", "mysql", "sql"],
-    "git": ["git"],
-    "windows server": ["windows server", "active directory"],
-    "vmware": ["vmware", "vsphere", "proxmox", "hyper-v"],
-    "on-call": ["on-call", "on call", "incident response", "pagerduty"],
-    "cloud": ["cloud"],
-}
+from jobhunter.services.matching.skills import extract_skills  # noqa: E402  (shared vocabulary)
+from jobhunter.util import now_iso
 
 CERT_PATTERNS: list[tuple[str, str]] = [
     (r"\bCKA\b|Certified Kubernetes Administrator", "Certified Kubernetes Administrator (CKA)"),
@@ -81,6 +58,123 @@ ROLE_TITLE = re.compile(
     r"\b(engineer|administrator|admin|developer|architect|analyst|consultant|specialist|technician|intern|trainee|manager|lead|operator|support|sre|devops|sysadmin)\b",
     re.I,
 )
+ROLE_INFRA = re.compile(
+    r"\b(devops|dev ops|sre|site reliability|platform (engineer|engineering)|infrastructure|infra|cloud (engineer|architect|administrator|ops|operations|specialist)|systems? (engineer|administrator)|sysadmin|"
+    r"linux (engineer|administrator|admin|specialist)|unix (engineer|administrator)|kubernetes|network (engineer|administrator)|release engineer|build engineer|automation engineer|observability|it operations|"
+    r"operations engineer|datacenter|data center|hosting engineer|technical operations|noc engineer|devsecops|storage engineer|virtuali[sz]ation)\b",
+    re.I,
+)
+ROLE_SUPPORT = re.compile(r"\b(helpdesk|help desk|service desk|desktop support|it support|support (engineer|analyst|technician|specialist|agent|associate)|it technician|field (service )?(engineer|technician)|1st line|first line|2nd line|second line|it specialist|technical support|it analyst|it assistant|it administrator|it coordinator)\b", re.I)
+ROLE_SOFTWARE = re.compile(r"\b(software|developer|programmer|full ?stack|backend|back-end|frontend|front-end|web engineer|application engineer|data engineer|qa engineer|test engineer|mobile|ios|android|data analyst|business analyst)\b", re.I)
+ROLE_OTHER = re.compile(r"\b(nurse|nursing|physician|doctor|teacher|lecturer|sales|marketing|accountant|lawyer|paralegal|driver|chef|cook|cashier|retail|warehouse|barista|waiter|waitress|hospitality|hotel|customer service|recruiter|hr |human resources|finance|logistics|carpenter|electrician|plumber|mechanic|security guard|soldier|military|police|firefighter|pharmacist|dentist|therapist|social worker|caregiver|cleaner|receptionist|administrative assistant|office manager|project manager|consultant)\b", re.I)
+INFRA_CONTEXT = re.compile(
+    r"\b(servers?|linux|unix|windows server|active directory|deploy(ed|ment|ments|ing)?|kubernetes|k8s|docker|containers?|terraform|ansible|puppet|chef|aws|azure|gcp|cloud|on-call|incidents?|monitoring|prometheus|grafana|nagios|zabbix|"
+    r"backups?|patching|patched|provision(ed|ing)?|automat(ed|ion|ing)|ci/cd|pipelines?|networks?|networking|firewalls?|vlan|dns|dhcp|vmware|vsphere|hyper-v|virtuali[sz]ation|infrastructure|datacenter|data center|storage|san\b|nas\b|load balanc\w*|nginx|apache|bash|powershell|scripts?|scripting)\b",
+    re.I,
+)
+SCOPE_LEAD = re.compile(r"\b(led|lead|leading|managed|managing|mentored|mentoring|supervised|supervising|coached|head of)\s+(?:a\s+|the\s+|an\s+|our\s+)?(?:[\w-]+\s+){0,2}?(team|teams|people|engineers|developers|staff|reports|interns|juniors|squad|department)\b|\bteam of \d+\b|\btech lead\b|\bteam lead\b|\bengineering manager\b", re.I)
+SCOPE_OWNER = re.compile(r"\b(owned|owner|ownership|responsible for|architected|designed|migrated|migration|built|operated|ran|on-call|incident|production|sla|uptime|reliability|introduced|rolled out|maintained)\b", re.I)
+SCOPE_RANK = {"none": 0, "contributor": 1, "owner": 2, "lead": 3}
+RELEVANT_DOMAINS = {"infra", "infra_adjacent"}
+ADJACENT_DOMAINS = {"it_support", "software", "unclear"}
+
+
+def classify_role(title: str, context: str = "") -> tuple[str, str]:
+    """(domain, scope) for one paid role.
+
+    domain: infra (owned or ran infrastructure), infra_adjacent (an IT role whose bullets show real
+    infrastructure work), it_support (general IT help), software, unclear (an IT-sounding title with
+    nothing to go on), other (a different career). scope: lead | owner | contributor.
+    General IT support, infrastructure ownership and senior platform responsibility are kept apart.
+    """
+    t = title or ""
+    ctx = context or ""
+    hits = len({m.group(0).lower() for m in INFRA_CONTEXT.finditer(ctx)})
+    if ROLE_SUPPORT.search(t):
+        domain = "infra_adjacent" if hits >= 3 else "it_support"
+    elif ROLE_INFRA.search(t):
+        domain = "infra"
+    elif ROLE_SOFTWARE.search(t):
+        domain = "infra_adjacent" if hits >= 4 else "software"
+    elif ROLE_OTHER.search(t):
+        domain = "other"
+    elif ROLE_TITLE.search(t):
+        domain = "infra" if hits >= 3 else "unclear"
+    else:
+        domain = "infra_adjacent" if hits >= 4 else "other"
+    scope = "contributor"
+    if domain != "other" and not re.search(r"\b(junior|intern|trainee|apprentice|graduate|werkstudent)\b", t, re.I):
+        if SCOPE_LEAD.search(ctx) or SCOPE_LEAD.search(t):
+            scope = "lead"
+        elif SCOPE_OWNER.search(ctx) or re.search(r"\b(senior|lead|principal|staff|head)\b", t, re.I):
+            scope = "owner"
+    return domain, scope
+
+
+def role_domain(fact: Fact) -> str:
+    for tag in fact.tags:
+        if tag.startswith("domain:"):
+            return tag.split(":", 1)[1]
+    domain, _ = classify_role(fact.text, fact.text)
+    return domain
+
+
+def role_scope(fact: Fact) -> str:
+    for tag in fact.tags:
+        if tag.startswith("scope:"):
+            return tag.split(":", 1)[1]
+    _, scope = classify_role(fact.text, fact.text)
+    return scope
+
+
+def derive_experience(facts: list[Fact], today: date | None = None) -> dict:
+    """Years and level from paid roles by what the work was, never from the length of a different career."""
+    roles = [f for f in facts if f.category == "role" and f.experience_kind == "professional" and f.status != "rejected" and f.start and f.end]
+    by_domain: dict[str, list[tuple[str, str]]] = {}
+    for f in roles:
+        by_domain.setdefault(role_domain(f), []).append((f.start, f.end))
+    years = lambda keys: round(merged_months([iv for k in keys for iv in by_domain.get(k, [])], today) / 12.0, 1)  # noqa: E731
+    total = years(by_domain.keys())
+    relevant = years(RELEVANT_DOMAINS)
+    infra_only = years({"infra"})
+    adjacent = years(ADJACENT_DOMAINS)
+    scopes = [role_scope(f) for f in roles if role_domain(f) in RELEVANT_DOMAINS]
+    responsibility = max(scopes, key=lambda x: SCOPE_RANK.get(x, 0)) if scopes else "none"
+    # Senior means years of real infrastructure roles with ownership or leadership, not years of IT support
+    # that touched servers. Adjacent years still count towards mid.
+    if relevant >= 5 and infra_only >= 4 and responsibility in {"owner", "lead"}:
+        level = "senior"
+    elif relevant >= 2.5:
+        level = "mid"
+    elif relevant >= 1:
+        level = "junior"
+    elif adjacent >= 2:
+        level = "junior"
+    else:
+        level = "entry"
+    notes = []
+    for f in roles:
+        d = role_domain(f)
+        short = f.text.split(" (")[0][:60]
+        if d == "it_support":
+            notes.append(f"I counted '{short}' as general IT support, not infrastructure work. Tell me if that is wrong.")
+        elif d == "software":
+            notes.append(f"I counted '{short}' as software work, which helps but is not infrastructure work.")
+        elif d == "unclear":
+            notes.append(f"I could not tell what kind of work '{short}' was, so I did not count it as infrastructure work. Tell me if it was.")
+        elif d == "other":
+            notes.append(f"'{short}' is a different career, so it does not count as IT experience here.")
+    return {
+        "professional_years_total": total,
+        "professional_years_relevant": relevant,
+        "professional_years_adjacent": adjacent,
+        "responsibility": responsibility,
+        "level": level,
+        "experience_note": " ".join(notes[:3]) or None,
+        "has_relevant_roles": any(role_domain(f) in RELEVANT_DOMAINS for f in roles),
+    }
+
+
 MONTH_INDEX = {m: i + 1 for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
 
 
@@ -218,6 +312,13 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
                 kind = "professional" if sec.name == "experience" else "unknown"
                 if re.search(r"\b(intern|internship|trainee|apprentice)\b", context, re.I):
                     kind = "professional"
+                # Bullets under the role (until the next dated line) say what the work really was.
+                bullets = []
+                for follow in sec.lines[i + 1 : i + 12]:
+                    if DATE_RANGE.search(follow):
+                        break
+                    bullets.append(follow)
+                domain, scope = classify_role(title_line, " ".join(bullets))
                 facts.append(
                     Fact(
                         id=nid("r"),
@@ -228,6 +329,7 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
                         start=start,
                         end=end,
                         evidence=[EvidenceRef(type="document", ref=f"document:{cv['id']}", quote=_quote(line))],
+                        tags=[f"domain:{domain}", f"scope:{scope}"],
                     )
                 )
                 if kind == "professional":
@@ -260,23 +362,25 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
                         )
                     )
 
-    # Skills: look at the whole CV, keep the line as evidence.
+    # Skills: look at the whole CV, keep the line as evidence. Whole words only, canonical keys,
+    # the same vocabulary the job side uses ("AKS" is AKS and implies Kubernetes; it is not "Azure").
     low_lines = [(ln, ln.lower()) for ln in cv_text.splitlines() if ln.strip()]
-    for skill, needles in SKILL_VOCAB.items():
-        for ln, low in low_lines:
-            padded = f" {low} "
-            if any(n in padded for n in needles):
-                facts.append(
-                    Fact(
-                        id=nid("s"),
-                        category="skill",
-                        text=skill,
-                        confidence="explicit",
-                        evidence=[EvidenceRef(type="document", ref=f"document:{cv['id']}", quote=_quote(ln))],
-                        tags=["skill"],
-                    )
+    seen_skills: set[str] = set()
+    for ln, _low in low_lines:
+        for key in sorted(extract_skills(ln)):
+            if key in seen_skills:
+                continue
+            seen_skills.add(key)
+            facts.append(
+                Fact(
+                    id=nid("s"),
+                    category="skill",
+                    text=key,
+                    confidence="explicit",
+                    evidence=[EvidenceRef(type="document", ref=f"document:{cv['id']}", quote=_quote(ln))],
+                    tags=["skill"],
                 )
-                break
+            )
 
     # Certifications vs courses: a course is not a certification.
     for pattern, label in CERT_PATTERNS:
@@ -358,8 +462,6 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
                 )
             )
 
-    months = merged_months(role_intervals)
-    years = round(months / 12.0, 1)
     if not role_intervals:
         questions.append(
             ProfileQuestion(
@@ -376,27 +478,35 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
         )
     )
 
-    level = "entry" if years < 1 else "junior" if years < 2.5 else "mid" if years < 5 else "senior"
-    summary = _summary_text(facts, years)
+    exp = derive_experience(facts)
+    summary = _summary_text(facts, exp)
     return ProfileDraft(
         summary_text=summary,
         facts=facts,
-        targets=ProfileTargets(direction=[], level=level, stretch_ok=True),  # type: ignore[arg-type]
+        targets=ProfileTargets(direction=[], stretch_ok=True, **{k: v for k, v in exp.items() if k != "has_relevant_roles"}),  # type: ignore[arg-type]
         questions=questions,
-        professional_years_relevant=years,
+        professional_years_relevant=exp["professional_years_relevant"],
     )
 
 
-def _summary_text(facts: list[Fact], years: float) -> str:
-    roles = [f for f in facts if f.category == "role" and f.experience_kind == "professional"]
-    skills = [f.text for f in facts if f.category == "skill"]
-    certs = [f.text for f in facts if f.category == "certification"]
+def _summary_text(facts: list[Fact], exp: dict) -> str:
+    roles = [f for f in facts if f.category == "role" and f.experience_kind == "professional" and f.status != "rejected"]
+    skills = [f.text for f in facts if f.category == "skill" and f.status != "rejected"]
+    certs = [f.text for f in facts if f.category == "certification" and f.status != "rejected"]
     projects = [f for f in facts if f.category == "project"]
     parts = []
+    total, rel, adj = exp.get("professional_years_total", 0), exp.get("professional_years_relevant", 0), exp.get("professional_years_adjacent", 0)
     if roles:
-        parts.append(f"About {years:g} years of paid work across {len(roles)} role(s).")
+        line = f"About {total:g} years of paid work across {len(roles)} role(s)"
+        if rel:
+            line += f", of which about {rel:g} years infrastructure or systems work"
+        if adj:
+            line += f" and about {adj:g} years general IT or software work"
+        parts.append(line + ".")
     else:
         parts.append("No paid work experience with dates found yet.")
+    if exp.get("experience_note"):
+        parts.append(exp["experience_note"])
     if skills:
         parts.append("Skills with evidence: " + ", ".join(skills[:12]) + ".")
     if certs:
@@ -456,9 +566,17 @@ def validate_draft(db: Database, draft: ProfileDraft) -> tuple[ProfileDraft, lis
                 warnings.append(f"Project '{fact.text[:50]}' was marked personal; only you can confirm production employment.")
         cleaned.append(fact)
     draft.facts = cleaned
-    # Recompute years from professional roles only, with overlap merged.
-    intervals = [(f.start, f.end) for f in cleaned if f.category == "role" and f.experience_kind == "professional" and f.start and f.end]
-    draft.professional_years_relevant = round(merged_months(intervals) / 12.0, 1)
+    # Experience is derived the same way for every path: from paid roles, by what the work was.
+    # Claude may suggest a level in its draft; the derived one wins when it is lower (no inflation).
+    exp = derive_experience(cleaned)
+    order = ["entry", "junior", "mid", "senior", "staff"]
+    suggested = draft.targets.level if draft.targets.level in order else None
+    derived = exp["level"]
+    level = derived if not suggested or order.index(derived) <= order.index(suggested) else suggested
+    draft.targets = draft.targets.model_copy(update={**{k: v for k, v in exp.items() if k != "has_relevant_roles"}, "level": level})
+    draft.professional_years_relevant = exp["professional_years_relevant"]
+    if suggested and order.index(suggested) > order.index(derived):
+        warnings.append(f"The draft said level '{suggested}', but the paid roles support '{derived}'. Using '{derived}'.")
     return draft, warnings
 
 
@@ -595,6 +713,67 @@ def _apply_answer_to_draft(db: Database, key: str, answer: str) -> None:
             )
         )
     db.update("profile_versions", {"facts_json": json.dumps([f.model_dump(mode="json") for f in facts])}, "id = ?", (row["id"],))
+
+
+NEGATION = re.compile(r"\b(i do not|i don't|i dont|i have not|i haven't|i havent|i never|i have no|no longer|not|never|remove|delete|wrong|isn't|is not|incorrect|didn't|did not|haven't used|never used|no experience)\b", re.I)
+
+
+def correct(db: Database, text: str) -> dict:
+    """A correction in the person's own words becomes a new profile revision.
+
+    "I do not have AWS experience" retracts the AWS facts (they are kept, marked rejected, with the
+    person's words as evidence) instead of leaving the old claim active next to a note. "I also know
+    Pulumi" adds a skill. The person wrote it, so the revision is approved at once; if a new document
+    is waiting for review, the correction goes into that draft instead.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise ProfileError("Tell me what is wrong in one sentence.")
+    draft_row = current_draft(db)
+    base = draft_row or approved(db)
+    if not base:
+        raise ProfileError("No profile to correct yet.")
+    facts: list[Fact] = [Fact.model_validate(f.model_dump(mode="json")) for f in base["facts"]]
+    today = now_iso()[:10]
+    user_ev = EvidenceRef(type="user", ref=f"user:{today}", quote=text[:160])
+    keys = extract_skills(text)
+    cert_hits = [label for pattern, label in CERT_PATTERNS if re.search(pattern, text, re.I)]
+    retracted: list[str] = []
+    added: list[str] = []
+    negative = bool(NEGATION.search(text))
+    if negative and (keys or cert_hits):
+        for f in facts:
+            if f.status == "rejected":
+                continue
+            if f.category == "skill" and extract_skills(f.text) & keys:
+                f.status = "rejected"
+                f.evidence.append(user_ev)
+                retracted.append(f.text)
+            elif f.category in {"certification", "course"} and any(label.lower() == f.text.lower() or label.split(" (")[0].lower() in f.text.lower() for label in cert_hits):
+                f.status = "rejected"
+                f.evidence.append(user_ev)
+                retracted.append(f.text)
+    if not retracted:
+        if keys and not negative:
+            existing = {k for f in facts if f.category == "skill" and f.status != "rejected" for k in extract_skills(f.text)}
+            for k in sorted(keys - existing):
+                facts.append(Fact(id=f"u{len(facts) + 1}", category="skill", text=k, confidence="asserted", evidence=[user_ev], tags=["skill"]))
+                added.append(k)
+        if not added:
+            facts.append(Fact(id=f"u{len(facts) + 1}", category="other", text=text[:300], confidence="asserted", evidence=[user_ev]))
+            added.append(text[:60])
+    exp = derive_experience(facts)
+    targets = ProfileTargets.model_validate({**base["targets"], **{k: v for k, v in exp.items() if k != "has_relevant_roles"}})
+    draft = ProfileDraft(summary_text=_summary_text(facts, exp), facts=facts, targets=targets, questions=[], professional_years_relevant=exp["professional_years_relevant"])
+    if draft_row:
+        draft, _ = validate_draft(db, draft)
+        with db.tx():
+            db.update("profile_versions", {"facts_json": json.dumps([f.model_dump(mode="json") for f in draft.facts]), "targets_json": json.dumps({**draft.targets.model_dump(mode="json"), "professional_years_relevant": draft.professional_years_relevant}), "summary_text": draft.summary_text}, "id = ?", (draft_row["id"],))
+        return {"profile_version_id": draft_row["id"], "version": draft_row["version"], "retracted": retracted, "added": added, "approved": False, "note": "Added to the profile that is waiting for your review."}
+    res = save_draft(db, draft, built_by="user")
+    approve(db, res["profile_version_id"])
+    note = ("Removed: " + ", ".join(retracted) + "." if retracted else "") + (" Added: " + ", ".join(added) + "." if added else "")
+    return {"profile_version_id": res["profile_version_id"], "version": res["version"], "retracted": retracted, "added": added, "approved": True, "note": note.strip() or "Noted."}
 
 
 def add_user_fact(db: Database, text: str, category: str = "other", experience_kind: str = "unknown") -> dict:

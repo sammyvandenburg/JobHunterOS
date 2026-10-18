@@ -50,17 +50,24 @@ class Digest:
 
 
 def pending_jobs(db: Database, since: str | None = None, limit: int = 15) -> list[dict]:
-    """Recommended, not dismissed, not yet included in a sent digest."""
-    rows = db.fetchall(
-        "SELECT j.*, m.match_group, m.score, m.explanation_text, m.next_step FROM matches m JOIN jobs j ON j.id = m.job_id "
-        "WHERE m.match_group IN ('good','worth_a_shot','backup') AND j.availability != 'closed' "
-        "AND j.id NOT IN (SELECT job_id FROM events WHERE kind = 'dismissed' AND reverted_by IS NULL) "
-        "AND j.id NOT IN (SELECT CAST(value AS INTEGER) FROM notifications, json_each(notifications.job_ids_json) WHERE notifications.status IN ('sent','uncertain','sending')) "
-        + ("AND j.first_seen_at >= ? " if since else "")
-        + "ORDER BY CASE m.match_group WHEN 'good' THEN 0 WHEN 'worth_a_shot' THEN 1 ELSE 2 END, m.score DESC LIMIT ?",
-        ((since, limit) if since else (limit,)),
-    )
-    return rows
+    """What the dashboard recommends right now, minus jobs already in a sent (or possibly sent) digest.
+    Same selection as New jobs: current profile, policy, preferences, countries, freshness, not dismissed,
+    not applied. One row per job."""
+    from jobhunter.services import views
+
+    already = {
+        int(r["job_id"])
+        for r in db.fetchall("SELECT CAST(value AS INTEGER) AS job_id FROM notifications, json_each(notifications.job_ids_json) WHERE notifications.status IN ('sent','uncertain','sending')")
+    }
+    items = views.current_recommended(db, exclude_ids=already)
+    if since:
+        items = [i for i in items if (i.get("first_seen_at") or "") >= since]
+    out = []
+    for i in items[:limit]:
+        row = db.fetchone("SELECT * FROM jobs WHERE id = ?", (i["id"],))
+        row.update({"match_group": i.get("group"), "score": i.get("score"), "explanation_text": i.get("explanation"), "next_step": i.get("next_step")})
+        out.append(row)
+    return out
 
 
 def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) -> Digest:

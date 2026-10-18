@@ -143,6 +143,8 @@ def describe(prefs: Preferences) -> list[str]:
     else:
         lines.append("Minimum salary: not set (that is fine)")
     lines.append(f"Remote work: {prefs.remote.replace('_', ' ')}")
+    modes = prefs.work_modes or ["remote", "hybrid", "onsite"]
+    lines.append("Okay with: " + ", ".join({"remote": "remote", "hybrid": "hybrid", "onsite": "in the office"}[m] for m in ("remote", "hybrid", "onsite") if m in modes))
     lines.append(f"Timezone: {prefs.timezone or 'not set'}")
     for k, v in prefs.extras.items():
         lines.append(f"{k}: {v.value} ({v.strength})")

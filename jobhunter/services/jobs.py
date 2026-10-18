@@ -62,7 +62,16 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
     """Insert or update a job from one observation. Returns (job_id, is_new_job, changed)."""
     norm = normalize(raw)
     ts = now_iso()
-    raw_hash = sha256_text(stable_json({"t": raw.title, "d": norm.description_hash, "l": raw.location_text, "s": raw.salary_text, "u": raw.url}))
+    raw_hash = sha256_text(
+        stable_json(
+            {
+                "t": raw.title, "d": norm.description_hash, "l": raw.location_text, "s": raw.salary_text, "u": raw.url, "au": raw.apply_url,
+                "cc": norm.country_codes, "rt": norm.remote_type, "rr": norm.remote_restriction, "lc": norm.location_confidence, "req": raw.requisition_id,
+                "pa": raw.posted_at, "su": raw.source_updated_at, "et": raw.employment_type, "sal": [norm.salary_min, norm.salary_max, norm.salary_currency, norm.salary_period],
+                "sp": norm.sponsorship, "rel": norm.relevance, "emp": raw.employer_name,
+            }
+        )
+    )
     obs = db.fetchone("SELECT * FROM job_observations WHERE source_id = ? AND external_id = ?", (raw.source_id, raw.external_id))
     direct_url = raw.url if (employer_hosted or raw.is_employer_hosted) else None
     if not direct_url and ATS_HOSTS.get(_host(raw.url)):
@@ -80,7 +89,9 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
             "id = ?",
             (obs["id"],),
         )
-        values = {"last_seen_at": ts, "last_checked_at": ts, "availability": "open", "availability_note": None, "updated_at": ts}
+        values = {"last_seen_at": ts, "last_checked_at": ts, "updated_at": ts}
+        if _may_reopen(job, raw, employer_hosted):
+            values.update({"availability": "open", "availability_note": None})
         if changed:
             values.update(_job_values(norm, raw, employer_id, codes_json, direct_url, direct_status, keep_first_seen=job))
         db.update("jobs", values, "id = ?", (job["id"],))
@@ -93,12 +104,14 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
     )
     match = None
     for cand in candidates:
-        if dedupe.same_job(cand, norm.employer_name, raw.title, norm.country_codes, norm.remote_type, raw.requisition_id, [raw.url, raw.apply_url], norm.description_text):
+        if dedupe.same_job(cand, norm.employer_name, raw.title, norm.country_codes, norm.remote_type, raw.requisition_id, [raw.url, raw.apply_url], norm.description_text, location_text=raw.location_text):
             match = cand
             break
     if match:
         job_id = int(match["id"])
-        values = {"last_seen_at": ts, "last_checked_at": ts, "availability": "open", "availability_note": None, "updated_at": ts}
+        values = {"last_seen_at": ts, "last_checked_at": ts, "updated_at": ts}
+        if _may_reopen(match, raw, employer_hosted):
+            values.update({"availability": "open", "availability_note": None})
         # Prefer employer-hosted details over aggregator copies; keep the earliest first_seen.
         if (employer_hosted or raw.is_employer_hosted) and match.get("direct_url_status") != "verified":
             values.update(_job_values(norm, raw, employer_id, codes_json, direct_url, direct_status, keep_first_seen=match))
@@ -134,8 +147,19 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
     return job_id, is_new, True
 
 
+def _may_reopen(job: dict, raw: RawPosting, employer_hosted: bool) -> bool:
+    """An employer board (or the source that closed it) may reopen a closed job; a stale aggregator copy may not."""
+    if job.get("availability") != "closed":
+        return True
+    if employer_hosted or raw.is_employer_hosted:
+        return True
+    note = job.get("availability_note") or ""
+    return raw.source_id in note
+
+
 def _job_values(norm: Normalized, raw: RawPosting, employer_id: int | None, codes_json: str, direct_url: str | None, direct_status: str, keep_first_seen: dict | None) -> dict:
     return {
+        "location_confidence": norm.location_confidence,
         "canonical_key": dedupe.canonical_key(norm.employer_name, raw.title, norm.country_codes, norm.remote_type, raw.requisition_id),
         "title": raw.title,
         "employer_id": employer_id,

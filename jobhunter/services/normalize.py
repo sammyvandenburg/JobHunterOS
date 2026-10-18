@@ -66,18 +66,30 @@ PERIOD_RE = {"hour": re.compile(r"(per hour|/ ?h(ou)?r|hourly|an hour)", re.I), 
 TOTAL_COMP = re.compile(r"(total compensation|total comp|otc|on-target|ote\b|including equity|equity)", re.I)
 
 # Relevance: role families. Titles decide most; descriptions resolve "uncertain".
-TITLE_RELEVANT = re.compile(
-    r"\b(devops|dev ops|platform|sre|site reliability|reliability|infrastructure|infra|cloud|systems? engineer|systems? administrator|sysadmin|linux|production engineer|kubernetes|k8s|release engineer|build engineer|automation engineer|observability|network(ing)? engineer|it operations|operations engineer|cloud ops|cloudops|devsecops|mlops|dataops|platform operations|technical operations|deployment engineer|infrastructure architect|cloud architect|system reliability|virtuali[sz]ation|storage engineer|datacenter|data center|hpc)\b",
+TITLE_INFRA = re.compile(
+    r"\b(devops( engineer| specialist| architect| lead)?|dev ops|sre|site reliability|system reliability|reliability engineer|production engineer|"
+    r"platform (engineer|engineering|infrastructure|operations|reliability|architect)|infrastructure( engineer| architect| specialist| administrator| lead| developer)?|infra( engineer| lead)?|"
+    r"cloud (engineer|architect|administrator|operations|ops|infrastructure|platform|specialist|consultant|developer|native engineer)|cloudops|cloud ops|"
+    r"systems? engineer|systems? administrator|sysadmin|system operations|linux( engineer| administrator| admin| specialist| sysadmin)?|unix( engineer| administrator)?|"
+    r"kubernetes|k8s|openshift|release engineer|build engineer|automation engineer|observability( engineer)?|network(ing)? engineer|network administrator|"
+    r"it operations|operations engineer|technical operations|devsecops|mlops|dataops|platform operations|deployment engineer|virtuali[sz]ation|storage engineer|"
+    r"datacenter|data center|hpc|hosting engineer|noc engineer|site operations)\b",
     re.I,
 )
+TITLE_RELEVANT = TITLE_INFRA  # kept for callers that import the old name
+# "systems engineer" in a non-IT discipline, or "platform" in a non-infrastructure sense.
+TITLE_NOT_IT = re.compile(r"\b(rf|radio|radar|mechanical|electrical|electronics?|embedded|hardware|hvac|civil|structural|aerospace|automotive|chemical|biomedical|audio|video|optical|photonics|power systems|control systems|controls|avionics|naval|marine|process|manufacturing|industrial|plant|weapons?|satellite|telecom(munication)?s?|5g)\b", re.I)
+TITLE_PLATFORM_NOT_INFRA = re.compile(r"\b(power platform|dynamics 365|salesforce|servicenow|sap|low[- ]?code|no[- ]?code|passenger|customer|ticketing|marketplace|e-?commerce|b2b|b2c|payments? platform|platform (agent|assistant|coordinator|specialist|manager|owner|analyst|consultant|sales|success|support|strategist|marketer)|product platform)\b", re.I)
+TITLE_SOFTWARE = re.compile(r"\b(software|developer|programmer|full ?stack|backend|back-end|back end|web engineer|application engineer|laravel|php|java|\.net|node(js)?|ruby|rails|django|react|angular|vue|data engineer|security engineer|engineer)\b", re.I)
 TITLE_IRRELEVANT = re.compile(
-    r"\b(sales|solutions? (engineer|architect|consultant)|pre-?sales|customer experience|cx\b|growth|account (executive|manager)|marketing|recruiter|recruiting|talent|hr\b|people (ops|partner)|legal|counsel|finance|accountant|controller|payroll|designer|ux|ui\b|product manager|product owner|copywriter|content|customer (success|support|service)|support specialist|business development|bdr|sdr|partnerships|community manager|social media|data scientist|machine learning engineer|research scientist|ios|android|mobile|frontend|front-end|front end|react|qa engineer|test engineer|quality assurance|technical writer|office manager|executive assistant|chief of staff|project manager|scrum master|agile coach|procurement|logistics|warehouse|driver|nurse|physician|teacher|intern(ship)? - (sales|marketing)|graphic|video editor|animator|game designer|economist|actuary|underwriter|claims|compliance officer|auditor|tax)\b",
+    r"\b(sales|solutions? (engineer|architect|consultant)|pre-?sales|customer experience|cx\b|growth|account (executive|manager)|marketing|recruiter|recruiting|talent|hr\b|people (ops|partner)|legal|counsel|finance|accountant|controller|payroll|designer|ux|ui\b|product manager|product owner|copywriter|content|customer (success|support|service)|support specialist|business development|bdr|sdr|partnerships|community manager|social media|data scientist|machine learning engineer|research scientist|ios|android|mobile|frontend|front-end|front end|react|qa engineer|test engineer|quality assurance|technical writer|office manager|executive assistant|chief of staff|project manager|scrum master|agile coach|procurement|logistics|warehouse|driver|nurse|physician|teacher|intern(ship)? - (sales|marketing)|graphic|video editor|animator|game designer|economist|actuary|underwriter|claims|compliance officer|auditor|tax|agent|cashier|barista|receptionist|cleaner|chef|cook|waiter|waitress|retail)\b",
     re.I,
 )
 DESC_INFRA = re.compile(
     r"\b(kubernetes|terraform|ansible|docker|ci/cd|gitops|argo ?cd|helm|prometheus|grafana|aws|azure|gcp|linux|infrastructure as code|iac|sre|on-call|observability|cloudformation|pulumi|eks|gke|aks|load balanc|vpc|nginx|bash)\b",
     re.I,
 )
+SALES_IN_TITLE = re.compile(r"\b(sales|account executive|marketing|recruit|solutions? (engineer|architect)|pre-?sales|customer experience|cx)\b", re.I)
 SENIORITY_RE = {
     "intern": re.compile(r"\b(intern|internship|werkstudent|working student|trainee|apprentice)\b", re.I),
     "junior": re.compile(r"\b(junior|jr\.?|entry[- ]level|graduate|associate|early career|level 1|l1)\b", re.I),
@@ -110,6 +122,7 @@ class Normalized:
     relevance_reason: str
     seniority: str
     years_required: int | None
+    location_confidence: str = "unknown"
     extra: dict = field(default_factory=dict)
 
 
@@ -229,19 +242,90 @@ def seniority_of(title: str, description: str) -> tuple[str, int | None]:
 
 
 def classify_relevance(title: str, description: str) -> tuple[str, str]:
+    """Is this infrastructure / platform / cloud / SRE / DevOps work?
+
+    The title must name the work (an infrastructure noun), not merely contain "platform" or "systems".
+    Unusual titles are resolved by what the description says the work involves, and land in
+    "uncertain" (shown, with a note) rather than being thrown away. Clear non-IT roles are irrelevant.
+    """
+    from jobhunter.services.matching.skills import infra_signal_count
+
     t = title or ""
-    if TITLE_IRRELEVANT.search(t) and not TITLE_RELEVANT.search(t):
+    hits = infra_signal_count(description or "")
+    title_infra = bool(TITLE_INFRA.search(t))
+    if title_infra and TITLE_NOT_IT.search(t) and re.search(r"systems? (engineer|administrator)|infrastructure|platform", t, re.I):
+        title_infra = False  # "RF Communication Systems Engineer" is not a sysadmin
+    if title_infra and TITLE_PLATFORM_NOT_INFRA.search(t) and not re.search(r"\b(devops|sre|kubernetes|infrastructure|cloud)\b", t, re.I):
+        title_infra = False  # "Passenger Services Platform Agent", "Power Platform Consultant"
+    if SALES_IN_TITLE.search(t) and not re.search(r"\b(devops|sre|infrastructure) (engineer|lead)\b", t, re.I):
+        return "irrelevant", "This is a sales, customer, or recruiting role, even though it mentions cloud or platform."
+    if TITLE_IRRELEVANT.search(t) and not title_infra:
         return "irrelevant", "This is a different kind of job."
-    if TITLE_RELEVANT.search(t):
-        if re.search(r"\b(sales|account executive|marketing|recruit|solutions? engineer|pre-?sales|customer experience|cx)\b", t, re.I):
-            return "irrelevant", "This is a sales, customer, or recruiting role, even though it mentions cloud or platform."
+    if title_infra:
         return "relevant", "This is the kind of work you are looking for."
-    hits = len(set(h.lower() for h in DESC_INFRA.findall(description or "")))
-    if re.search(r"\b(software|backend|back-end|full ?stack|data engineer|security engineer|engineer)\b", t, re.I) and hits >= 3:
-        return "uncertain", "The title is broad, but the work described is infrastructure work."
+    if TITLE_PLATFORM_NOT_INFRA.search(t) or TITLE_NOT_IT.search(t):
+        if hits >= 5:
+            return "uncertain", "The title sounds like something else, but the work described is infrastructure work."
+        return "irrelevant", "This uses the word platform or systems, but it is not infrastructure work."
+    if TITLE_SOFTWARE.search(t):
+        if hits >= 3:
+            return "uncertain", "The title is a software or broad engineering title, but the work described is infrastructure work."
+        return "irrelevant", "This is a software development job, not infrastructure work."
     if hits >= 5:
         return "uncertain", "Unusual title, but the work looks like infrastructure work."
     return "irrelevant", "Not infrastructure work."
+
+
+# ---- location restrictions stated in the text -------------------------------------------------
+RESIDENCY_PATTERNS = [
+    re.compile(r"\b(?:must|need to|needs to|have to|has to|should|required to|are required to|will need to)\s+(?:currently\s+)?(?:be\s+)?(?:(?:legally\s+|physically\s+)?(?:based|located|living|residing|resident|reside|live|domiciled)\s+(?:in|within)|be\s+a\s+resident\s+of)\s+(?:the\s+)?(?P<place>[^.;,\n()]{2,60})", re.I),
+    re.compile(r"\b(?:only|exclusively)\s+(?:open\s+to|hiring|accepting|available\s+to|considering|for)\s+(?:candidates|applicants|people|those|residents|individuals|talent)?\s*(?:who\s+are\s+)?(?:(?:based|located|living|residing|resident)\s+)?(?:in|within|from)\s+(?:the\s+)?(?P<place>[^.;,\n()]{2,60})", re.I),
+    re.compile(r"\b(?P<place>(?:the\s+)?(?:us|usa|u\.s\.|uk|eu|canada|united states|united kingdom|germany|netherlands|france|spain|portugal|ireland|poland|italy|sweden|denmark|norway|finland|austria|switzerland|belgium|australia|india|brazil|mexico|japan|singapore))[- ]based\s+(?:candidates|applicants|only|remote|role|position|talent|employees|team members|individuals)\b", re.I),
+    re.compile(r"\bremote\s+(?:work\s+)?(?:within|from|across|in)\s+(?:the\s+)?(?P<place>(?:us|usa|u\.s\.|uk|eu|eea|european union|europe|canada|united states|united kingdom|germany|netherlands|france|spain|portugal|ireland|poland|italy|sweden|denmark|norway|finland|austria|switzerland|belgium|dach|benelux|nordics|emea|latam|apac)(?:\s+(?:or|and)\s+[a-z .]{2,30})?)\b", re.I),
+    re.compile(r"\b(?:candidates|applicants|employees|you)\s+(?:must|need to|needs to|have to|should|are required to)\s+(?:currently\s+)?(?:be\s+)?(?:located|based|living|residing|resident)\s+(?:in|within)\s+(?:the\s+)?(?P<place>[^.;,\n()]{2,60})", re.I),
+    re.compile(r"\b(?:this (?:role|position|job) is|we are|positions? (?:is|are))\s+(?:only\s+)?open to (?:candidates|applicants|people|individuals|those)\s+(?:who are\s+)?(?:based|located|living|residing|resident|authorized to work|eligible to work)?\s*(?:in|within)\s+(?:the\s+)?(?P<place>[^.;,\n()]{2,60})", re.I),
+]
+OFFICE_PATTERNS = [
+    re.compile(r"\b(?:\d+|one|two|three|four|five)\s+days?\s+(?:a|per|each)\s+week\s+(?:in|at|from)\s+(?:our|the)\s+(?P<place>[A-Za-z][A-Za-z .'-]{1,30}?)\s+(?:office|hq|headquarters|hub)\b", re.I),
+    re.compile(r"\b(?:in|at|from)\s+our\s+(?P<place>[A-Za-z][A-Za-z .'-]{1,30}?)\s+(?:office|hq|headquarters|hub)\s+(?:\d+|one|two|three|four|five|a few|several|some)\s+days?\b", re.I),
+    re.compile(r"\b(?:attend|come to|work from|be in|visit)\s+(?:our|the)\s+(?P<place>[A-Za-z][A-Za-z .'-]{1,30}?)\s+(?:office|hq|headquarters|hub)\b", re.I),
+]
+ELIGIBILITY_ONLY = re.compile(r"\b(authori[sz]ed|eligible|right|permit|permission|allowed)\s+to\s+work\b", re.I)
+
+
+def residency_restriction(description: str | None) -> tuple[list[str], list[str], str | None]:
+    """Countries the text restricts applicants to, with the sentence that says so. Eligibility-to-work
+    sentences are not location rules and are ignored here."""
+    text = (description or "")[:12000]
+    for rx in RESIDENCY_PATTERNS:
+        for m in rx.finditer(text):
+            place = m.group("place").strip()
+            window = text[max(0, m.start() - 40) : m.end()]
+            if ELIGIBILITY_ONLY.search(window) and not re.search(r"\b(based|located|living|residing|resident|reside|live)\b", window, re.I):
+                continue
+            codes, tags = countries_from_text(place)
+            if "WORLD" in tags and not codes:
+                continue
+            for tag in tags:
+                for c in REGION_SETS.get(tag, set()):
+                    if c not in codes:
+                        codes.append(c)
+            if codes:
+                phrase = text[max(0, m.start()) : min(len(text), m.end() + 1)].strip()
+                return codes, tags, phrase
+    return [], [], None
+
+
+def office_requirement(description: str | None) -> tuple[list[str], str | None]:
+    """A named office the text expects people to come to (makes a 'remote' tag hybrid in practice)."""
+    text = (description or "")[:12000]
+    for rx in OFFICE_PATTERNS:
+        m = rx.search(text)
+        if m:
+            place = m.group("place").strip()
+            codes, _ = countries_from_text(place)
+            return codes, place
+    return [], None
 
 
 def normalize(raw: RawPosting) -> Normalized:
@@ -273,17 +357,44 @@ def normalize(raw: RawPosting) -> Normalized:
         elif ONSITE_WORDS.search(loc_text):
             remote = "onsite"
         elif loc_text:
-            remote = "onsite" if codes and not REMOTE_WORDS.search(desc[:1500]) else "unknown"
+            if HYBRID_WORDS.search(desc[:3000]):
+                remote = "hybrid"
+            else:
+                remote = "onsite" if codes and not REMOTE_WORDS.search(desc[:1500]) else "unknown"
     if remote != "remote" and HYBRID_WORDS.search(loc_text):
         remote = "hybrid"
+    confidence = "stated" if codes else "unknown"
+    if "WORLD" in tags and not raw.country_codes:
+        confidence = "worldwide"
     restriction = raw.remote_restriction
-    if remote == "remote":
+    # What the text says beats a generic tag: "Remote worldwide" plus "must be based in the US" is US only.
+    res_codes, res_tags, phrase = residency_restriction(desc)
+    if res_codes:
+        if not codes or "WORLD" in tags or remote == "remote":
+            codes = list(res_codes)
+            tags = sorted(set(res_tags))
+            confidence = "stated"
+            restriction = f"Only for people in {_country_names(codes, tags)} (the posting says: \"{truncate(phrase or '', 90)}\")"
+        elif set(codes) & set(res_codes):
+            codes = [c for c in codes if c in res_codes]
+            confidence = "stated"
+        else:
+            confidence = "conflict"
+            restriction = f"The location says {_country_names(codes, tags)}, but the text says only {_country_names(res_codes, res_tags)}. Check the posting."
+    elif remote == "remote":
+        office_codes, office = office_requirement(desc)
+        if office:
+            remote = "hybrid"
+            confidence = "inferred"
+            if office_codes and not codes:
+                codes = list(office_codes)
+            restriction = f"Listed as remote, but the text expects days in the {office} office. Check before you apply."
+    if remote == "remote" and not restriction:
         if "WORLD" in tags:
             restriction = "Remote worldwide (as stated by the source)"
         elif codes:
-            names = _country_names(codes, tags)
-            restriction = f"Remote, but only in {names}"
-        elif not restriction:
+            restriction = f"Remote, but only in {_country_names(codes, tags)}"
+        else:
             restriction = "Remote, but they don't say which countries"
     # Salary
     sal = parse_salary(raw.salary_text or "")
@@ -316,11 +427,12 @@ def normalize(raw: RawPosting) -> Normalized:
         salary_basis=sal.get("basis"),
         sponsorship=sponsorship,
         description_text=desc,
-        description_hash=sha256_text(re.sub(r"\s+", " ", desc.lower())[:5000]),
+        description_hash=sha256_text(re.sub(r"\s+", " ", desc.lower())),
         relevance=relevance,
         relevance_reason=reason,
         seniority=seniority,
         years_required=years,
+        location_confidence=confidence,
         extra={"salary_period_inferred": bool(sal.get("period_inferred"))},
     )
 

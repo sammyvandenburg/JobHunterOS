@@ -13,6 +13,7 @@ they live under "More options" for people who want them.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -210,6 +211,31 @@ def answer(db: Database, key: str, value: str) -> dict:
     return {"ok": True, "note": note, "next": next_step(db)}
 
 
+def parse_work_modes(low: str) -> tuple[str | None, list[str]]:
+    """'remote only' -> required, [remote]; 'remote preferred, hybrid okay' -> preferred, [remote, hybrid];
+    'don't mind' -> no_preference, all three. Says which arrangements are acceptable at all."""
+    low = (low or "").strip().lower()
+    mapping = {"must": "required", "must have": "required", "required": "required", "only": "required", "yes": "required", "nice": "preferred", "nice to have": "preferred", "preferred": "preferred", "prefer": "preferred", "don't mind": "no_preference", "dont mind": "no_preference", "no preference": "no_preference", "either": "no_preference", "any": "no_preference", "skip": "no_preference", "no": "no_preference"}
+    hit = next((v for k, v in mapping.items() if k in low), None)
+    if not hit and "remote" in low:
+        hit = "preferred"
+    if not hit:
+        return None, ["remote", "hybrid", "onsite"]
+    modes = ["remote", "hybrid", "onsite"]
+    if hit == "required":
+        modes = ["remote"]
+    if re.search(r"\bhybrid\b", low) and not re.search(r"\b(no|not|never)\s+hybrid\b", low):
+        if "hybrid" not in modes:
+            modes.append("hybrid")
+    if re.search(r"\b(no|not|never)\s+(fully\s+)?(on-?site|office|in the office|in-office)\b|\bno office\b|\bnever (fully )?on-?site\b", low):
+        modes = [m for m in modes if m != "onsite"]
+    if re.search(r"\b(no|not|never)\s+hybrid\b", low):
+        modes = [m for m in modes if m != "hybrid"]
+    if re.search(r"\b(no|not|never)\s+remote\b", low):
+        modes = [m for m in modes if m != "remote"]
+    return hit, [m for m in ("remote", "hybrid", "onsite") if m in modes] or ["remote", "hybrid", "onsite"]
+
+
 def basics(
     db: Database,
     location: str | None = None,
@@ -253,11 +279,11 @@ def basics(
             prefs.salary_strength = "must" if "must" in low else "nice"
     if remote is not None:
         low = remote.strip().lower()
-        mapping = {"must": "required", "must have": "required", "required": "required", "yes": "required", "nice": "preferred", "nice to have": "preferred", "preferred": "preferred", "prefer": "preferred", "don't mind": "no_preference", "dont mind": "no_preference", "no preference": "no_preference", "no": "no_preference", "skip": "no_preference", "either": "no_preference", "any": "no_preference"}
-        hit = next((v for k, v in mapping.items() if k in low), None)
+        hit, modes = parse_work_modes(low)
         if not hit:
-            raise AnswerError("For remote, say: must have, nice to have, or don't mind.")
+            raise AnswerError("For remote, say: must have, nice to have, or don't mind. You can add 'hybrid is fine' or 'no office'.")
         prefs.remote = hit  # type: ignore[assignment]
+        prefs.work_modes = modes
     tz = timezone or prefs.timezone or detect_timezone()
     try:
         ZoneInfo(tz)

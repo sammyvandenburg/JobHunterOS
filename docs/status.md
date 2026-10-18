@@ -13,7 +13,7 @@
 | New-employer discovery and board promotion | yes | yes | partially (live feeds read; promotion verified with fixtures) | Bounded to 5 boards per hunt. |
 | Original-listing lookup | yes | yes | no | Never invents URLs. |
 | Dedupe, freshness, availability | yes | yes | n/a | |
-| Matching, groups, explanations (rule-based) | yes | yes | n/a | |
+| Matching, groups, explanations (rule-based) | yes | yes (candidate x job matrix: beginner, career changer, mid, senior; complete, borderline, decoy, empty and misleading postings) | n/a | Location that cannot be resolved goes to "Needs checking"; one selection feeds dashboard, CLI, digest and counts. |
 | Claude explanations unattended (`claude -p`) | yes | mocked | one tiny live call to confirm flags and JSON shape | Off by default; budget-capped. |
 | Claude explanations via `anthropic` SDK | yes | no | no | Needs `ANTHROPIC_API_KEY` and `--extra api`. |
 | Dashboard (sidebar shell, dashboard, New jobs with search/filters/sort/pages, Favorites, Saved, Applied, Finished, job pages with notes, settings, health) | yes | yes (TestClient + Playwright: toggles, notes, mobile layout) | yes, in a headless Chromium here, desktop and 390px wide | Loopback only. |

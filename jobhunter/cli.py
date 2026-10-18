@@ -194,8 +194,10 @@ def cmd_profile(args):
         elif args.profile_cmd == "approve":
             res = profile_svc.approve(db, summary_override=args.summary)
             from jobhunter.services import consent
+            from jobhunter.services.matching import engine
 
             consent.grant(db, "profile_approved", {"version": res["version"]})
+            res["rematched"] = engine.rematch_quietly(ctx, db).get("status")
             emit(args, {**res, "note": "Profile approved. Live hunting is now allowed."})
         elif args.profile_cmd == "questions":
             emit(args, profile_svc.open_questions(db))
@@ -205,7 +207,11 @@ def cmd_profile(args):
             profile_svc.skip_question(db, args.key)
             emit(args, {"skipped": args.key})
         elif args.profile_cmd == "correct":
-            emit(args, profile_svc.add_user_fact(db, " ".join(args.text), category=args.category, experience_kind=args.kind))
+            from jobhunter.services.matching import engine
+
+            res = profile_svc.correct(db, " ".join(args.text))
+            res["rematched"] = engine.rematch_quietly(ctx, db).get("status")
+            emit(args, res)
         elif args.profile_cmd == "submit":
             data = json.loads(Path(args.file).read_text(encoding="utf-8"))
             draft = ProfileDraft.model_validate(data)
@@ -236,7 +242,17 @@ def cmd_prefs(args):
         elif key in {"needs_sponsorship", "relocation"}:
             p.__setattr__(key, value.replace(" ", "_"))
         elif key == "remote":
-            p.remote = value.replace(" ", "_")  # type: ignore[assignment]
+            from jobhunter.services.onboarding import parse_work_modes
+
+            hit, modes = parse_work_modes(value)
+            p.remote = hit or value.replace(" ", "_")  # type: ignore[assignment]
+            p.work_modes = modes
+        elif key == "work_modes":
+            modes = [m.strip().lower().replace("in office", "onsite").replace("on-site", "onsite").replace("office", "onsite") for m in value.replace("/", ",").split(",") if m.strip()]
+            bad = [m for m in modes if m not in {"remote", "hybrid", "onsite"}]
+            if bad or not modes:
+                raise CliError("Work modes: a comma list of remote, hybrid, onsite.")
+            p.work_modes = [m for m in ("remote", "hybrid", "onsite") if m in modes]
         elif key == "salary_min":
             from jobhunter.services.onboarding import parse_salary_answer
 
@@ -257,7 +273,10 @@ def cmd_prefs(args):
             prefs_svc.save(db, p, reason=args.reason or "cli")
         except Exception as exc:
             raise CliError(f"Invalid value: {exc}") from exc
-        emit(args, {"set": key, "value": value})
+        from jobhunter.services.matching import engine
+
+        rematch = engine.rematch_quietly(ctx, db)
+        emit(args, {"set": key, "value": value, "rematched": rematch.get("status")})
     elif args.prefs_cmd == "revert":
         emit(args, {"reverted": prefs_svc.revert_last(db, args.key)})
     elif args.prefs_cmd == "history":

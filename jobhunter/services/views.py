@@ -52,7 +52,8 @@ def _where(view: str, group: str | None, query: str | None, remote: str | None =
     elif view == "excluded":
         clauses.append("match_group = 'excluded'")
     elif view == "uncertain":
-        clauses.append("relevance = 'uncertain' AND (match_group IS NULL OR match_group NOT IN ('good','worth_a_shot','backup'))")
+        # Needs checking: the location could not be resolved, or the title is unusual and nothing lifted it into a group.
+        clauses.append("availability != 'closed' AND COALESCE(dismiss_state,'') != 'dismissed' AND (match_group = 'uncertain' OR (relevance = 'uncertain' AND (match_group IS NULL OR match_group NOT IN ('good','worth_a_shot','backup','excluded'))))")
     elif view == "closed":
         clauses.append("availability = 'closed'")
     if group:
@@ -76,6 +77,18 @@ def _where(view: str, group: str | None, query: str | None, remote: str | None =
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
+def current_recommended(db: Database, limit: int | None = None, exclude_ids: set[int] | None = None) -> list[dict]:
+    """The one selection every surface uses: current approved profile and policy, current preferences,
+    the three groups, within the 14-day window, not closed, not dismissed, not applied. Best match first."""
+    res = list_jobs(db, view="new", per_page=max(limit or 0, 200) if limit else 500)
+    items = [i for i in res["items"] if not exclude_ids or i["id"] not in exclude_ids]
+    return items[:limit] if limit else items
+
+
+def current_recommended_count(db: Database) -> int:
+    return list_jobs(db, view="new", per_page=1)["total"]
+
+
 def list_jobs(db: Database, view: str = "new", group: str | None = None, query: str | None = None, page: int = 1, per_page: int = 20, sort: str = "best", remote: str | None = None, age: str | None = None, country: str | None = None, fav_only: bool = False, saved_only: bool = False) -> dict:
     where, params = _where(view, group, query, remote, age, country, fav_only, saved_only)
     order = {
@@ -93,7 +106,7 @@ def list_jobs(db: Database, view: str = "new", group: str | None = None, query: 
     return {"view": view, "group": group, "query": query, "page": page, "per_page": per_page, "total": total, "pages": max(1, math.ceil(total / per_page)), "items": items, "filters": {"remote": remote, "age": age, "country": country, "fav_only": fav_only, "saved_only": saved_only, "sort": sort}}
 
 
-GROUP_LABELS = {"good": "Good match", "worth_a_shot": "Worth a shot", "backup": "Backup", "excluded": "Left out", "uncertain": "Not sure"}
+GROUP_LABELS = {"good": "Good match", "worth_a_shot": "Worth a shot", "backup": "Backup", "excluded": "Left out", "uncertain": "Needs checking"}
 
 
 def summarize(r: dict) -> dict:

@@ -50,6 +50,7 @@ uv run jobhunter jobs list            # best new matches (views: new, favorites,
 uv run jobhunter jobs show <id>
 uv run jobhunter apply prepare <id>   # application package (nothing is submitted)
 uv run jobhunter act applied <id>     # you applied; Hunter records it
+uv run jobhunter prefs set remote "remote preferred, hybrid ok, no office"   # or: prefs set work_modes remote,hybrid
 uv run jobhunter act favorite <id>    # star a job (act save <id> bookmarks it; act note <id> your words here keeps a private note)
 uv run jobhunter dashboard            # local dashboard
 uv run jobhunter schedule show        # how often, when to tell you, worker health
