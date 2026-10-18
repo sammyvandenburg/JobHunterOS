@@ -21,10 +21,12 @@
 | Dashboard (sidebar shell, dashboard, New jobs with search/filters/sort/pages, Favorites, Saved, Applied, Finished, job pages with notes, settings, health) | yes | yes (TestClient + Playwright: toggles, notes, mobile layout) | yes, in a headless Chromium here, desktop and 390px wide | Loopback only. |
 | Fresh-install journey in a real browser (upload -> approve -> preferences -> background search -> favorite/save/notes -> Help me apply twice -> applied -> restart -> profile and country change move dashboard and digest together) | yes | yes (Playwright, synthetic sources) | yes, headless Chromium here | `tests/test_journey.py`; on macOS the same walk is a manual check. |
 | Actions, pipeline, undo, honest counts | yes | yes | n/a | |
-| Scheduler logic (DST, catch-up, pause/resume) and worker | yes | yes | worker loop run locally in tests (`tick`), not as an installed service | Service templates printed, never installed. |
-| Digest composition, allowlist, history | yes | yes | no real email sent | |
-| SMTP transport | yes | mocked | no | |
-| Gmail send (OAuth) | yes | mocked | no | Needs a Google OAuth client. |
+| Scheduler logic (DST, catch-up, pause/resume) and worker | yes | yes | worker loop run locally in tests (`tick`), not as an installed service | |
+| Automatic hunting inside Hunter (starts with the dashboard, one lock with the worker) | yes | yes (unit + browser, incl. restart and a scheduled digest) | yes, in tests | `jobhunter/services/autorun.py` |
+| Login task install/remove from the dashboard after explicit approval (launchd, systemd user, schtasks) | yes | yes (recorded command runner, all three systems) | no real `launchctl`/`systemctl`/`schtasks` run here | Needs a check on a real Mac/Windows machine. |
+| Digest composition, allowlist, history, test email | yes | yes | no real email sent | |
+| SMTP transport (advanced fallback) | yes | mocked | no | |
+| Connect Gmail from the dashboard (PKCE, loopback redirect, scope check, suggested recipient, refresh, expiry → Needs attention, disconnect) | yes | yes (fake Google on localhost, HTTP + real browser) | no live Google account or OAuth client here | KubeCraft must publish the shared OAuth client and pass Google verification for `gmail.send`; see docs/email.md. |
 | Gmail read sync, classification, linking, disconnect | yes | yes (fake API) | no | Needs a Google OAuth client; Testing-mode tokens expire after 7 days. |
 | Manual email import | yes | yes | n/a | |
 | Application preparation, drafts, outreach, follow-ups | yes | yes | n/a | Never submits or sends. |

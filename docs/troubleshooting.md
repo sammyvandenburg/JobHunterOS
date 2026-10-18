@@ -15,10 +15,11 @@ Every error Hunter shows says what happened and what to do next. This page cover
 | "A hunt is already running" | Another process holds the hunt lock | Wait; stale runs are cleared after 20 minutes without a heartbeat. |
 | Dashboard shows "This dashboard only answers to localhost" | You opened it with another hostname | Use http://127.0.0.1:8765/. |
 | "Form expired or invalid" | CSRF token mismatch (old tab, cleared cookies) | Reload the page and try again. |
-| Schedule is on but nothing runs | No worker process | `jobhunter worker run` or install a service from `jobhunter schedule install --print`. The Connections page shows worker health. |
-| Digest `failed: No email transport` | No SMTP or Gmail send configured | `jobhunter digest smtp ...` or `email connect gmail-send`. Preview still works. |
+| "Automatic hunting: on, but nothing is running it" | Hunter is closed and no login task is installed | Open Hunter (the schedule runs inside it), or tick the approval box and press "Keep hunting when Hunter is closed" on the Connections page. |
+| Digest `failed: No email transport` | Gmail is not connected (and no SMTP fallback) | Press Connect Gmail on the Connections page (or `jobhunter email connect gmail-send`). Preview still works. |
+| "Google sign-in is not available yet" | Hunter could not get KubeCraft's Google sign-in details | Try again with internet; if it keeps failing, KubeCraft has not published the OAuth client yet (docs/email.md), or set `JOBHUNTER_GOOGLE_CLIENT_ID/SECRET` or drop the client JSON in `~/.jobhunteros/google_client.json`. |
 | Digest `uncertain` | The mail server errored after accepting the connection | Check your inbox; Hunter will not resend that digest automatically. `digest send --confirm` sends a new one only if there is new content. |
-| Gmail: "Could not refresh the Gmail token" | Testing-mode token expired after 7 days, or access was revoked | `jobhunter email connect gmail-read --client-secret ...` again. See docs/email.md for the Google rules. |
+| "Your Gmail connection stopped working" / Needs attention | Google ended the sign-in (Testing-mode tokens expire after 7 days) or you removed access | Press "Connect Gmail again" on the Connections page. Your address and history stay. See docs/email.md for the Google rules. |
 | Gmail: 403 | The granted scope does not allow the call | Reconnect; make sure you accepted the read-only permission. |
 | "Secret storage: file-plain ... not encryption" | No OS keyring available | Set `JOBHUNTER_SECRETS_PASSPHRASE` (also in the worker's environment) or install a keyring backend. |
 | Claude explanations say "unavailable" | No `claude` login and no API key | Fine: results are rule-based. In Claude Code you can write explanations in-session (`/jobhunter`). |

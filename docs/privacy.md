@@ -7,6 +7,7 @@ Everything is on your computer under `~/.jobhunteros` (or `JOBHUNTER_HOME`): the
 - Read-only requests to the job sources you enabled (board tokens and feed queries only; never your profile).
 - Public GitHub metadata for repositories you listed.
 - With your consent: minimized job and profile text to Claude (docs/model.md); your digest to your confirmed address; OAuth exchanges with Google.
+- When you press Connect Gmail and no client is configured locally: one HTTPS download of KubeCraft's public OAuth client details (`https://jobhunter.kubecraft.nl/google-oauth-client.json`). Nothing about you is sent with it.
 `uv run jobhunter consent list` shows every permission you granted and when.
 
 ## Secrets

@@ -38,7 +38,7 @@ Your private data lives in `~/.jobhunteros` (change with `JOBHUNTER_HOME`). Noth
 | "Show me the best options" | Good matches, Worth a shot, Backup options, only in the countries you can work in. Each with the real remote rule, pay as stated, freshness, plain reasons tied to your CV, things to check, links, and one next step. No percentages. |
 | "Help me apply" | Shows who they are looking for, how well you fit and why, how to present yourself, draft answers from your CV, and what only you can answer. You apply yourself. |
 | "I applied" / "they replied" | Tracks the pipeline from your confirmations or from job-search emails you let it read (Gmail, read-only, optional). Automated receipts never count as replies. |
-| "Look every day" | A local worker runs hunts on your schedule and, if you ask, emails a digest to one confirmed address. Dashboard-only is the default. |
+| "Look every day" | Automatic hunting runs inside Hunter on your schedule (or, after your explicit approval, as a small login task when Hunter is closed) and, if you ask, emails a digest to one confirmed address. Dashboard-only is the default. |
 | "Interview confirmed" | Exports an InterviewOS hand-off (Markdown) with the vacancy snapshot, the exact CV version, what was actually sent versus drafts, evidence, and gaps. |
 
 ## Commands you will actually use
@@ -53,8 +53,10 @@ uv run jobhunter act applied <id>     # you applied; Hunter records it
 uv run jobhunter prefs set remote "remote preferred, hybrid ok, no office"   # or: prefs set work_modes remote,hybrid
 uv run jobhunter act favorite <id>    # star a job (act save <id> bookmarks it; act note <id> your words here keeps a private note)
 uv run jobhunter dashboard            # local dashboard
-uv run jobhunter schedule show        # how often, when to tell you, worker health
-uv run jobhunter worker run           # the background worker (keep it running, or install a service)
+uv run jobhunter email connect gmail-send   # Connect Gmail (the dashboard button does the same)
+uv run jobhunter digest test                # a test email to your confirmed address
+uv run jobhunter schedule automatic on      # automatic hunting (--keep-running-when-closed adds a login task)
+uv run jobhunter schedule status            # what is running it, next run, worker health
 uv run jobhunter status               # honest lifetime totals
 uv run jobhunter --help               # everything else; add --json to any command
 ```
@@ -63,8 +65,8 @@ uv run jobhunter --help               # everything else; add --json to any comma
 
 - [docs/setup.md](docs/setup.md): environment checks, platforms, first run, updating.
 - [docs/sources.md](docs/sources.md): every job source, its access method, terms, limits, and verification date.
-- [docs/email.md](docs/email.md): digests, Gmail read-only connection, OAuth setup, what the permissions really grant.
-- [docs/scheduling.md](docs/scheduling.md): the worker, service templates, host-awake limits, safe disabling.
+- [docs/email.md](docs/email.md): Connect Gmail in a minute, what the permissions really grant, the Google-side setup KubeCraft completes, SMTP as the advanced fallback.
+- [docs/scheduling.md](docs/scheduling.md): automatic hunting inside Hunter, the optional login task, host-awake limits, safe disabling.
 - [docs/model.md](docs/model.md): how Claude is used in-session and (optionally) unattended; authentication and cost.
 - [docs/privacy.md](docs/privacy.md): what leaves your machine, storage, backups, deletion, security model.
 - [docs/troubleshooting.md](docs/troubleshooting.md).
