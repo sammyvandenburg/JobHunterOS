@@ -28,3 +28,9 @@ Every error Hunter shows says what happened and what to do next. This page cover
 | Want to start over | | `jobhunter data export` (optional), then `jobhunter data delete --confirm DELETE`. |
 
 Logs: the worker prints to its terminal or to the paths in the service template; the CLI prints errors directly. Nothing personal is logged beyond what you see.
+
+## "Hunter cannot read its secret store"
+The file that holds your email tokens is encrypted with the passphrase in `JOBHUNTER_SECRETS_PASSPHRASE`. If that passphrase changed or the file is damaged, Hunter stops and changes nothing: it never replaces your tokens with an empty file. Set the passphrase you used before, or run `uv run jobhunter data reset-secrets`, which moves the unreadable file aside (it is kept, not deleted) and lets you connect email again.
+
+## "An email digest may or may not have arrived"
+When the email provider does not confirm delivery, Hunter records the digest as uncertain and never sends it again by itself. Under Needs attention you can say "It arrived" or "Send again". Sending again can mean you get the same email twice; Hunter says so before it does it.

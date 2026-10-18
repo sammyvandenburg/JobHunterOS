@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import os
 import platform
+import plistlib
+import shlex
 import signal
 import sys
 import time
@@ -43,11 +45,17 @@ def tick(ctx: AppContext, db: Database) -> dict:
     if decision["run"]:
         try:
             stats = hunt.run_hunt(ctx, db, trigger="scheduled")
+        except (hunt.HuntInProgress, hunt.HuntNotAllowed) as exc:
+            # Nothing ran (another hunt holds the lock, or setup is not finished). Leave the slot due so the next tick tries again.
+            out["hunt"] = {"skipped": str(exc)}
+        except Exception:
+            # The hunt started and failed; run_hunt recorded that on its hunt_runs row.
+            # Count the slot as used so a broken source does not retry every minute.
+            schedule.mark_ran(db)
+            raise
+        else:
             out["ran_hunt"] = True
             out["hunt"] = {k: stats.get(k) for k in ("run_id", "status", "jobs_new", "jobs_relevant_new", "sources_failed")}
-        except hunt.HuntInProgress as exc:
-            out["hunt"] = {"skipped": str(exc)}
-        finally:
             schedule.mark_ran(db)
     if schedule.digest_due(db):
         try:
@@ -113,8 +121,11 @@ def service_templates(ctx: AppContext) -> dict:
     python = sys.executable
     uv = _which("uv")
     repo = Path(__file__).resolve().parents[2]
-    cmd = f"{uv} run --project {repo} jobhunter worker run" if uv else f"{python} -m jobhunter worker run"
-    env_line = f"Environment=JOBHUNTER_HOME={ctx.paths.home}"
+    argv = [uv, "run", "--project", str(repo), "jobhunter", "worker", "run"] if uv else [python, "-m", "jobhunter", "worker", "run"]
+    cmd = shlex.join(argv)  # one shell-safe line; paths with spaces stay intact
+    home = str(ctx.paths.home)
+    logs = ctx.paths.logs_dir
+    env_line = f'Environment="JOBHUNTER_HOME={_systemd_escape(home)}"'
     systemd = f"""# Save as ~/.config/systemd/user/jobhunter-worker.service, then:
 #   systemctl --user daemon-reload && systemctl --user enable --now jobhunter-worker
 #   loginctl enable-linger $USER   # keeps it running after you log out (machine must stay on)
@@ -134,33 +145,66 @@ RestartSec=30
 [Install]
 WantedBy=default.target
 """
-    launchd = f"""<!-- Save as ~/Library/LaunchAgents/com.kubecraft.jobhunter.worker.plist, then:
-       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kubecraft.jobhunter.worker.plist
-     Runs while you are logged in and the Mac is awake. -->
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>com.kubecraft.jobhunter.worker</string>
-  <key>ProgramArguments</key><array>{''.join(f'<string>{p}</string>' for p in cmd.split())}</array>
-  <key>WorkingDirectory</key><string>{repo}</string>
-  <key>EnvironmentVariables</key><dict><key>JOBHUNTER_HOME</key><string>{ctx.paths.home}</string><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string></dict>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>{ctx.paths.logs_dir}/worker.log</string>
-  <key>StandardErrorPath</key><string>{ctx.paths.logs_dir}/worker.err.log</string>
-</dict></plist>
-"""
+    # launchd: a real plist built by plistlib (valid XML, argv as a list). Instructions stay outside the XML
+    # because anything before the <?xml ...?> declaration makes launchctl reject the file.
+    launchd_instructions = (
+        "# Save ONLY the XML below as ~/Library/LaunchAgents/com.kubecraft.jobhunter.worker.plist, then:\n"
+        "#   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kubecraft.jobhunter.worker.plist\n"
+        "# Runs while you are logged in and the Mac is awake.\n"
+    )
+    launchd = plistlib.dumps(
+        {
+            "Label": "com.kubecraft.jobhunter.worker",
+            "ProgramArguments": argv,
+            "WorkingDirectory": str(repo),
+            "EnvironmentVariables": {"JOBHUNTER_HOME": home, "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"},
+            "RunAtLoad": True,
+            "KeepAlive": True,
+            "StandardOutPath": str(logs / "worker.log"),
+            "StandardErrorPath": str(logs / "worker.err.log"),
+        },
+        sort_keys=False,
+    ).decode("utf-8")
+    ps_args = " ".join(_win_arg(a) for a in argv[1:])
     windows = f"""# Windows (PowerShell, run as your user). Creates a task that starts the worker at logon.
-$action = New-ScheduledTaskAction -Execute "{uv or python}" -Argument "{'run --project ' + str(repo) + ' jobhunter worker run' if uv else '-m jobhunter worker run'}" -WorkingDirectory "{repo}"
+# If you moved the data folder, tell Windows first (the task inherits your user environment):
+#   [Environment]::SetEnvironmentVariable('JOBHUNTER_HOME', {_ps_str(home)}, 'User')
+$action = New-ScheduledTaskAction -Execute {_ps_str(argv[0])} -Argument {_ps_str(ps_args)} -WorkingDirectory {_ps_str(str(repo))}
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 Register-ScheduledTask -TaskName "JobHunterOS worker" -Action $action -Trigger $trigger -Description "Scheduled job hunts (runs while you are logged in)"
 # Remove later with: Unregister-ScheduledTask -TaskName "JobHunterOS worker" -Confirm:$false
 """
     cron = f"""# Alternative without a long-running process: a cron entry that checks every 15 minutes.
 # Add with `crontab -e`. The worker exits immediately when nothing is due.
-*/15 * * * * cd {repo} && JOBHUNTER_HOME={ctx.paths.home} {cmd} --once >> {ctx.paths.logs_dir}/worker-cron.log 2>&1
+*/15 * * * * cd {shlex.quote(str(repo))} && JOBHUNTER_HOME={shlex.quote(home)} {cmd} --once >> {shlex.quote(str(logs / "worker-cron.log"))} 2>&1
 """
-    return {"platform": platform.system(), "command": cmd, "systemd": systemd, "launchd": launchd, "windows": windows, "cron": cron}
+    return {
+        "platform": platform.system(),
+        "command": cmd,
+        "command_argv": argv,
+        "systemd": systemd,
+        "launchd": launchd,
+        "launchd_instructions": launchd_instructions,
+        "windows": windows,
+        "cron": cron,
+    }
+
+
+def _systemd_escape(value: str) -> str:
+    """Inside a double-quoted systemd Environment= assignment only backslash and double quote need escaping."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _ps_str(value: str) -> str:
+    """A PowerShell single-quoted literal: only the quote itself is special (doubled)."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _win_arg(value: str) -> str:
+    """One argument inside a Windows command line: double-quote it when it has spaces."""
+    if any(ch.isspace() for ch in value) or not value:
+        return '"' + value.replace('"', '\\"') + '"'
+    return value
 
 
 def _which(name: str) -> str | None:

@@ -18,7 +18,7 @@ from jobhunter.models import ApplicationDraft, DraftAnswer, Fact, OutreachDraft
 from jobhunter.services import actions
 from jobhunter.services import documents as docs
 from jobhunter.services import profile as profile_svc
-from jobhunter.util import now, now_iso, parse_iso
+from jobhunter.util import now, now_iso, parse_iso, sha256_text, stable_json
 
 SENSITIVE = re.compile(r"(work authori[sz]ation|right to work|visa|sponsorship|salary|compensation|expected pay|notice period|start date|availability|gender|ethnicity|race|disability|veteran|religion|sexual orientation|age|date of birth|criminal|background check|nationality|citizenship|marital)", re.I)
 COMMON_QUESTIONS = [
@@ -45,26 +45,51 @@ def _facts(db: Database) -> tuple[dict, list[Fact]]:
     return profile, [f for f in profile["facts"] if f.status != "rejected"]
 
 
-def validate_text(text: str, fact_ids: list[str], facts: list[Fact], job_text: str = "") -> list[str]:
-    """Return problems: unknown fact ids, unsupported numbers or credentials."""
+CLAIM_RULES = [
+    # (name, what the candidate text claims, what a paid role fact must show, plain message)
+    ("leadership", re.compile(r"\b(led|lead|leading|managed|manage|managing|mentored|headed|supervised)\s+(?:[\w-]+\s+){0,3}?(team|teams|people|engineers|developers|department|squad|staff)\b|\b(team lead|tech lead|engineering manager)\b", re.I), re.compile(r"\b(lead|led|leading|manag\w*|mentor\w*|head of|team lead|tech lead|supervis\w*)\b", re.I), "says you led or managed people, but your paid roles do not show that"),
+    ("ownership", re.compile(r"\b(i|we)\s+(?:[\w-]+\s+){0,2}?(owned|own|was responsible for|were responsible for|architected|operated|operate|ran|run|maintained|administered)\b", re.I), re.compile(r"\b(own\w*|responsib\w*|operat\w*|architect\w*|maintain\w*|administ\w*|manag\w*|run|ran|built|engineer\w*|sre|devops|platform|infrastructure|sysadmin|administrator)\b", re.I), "says you owned or ran something at work, but your paid roles do not show that"),
+    ("production", re.compile(r"\bproduction\b|\bin prod\b", re.I), re.compile(r"\bproduction\b|\b(sre|site reliability|devops|platform|infrastructure|systems? (administrator|engineer)|sysadmin|operations|on-call|incident)\b", re.I), "mentions production work, but your paid roles do not show it"),
+    ("scale", re.compile(r"\b(at scale|large[- ]scale|enterprise[- ]scale|thousands of|hundreds of|millions of)\b", re.I), re.compile(r"\b(scale|thousands|hundreds|millions)\b", re.I), "claims scale that your facts do not show"),
+]
+IDENTITY_OK = re.compile(r"\b\d+(?:[.,]\d+)?\b")
+
+
+def validate_text(text: str, fact_ids: list[str], facts: list[Fact], job_text: str = "", identity_text: str | None = None) -> list[str]:
+    """Return problems: unknown fact ids, numbers, credentials, or responsibility claims without candidate evidence.
+
+    The job text never supports a candidate claim: an employer's "100 clusters" is theirs, not the person's.
+    Only numbers that are part of the job's identity (title, employer name) are allowed from the job side.
+    Leadership, ownership, production and scale claims need a paid role that shows them; projects do not count.
+    """
     problems = []
     known = {f.id: f for f in facts}
     for fid in fact_ids:
         if fid not in known:
             problems.append(f"unknown fact id {fid}")
-    fact_text = " ".join(known[f].text.lower() for f in fact_ids if f in known) or " ".join(f.text.lower() for f in facts)
-    allowed = (fact_text + " " + job_text.lower())
-    for num in re.findall(r"\b\d+(?:[.,]\d+)?\b", text):
-        if num not in allowed:
-            problems.append(f"number '{num}' is not supported by your facts or the job text")
+    cited = [known[f] for f in fact_ids if f in known]
+    pool = cited or list(facts)
+    all_fact_text = " ".join(f.text.lower() for f in facts)
+    identity_numbers = set(IDENTITY_OK.findall(identity_text or ""))
+    fact_numbers = set(IDENTITY_OK.findall(all_fact_text))
+    for num in IDENTITY_OK.findall(text):
+        if num not in fact_numbers and num not in identity_numbers:
+            problems.append(f"number '{num}' is not in your facts (it may come from the job text)")
     for cert in ("cka", "ckad", "cks", "aws certified", "azure certified", "terraform associate", "rhcsa", "rhce", "lpic"):
-        if cert in text.lower() and cert not in fact_text:
+        if cert in text.lower() and cert not in all_fact_text:
             problems.append(f"'{cert}' is not in your approved facts")
+    if re.search(r"\bcertified\b", text, re.I) and not any(f.category == "certification" for f in facts):
+        problems.append("says 'certified', but your facts list no certification")
     for word in ("years of experience", "years' experience"):
         if word in text.lower():
             m = re.search(r"(\d+)\+?\s+years", text.lower())
-            if m and m.group(1) not in fact_text:
+            if m and m.group(1) not in all_fact_text:
                 problems.append("a years-of-experience claim is not supported by your facts")
+    paid = [f for f in pool if f.category == "role" and f.experience_kind == "professional"]
+    paid_text = " ".join(f.text.lower() for f in paid)
+    for _name, claim_rx, support_rx, message in CLAIM_RULES:
+        if claim_rx.search(text) and not (paid and support_rx.search(paid_text)):
+            problems.append(message)
     return problems
 
 
@@ -112,13 +137,79 @@ def rule_based_answers(job: dict, facts: list[Fact]) -> ApplicationDraft:
     return ApplicationDraft(answers=answers, intro=None, missing=missing)
 
 
-def prepare(ctx: AppContext, db: Database, job_id: int, use_model: bool = False) -> dict:
-    """Build the application package: unchanged CV, links, answers, checklist."""
+PACKAGE_POLICY_VERSION = "2026.10-2"
+
+
+def _profile_fingerprint(profile: dict) -> str:
+    facts = [f.model_dump(mode="json") for f in profile["facts"]]
+    return sha256_text(stable_json({"id": profile["id"], "facts": facts, "targets": profile.get("targets")}))
+
+
+def package_inputs_hash(job: dict, profile: dict, cv: dict | None) -> str:
+    """Everything a package depends on. Same hash = same package; a change marks older packages outdated."""
+    return sha256_text(
+        stable_json(
+            {
+                "job": {k: job.get(k) for k in ("description_hash", "title", "employer_name", "apply_url", "direct_url", "location_text", "salary_text", "remote_restriction")},
+                "profile": _profile_fingerprint(profile),
+                "cv": cv["sha256"] if cv else None,
+                "policy": PACKAGE_POLICY_VERSION,
+            }
+        )
+    )
+
+
+def _require_ready_profile(db: Database) -> tuple[dict, list[Fact]]:
+    profile, facts = _facts(db)
+    if db.get_setting("profile.needs_review"):
+        raise DraftError("You added a new file. Please check your profile and press 'Yes, this looks right' first. Then I can help you apply.")
+    return profile, facts
+
+
+def current_package(db: Database, job_id: int) -> dict | None:
+    row = db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' AND status = 'draft' ORDER BY id DESC LIMIT 1", (job_id,))
+    if not row:
+        row = db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (job_id,))
+    if not row:
+        return None
+    content = json.loads(row["content_json"])
+    content["draft_id"] = row["id"]
+    content["application_id"] = row.get("application_id")
+    content["status"] = row["status"]
+    content["inputs_hash"] = row.get("inputs_hash")
+    content["created_at"] = row["created_at"]
+    return content
+
+
+def package_is_outdated(db: Database, job: dict, package: dict | None) -> bool:
+    """True when the job text, the approved facts, or the CV changed since this package was made."""
+    if not package:
+        return False
+    try:
+        profile, _ = _facts(db)
+    except DraftError:
+        return False
+    cv = docs.current_document(db, "cv")
+    return package.get("inputs_hash") != package_inputs_hash(job, profile, cv)
+
+
+def prepare(ctx: AppContext, db: Database, job_id: int, use_model: bool = False, regenerate: bool = False) -> dict:
+    """Build the application package: unchanged CV, links, answers, checklist.
+
+    Idempotent: the same job, approved facts, CV and policy give back the same package.
+    When any of those changed, older packages are marked outdated and a new version is made.
+    Repeated or simultaneous clicks never create duplicates (unique index + one write transaction).
+    """
     job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (job_id,))
     if not job:
         raise DraftError(f"Job {job_id} not found.")
-    profile, facts = _facts(db)
+    profile, facts = _require_ready_profile(db)
     cv = docs.current_document(db, "cv")
+    inputs_hash = package_inputs_hash(job, profile, cv)
+    existing = db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' AND status = 'draft' ORDER BY id DESC LIMIT 1", (job_id,))
+    if existing and existing.get("inputs_hash") == inputs_hash and not regenerate:
+        return _package_result(existing, reused=True)
+
     integrity = [r for r in docs.verify_integrity(db) if cv and r["id"] == cv["id"]]
     links = [e.ref for f in facts if f.category == "project" for e in f.evidence if e.type in {"repository", "link"}]
     draft = rule_based_answers(job, facts)
@@ -151,20 +242,42 @@ def prepare(ctx: AppContext, db: Database, job_id: int, use_model: bool = False)
         "draft": draft.model_dump(mode="json"),
         "created_by": created_by,
         "validation_problems": problems,
+        "profile_version_id": profile["id"],
         "reminder": "Hunter prepares, you apply. When you have sent it, press 'I applied'.",
     }
     with db.tx():
-        draft_id = db.insert("drafts", {"job_id": job_id, "kind": "package", "content_json": json.dumps(package), "validation_json": json.dumps(problems), "created_by": created_by, "created_at": now_iso()})
+        # Re-check inside the write lock: another click may have made this exact package meanwhile.
+        again = db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' AND status = 'draft' ORDER BY id DESC LIMIT 1", (job_id,))
+        if again and again.get("inputs_hash") == inputs_hash and not regenerate:
+            return _package_result(again, reused=True)
+        if again and regenerate and existing and again["id"] != existing["id"] and again.get("inputs_hash") == inputs_hash:
+            return _package_result(again, reused=True)  # a parallel regenerate already made the new version
+        db.execute("UPDATE drafts SET status = 'outdated' WHERE job_id = ? AND kind = 'package' AND status = 'draft'", (job_id,))
+        version = db.fetchone("SELECT COUNT(*) AS n FROM drafts WHERE job_id = ? AND kind = 'package'", (job_id,))["n"] + 1
+        package["version"] = version
+        draft_id = db.insert("drafts", {"job_id": job_id, "kind": "package", "content_json": json.dumps(package), "validation_json": json.dumps(problems), "created_by": created_by, "created_at": now_iso(), "inputs_hash": inputs_hash})
         app = actions.mark_prepared(db, job_id, cv_document_id=cv["id"] if cv else None)
         db.update("drafts", {"application_id": app["application_id"]}, "id = ?", (draft_id,))
     package["draft_id"] = draft_id
     package["application_id"] = app["application_id"]
+    package["reused"] = False
+    package["status"] = "draft"
+    return package
+
+
+def _package_result(row: dict, reused: bool) -> dict:
+    package = json.loads(row["content_json"])
+    package["draft_id"] = row["id"]
+    package["application_id"] = row.get("application_id")
+    package["reused"] = reused
+    package["status"] = row["status"]
     return package
 
 
 def validate_draft(db: Database, job: dict, draft: ApplicationDraft) -> tuple[ApplicationDraft, list[str]]:
     _, facts = _facts(db)
     job_text = (job.get("description_text") or "") + " " + (job.get("title") or "")
+    identity = f"{job.get('title') or ''} {job.get('employer_name') or ''}"
     problems: list[str] = []
     kept: list[DraftAnswer] = []
     for a in draft.answers:
@@ -172,7 +285,7 @@ def validate_draft(db: Database, job: dict, draft: ApplicationDraft) -> tuple[Ap
             problems.append(f"'{a.question}' must be answered by you; the draft answer was removed.")
             a.answer = ""
             a.needs_user = True
-        issues = validate_text(a.answer, a.fact_ids, facts, job_text) if a.answer else []
+        issues = validate_text(a.answer, a.fact_ids, facts, job_text, identity_text=identity) if a.answer else []
         if issues:
             problems.append(f"'{a.question[:40]}': " + "; ".join(issues))
             a.note = ((a.note or "") + " Removed an unsupported claim; please rewrite.").strip()
@@ -181,7 +294,7 @@ def validate_draft(db: Database, job: dict, draft: ApplicationDraft) -> tuple[Ap
         kept.append(a)
     draft.answers = kept
     if draft.intro:
-        issues = validate_text(draft.intro, draft.intro_fact_ids, facts, job_text)
+        issues = validate_text(draft.intro, draft.intro_fact_ids, facts, job_text, identity_text=identity)
         if issues:
             problems.append("intro: " + "; ".join(issues))
             draft.intro = None
@@ -215,7 +328,7 @@ def outreach(db: Database, job_id: int, contact_name: str | None, purpose: str =
         )
         subject = f"Question about the {job['title']} role"
     draft = OutreachDraft(subject=subject, body=body, fact_ids=[f.id for f in skills])
-    problems = validate_text(draft.body, draft.fact_ids, facts, job.get("description_text") or "")
+    problems = validate_text(draft.body, draft.fact_ids, facts, job.get("description_text") or "", identity_text=f"{job.get('title') or ''} {job.get('employer_name') or ''}")
     with db.tx():
         app = db.fetchone("SELECT id FROM applications WHERE job_id = ?", (job_id,))
         did = db.insert("drafts", {"job_id": job_id, "application_id": app["id"] if app else None, "kind": purpose, "content_json": draft.model_dump_json(), "validation_json": json.dumps(problems), "created_by": "rules", "created_at": now_iso()})
@@ -278,7 +391,11 @@ def _section(desc: str, heading_rx, limit: int = 6) -> list[str]:
 
 
 def fit_report(job: dict, facts: list[Fact], years: float | None = None) -> dict:
-    """Plain-language view: who they want, what you match, what you miss, how to present yourself."""
+    """Plain-language view in four parts: what they need, your proof, what to check, your next step.
+
+    "Proof" only ever comes from the person's own facts. Missing things are "not in your profile",
+    never "you have never done this".
+    """
     from jobhunter.services.matching.scoring import candidate_skills, job_tools, tool_label
     from jobhunter.services.normalize import seniority_of
 
@@ -295,56 +412,56 @@ def fit_report(job: dict, facts: list[Fact], years: float | None = None) -> dict
 
     want = _section(desc, REQ_HEADINGS, 6)
     doing = _section(desc, RESP_HEADINGS, 4)
-    who = []
+    need = []
     level_word = {"intern": "an intern", "junior": "someone early in their career", "mid": "someone who can work on their own", "senior": "an experienced engineer who can lead work", "staff": "a very senior engineer who sets direction"}.get(seniority, "an engineer")
-    who.append(f"They want {level_word}" + (f" with about {years_required}+ years." if years_required else "."))
+    need.append(f"They want {level_word}" + (f" with about {years_required}+ years." if years_required else "."))
     if tools:
-        who.append("Tools they name: " + ", ".join(tool_label(t) for t in tools[:8]) + ("." if len(tools) <= 8 else " and more."))
-    who += [f"They say: {w}" for w in want[:4]]
+        need.append("Tools they name: " + ", ".join(tool_label(t) for t in tools[:8]) + ("." if len(tools) <= 8 else " and more."))
+    need += [f"They say: {w}" for w in want[:4]]
     if doing:
-        who.append("Day to day: " + "; ".join(doing[:3]) + ".")
+        need.append("Day to day: " + "; ".join(doing[:3]) + ".")
 
-    match_lines = []
+    proof = []
     if have:
-        match_lines.append("Your CV shows " + ", ".join(tool_label(t) for t in have[:6]) + ".")
+        proof.append("Your CV shows " + ", ".join(tool_label(t) for t in have[:6]) + ".")
     if roles:
-        match_lines.append(f"You have paid experience: {roles[0].text}.")
+        proof.append(f"Paid experience: {roles[0].text}.")
     if certs:
-        match_lines.append("Certified: " + ", ".join(c.text for c in certs[:2]) + ".")
+        proof.append("Certified: " + ", ".join(c.text for c in certs[:2]) + ".")
     if projects and (miss or not roles):
-        match_lines.append(f"Project work you can point to: {projects[0].text[:120]}.")
+        proof.append(f"Project you can point to: {projects[0].text[:120]}.")
 
-    miss_lines = []
+    check = []
     if miss:
-        miss_lines.append("They mention " + ", ".join(tool_label(t) for t in miss[:6]) + ". Your CV does not show " + ("it" if len(miss) == 1 else "these") + ".")
+        check.append("They mention " + ", ".join(tool_label(t) for t in miss[:6]) + ". " + ("It is" if len(miss) == 1 else "These are") + " not in your profile yet.")
     if years_required and years is not None and years_required > years + 1:
-        miss_lines.append(f"They ask for about {years_required} years. You have about {years:g}.")
+        check.append(f"They ask for about {years_required} years. Your profile shows about {years:g}.")
     if not roles:
-        miss_lines.append("You have no paid experience yet. Be open about that, and show your projects.")
+        check.append("Your profile has no paid experience yet. Be open about that, and show your projects.")
+    if job.get("remote_restriction"):
+        check.append(f"Location rule: {job['remote_restriction']}.")
 
-    total = len(tools) + (1 if years_required else 0)
-    got = len(have) + (1 if (years_required and years is not None and years >= years_required - 1) else 0)
-    if total:
-        fit_line = f"You match {got} of {total} things they ask for."
+    if tools:
+        fit_line = f"Tools they name that your CV shows: {len(have)} of {len(tools)}."
     else:
-        fit_line = "They do not list many specific tools. Your fit depends on your story."
+        fit_line = "They do not list specific tools. Your fit depends on your story."
 
-    present = []
+    nxt = []
     if have:
-        present.append("Lead with " + ", ".join(tool_label(t) for t in have[:3]) + ". Say where you used " + ("it" if len(have) == 1 else "them") + " and what happened.")
+        nxt.append("Lead with " + ", ".join(tool_label(t) for t in have[:3]) + ". Say where you used " + ("it" if len(have) == 1 else "them") + " and what happened.")
     for m in miss[:2]:
         needle = m.replace("argocd", "argo").split(" ")[0]
         related = next((p for p in projects if needle in p.text.lower()), None)
         if related:
-            present.append(f"For {tool_label(m)}: mention your project '{related.text[:60]}'.")
+            nxt.append(f"For {tool_label(m)}: mention your project '{related.text[:60]}'.")
         else:
-            present.append(f"For {tool_label(m)}: say honestly you have not used it at work, and name the closest thing you have used.")
+            nxt.append(f"For {tool_label(m)}: say honestly it is not in your profile yet, and name the closest thing you have used.")
     if seniority in {"senior", "staff"} and roles:
-        present.append("Show ownership: one example where you were responsible for a system, not just a task.")
+        nxt.append("Show ownership: one example from a paid role where you were responsible for a system, not just a task.")
     if not roles and projects:
-        present.append("Describe one project as if it were a job: what broke, what you fixed, what you learned.")
-    present.append("Keep it short and honest. Hunter never adds things your CV does not say.")
-    return {"who_they_want": who, "you_match": match_lines, "you_miss": miss_lines, "fit_line": fit_line, "how_to_present": present}
+        nxt.append("Describe one project as if it were a job: what broke, what you fixed, what you learned.")
+    nxt.append("Keep it short and honest. Hunter never adds things your CV does not say.")
+    return {"what_they_need": need, "your_proof": proof, "what_to_check": check, "next_step": nxt, "fit_line": fit_line}
 
 
 # ---------------------------------------------------------------------------

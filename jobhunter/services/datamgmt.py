@@ -15,7 +15,7 @@ EXPORT_TABLES = [
     "source_documents", "profile_versions", "profile_questions", "preference_changes", "employers", "watch_sources",
     "hunt_runs", "source_runs", "jobs", "job_observations", "matches", "recommendations", "applications", "events",
     "drafts", "contacts", "followups", "email_accounts", "email_messages", "notifications", "consents", "feedback",
-    "schedule", "settings", "handoffs",
+    "schedule", "settings", "handoffs", "job_notes",
 ]
 
 
@@ -52,16 +52,22 @@ def delete_all(ctx: AppContext, db: Database, confirm: str) -> dict:
     """Delete local personal data. Secrets are removed first so tokens cannot be reused."""
     if confirm != "DELETE":
         raise ValueError("Type DELETE to confirm.")
-    from jobhunter.services.secrets import SecretStore
+    from jobhunter.services.secrets import SecretStore, SecretStoreLocked
 
     removed = {"secrets": 0}
+    problems: list[str] = []
     try:
         store = SecretStore(ctx.paths)
         for key in store.list_keys():
             store.delete(key)
             removed["secrets"] += 1
-    except Exception:
-        pass
+    except SecretStoreLocked:
+        problems.append(
+            "The secret store could not be read (wrong passphrase or damaged file), so stored tokens could not be removed one by one. "
+            "The secrets file itself was deleted with the rest. If an operating-system keyring was in use, check it for 'jobhunteros' entries."
+        )
+    except Exception as exc:
+        problems.append(f"Stored tokens could not be removed one by one ({type(exc).__name__}). The secrets file itself was deleted with the rest.")
     db.close()
     root = ctx.paths.root
     for sub in ("documents", "derived", "exports", "cache", "logs", "locks"):
@@ -78,6 +84,7 @@ def delete_all(ctx: AppContext, db: Database, confirm: str) -> dict:
     backups = list(ctx.paths.backups_dir.glob("*")) if ctx.paths.backups_dir.exists() else []
     return {
         "deleted": removed,
+        "problems": problems,
         "backups_kept": [str(b) for b in backups],
         "limits": [
             "Backups in the backups folder were kept on purpose; delete them yourself if you want them gone.",

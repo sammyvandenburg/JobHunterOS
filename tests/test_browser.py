@@ -95,6 +95,22 @@ def test_browser_smoke(server):
         expect(fav).to_have_attribute("aria-pressed", "true")
         expect(page.locator("#toast")).to_contain_text("Added to favorites.")
         expect(nav.locator("[data-count='favorites']")).to_have_text("1")
+        # Off again without a reload, then on again, then reload: the state and the count must follow.
+        fav.click()
+        expect(fav).to_have_attribute("aria-pressed", "false")
+        expect(page.locator("#toast")).to_contain_text("Removed from favorites.")
+        expect(nav.locator("[data-count='favorites']")).to_have_text("0")
+        fav.click()
+        expect(fav).to_have_attribute("aria-pressed", "true")
+        page.reload()
+        first = page.locator("ul.jobs li.job").filter(has=page.locator("a[href='" + href + "']")).first
+        assert first.locator("button.fav").get_attribute("aria-pressed") == "true"
+        assert first.locator("button.bm").get_attribute("aria-pressed") == "false"
+        bm = first.locator("button.bm")
+        bm.click()
+        expect(bm).to_have_attribute("aria-pressed", "true")
+        bm.click()
+        expect(bm).to_have_attribute("aria-pressed", "false")
         page.goto(server + "/jobs/favorites")
         assert page.locator("ul.jobs li.job").count() == 1
         assert page.locator("ul.jobs li.job .title a").first.get_attribute("href") == href
@@ -133,8 +149,10 @@ def test_browser_smoke(server):
         assert page.evaluate("document.activeElement.tagName") in {"A", "BUTTON", "INPUT", "SELECT"}
         # Mobile layout: the sidebar is hidden behind a menu button and the page does not scroll sideways.
         page.set_viewport_size({"width": 390, "height": 800})
+        for path in ("/", "/jobs/new", job_url.replace(server, ""), "/jobs/applied", "/profile", "/connections", "/health"):
+            page.goto(server + path)
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), path
         page.goto(server + "/")
         assert page.locator("[data-toggle-sidebar]").first.is_visible()
-        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
         assert errors == [], errors
         browser.close()

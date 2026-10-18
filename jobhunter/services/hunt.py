@@ -48,8 +48,17 @@ def _reap_stale_runs(db: Database) -> None:
     )
 
 
+class HuntNotAllowed(Exception):
+    """Live hunting needs readiness and an approved profile. Enforced here, not only in the UI."""
+
+
 def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids: list[str] | None = None, client: SafeClient | None = None, progress=None) -> dict:
-    """Run one hunt. Raises HuntInProgress if another run holds the lock."""
+    """Run one hunt. Raises HuntInProgress if another run holds the lock, HuntNotAllowed before setup is done."""
+    from jobhunter.services import onboarding
+
+    ok, why = onboarding.live_hunting_allowed(db, ctx.demo)
+    if not ok:
+        raise HuntNotAllowed(why)
     lock = FileLock(ctx.paths.locks_dir / "hunt.lock")
     try:
         lock.acquire()
@@ -65,7 +74,9 @@ def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids:
             status = "completed" if not stats["sources_failed"] and not stats["sources_partial"] else "partial"
             if stats["sources_ok"] == 0 and (stats["sources_failed"] or stats["sources_partial"]):
                 status = "failed" if stats["sources_partial"] == 0 else "partial"
-            db.update("hunt_runs", {"status": status, "finished_at": now_iso(), "stats_json": json.dumps(stats)}, "id = ?", (run_id,))
+            if stats.get("problem"):
+                status = "no_sources"  # nothing was checked, so this is never a successful search
+            db.update("hunt_runs", {"status": status, "finished_at": now_iso(), "stats_json": json.dumps(stats), "error": stats.get("note")}, "id = ?", (run_id,))
             db.execute("UPDATE schedule SET last_run_at = ? WHERE id = 1", (now_iso(),))
             stats["run_id"] = run_id
             stats["status"] = status
@@ -121,8 +132,38 @@ def _should_skip(source: dict) -> str | None:
     return None
 
 
-def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] | None, client: SafeClient | None, progress) -> dict:
+def ensure_sources_initialized(db: Database) -> dict:
+    """First use: load the starter catalogue once. Idempotent, and it never re-enables a source the person turned off."""
+    if db.get_setting("catalog.synced_at"):
+        return {"initialized": False}
+    if db.fetchone("SELECT 1 FROM watch_sources LIMIT 1"):
+        # The person (or a test) set up sources by hand before the first search: respect that choice.
+        return {"initialized": False, "note": "sources already exist; run `jobhunter sources sync-catalog` to add the starter catalogue"}
+    from jobhunter.services import catalog
+
+    res = catalog.sync_catalog(db)
+    return {"initialized": True, **res}
+
+
+def sources_state(db: Database, source_ids: list[str] | None = None) -> tuple[list[dict], str | None, str | None]:
+    """(sources to check, problem code, plain message). Distinguishes 'nothing set up' from 'you turned them off'."""
     sources = _enabled_sources(db, source_ids)
+    if sources:
+        return sources, None, None
+    total = db.fetchone("SELECT COUNT(*) AS n FROM watch_sources")["n"]
+    enabled = db.fetchone("SELECT COUNT(*) AS n FROM watch_sources WHERE enabled = 1")["n"]
+    if total == 0:
+        return [], "no_sources", "There are no job sources yet. Add an employer board under Search health, or run `jobhunter sources sync-catalog`."
+    if enabled == 0:
+        return [], "all_disabled", "All job sources are switched off. Turn some on under Search health and search again."
+    return [], "none_for_countries", "None of the enabled job sources cover your countries. Add an employer board for your country, or check your countries under Profile & settings."
+
+
+def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] | None, client: SafeClient | None, progress) -> dict:
+    ensure_sources_initialized(db)
+    sources, problem, note = sources_state(db, source_ids)
+    if problem:
+        return {"sources_total": 0, "sources_ok": 0, "sources_partial": 0, "sources_failed": 0, "sources_skipped": 0, "postings_fetched": 0, "jobs_new": 0, "jobs_updated": 0, "jobs_relevant_new": 0, "jobs_closed": 0, "employers_new": 0, "sources_added": 0, "failures": [], "problem": problem, "note": note}
     own_client = client is None
     client = client or SafeClient()
     stats = {

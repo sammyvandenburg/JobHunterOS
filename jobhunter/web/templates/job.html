@@ -11,7 +11,7 @@
       <div><h1>{{ job.title }}</h1><div class="company">{{ job.employer }}</div></div>
       <div class="left hstack">{{ toggles(job, csrf) }}</div>
     </div>
-    <div class="chips"><span class="chip {{ job.group or '' }}">{{ job.group_label }}</span>{% if job.freshness == 'fresh' %}<span class="chip fresh">New</span>{% endif %}{% if job.stage %}<span class="chip stage">{{ job.stage }}</span>{% endif %}{% if job.availability == 'closed' %}<span class="chip">No longer listed</span>{% endif %}</div>
+    <div class="chips"><span class="chip {{ job.group or '' }}">{{ job.group_label }}</span>{% if job.freshness == 'fresh' %}<span class="chip fresh">New</span>{% endif %}{% if job.stage %}<span class="chip stage{% if job.stage == 'prepared' %} ready{% endif %}">{{ job.stage_label }}</span>{% endif %}{% if job.availability == 'closed' %}<span class="chip">No longer listed</span>{% endif %}</div>
     <div class="facts">
       <div><div class="k">Location</div><div class="v">{{ job.location }}</div></div>
       <div><div class="k">Work arrangement</div><div class="v">{{ job.remote_type_label or 'Not stated' }}{% if job.remote_restriction %}<br><span class="muted small">{{ job.remote_restriction }}</span>{% endif %}</div></div>
@@ -52,11 +52,12 @@
   {% if job.package %}
   <section class="section" id="apply">
     <h2>Help me apply</h2>
+    {% if job.package_outdated %}<div class="notice warn"><strong>This help is from an older version.</strong> The job text, your profile, or your CV changed since then. <form method="post" action="/do/job/{{ job.id }}/prepare" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="stage" value="regenerate"><button class="btn-sm">Make a new version</button></form></div>{% endif %}
     <p class="fit-line">{{ job.package.fit.fit_line }}</p>
     <div class="two">
-      <div><h3>Who they are looking for</h3><ul>{% for w in job.package.fit.who_they_want %}<li>{{ w }}</li>{% endfor %}</ul></div>
-      <div><h3>How you fit</h3><ul>{% for m in job.package.fit.you_match %}<li>{{ m }}</li>{% else %}<li class="muted">Not much overlap shows in your CV yet.</li>{% endfor %}</ul>{% if job.package.fit.you_miss %}<h3 class="mt-10">What is missing</h3><ul>{% for m in job.package.fit.you_miss %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}</div>
-      <div><h3>How to present yourself</h3><ul>{% for p in job.package.fit.how_to_present %}<li>{{ p }}</li>{% endfor %}</ul></div>
+      <div><h3>What they need</h3><ul>{% for w in job.package.fit.what_they_need %}<li>{{ w }}</li>{% endfor %}</ul></div>
+      <div><h3>Your proof</h3><ul>{% for m in job.package.fit.your_proof %}<li>{{ m }}</li>{% else %}<li class="muted">Not much overlap shows in your CV yet. That is okay: be honest and show what you have.</li>{% endfor %}</ul>{% if job.package.fit.what_to_check %}<h3 class="mt-10">What to check</h3><ul>{% for m in job.package.fit.what_to_check %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}</div>
+      <div><h3>Your next step</h3><ul>{% for p in job.package.fit.next_step %}<li>{{ p }}</li>{% endfor %}</ul></div>
       <div><h3>What to send</h3><ul>{% if job.package.cv %}<li>Your CV, unchanged: {{ job.package.cv.filename or job.package.cv.path.split('/')[-1] }}{% if job.package.cv.version > 1 %} (version {{ job.package.cv.version }}){% endif %}</li>{% endif %}{% for l in job.package.project_links %}<li>Project link: <a href="{{ l }}" target="_blank" rel="noopener noreferrer">{{ l }}</a></li>{% endfor %}</ul></div>
     </div>
     <h3 class="mt-14">Draft answers (edit them so they sound like you)</h3>
@@ -114,7 +115,7 @@
   {% if job.stage %}
   <div class="panel">
     <h3>Your application</h3>
-    <div class="kv"><span>Status</span><span>{{ job.stage }}</span></div>
+    <div class="kv"><span>Status</span><span>{{ job.stage_label }}</span></div>
     {% if job.applied_at %}<div class="kv"><span>Applied</span><span>{{ job.applied_at | dt }}</span></div>{% endif %}
     {% if job.followup %}<div class="kv"><span>Follow up</span><span>{{ job.followup.due_at | dt }}</span></div>{% endif %}
     <form method="post" action="/do/job/{{ job.id }}/stage" class="inline mt-8"><input type="hidden" name="csrf" value="{{ csrf }}"><select name="stage" aria-label="Status">{% for s in ['applied','replied','interview','offer','rejected','withdrawn'] %}<option value="{{ s }}" {% if s == job.stage %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><input type="date" name="when" aria-label="When"><button class="btn-sm">Update</button></form>

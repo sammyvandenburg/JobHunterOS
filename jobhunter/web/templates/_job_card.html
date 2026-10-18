@@ -10,7 +10,7 @@
       <div class="title"><a href="/job/{{ j.id }}">{{ j.title }}</a></div>
       <div class="company">{{ j.employer }}</div>
     </div>
-    <div class="chips"><span class="chip {{ j.group or '' }}">{{ j.group_label }}</span>{% if j.freshness == 'fresh' %}<span class="chip fresh">New</span>{% endif %}{% if j.stage %}<span class="chip stage">{{ j.stage }}</span>{% endif %}</div>
+    <div class="chips"><span class="chip {{ j.group or '' }}">{{ j.group_label }}</span>{% if j.freshness == 'fresh' %}<span class="chip fresh">New</span>{% endif %}{% if j.stage %}<span class="chip stage{% if j.stage == 'prepared' %} ready{% endif %}">{{ j.stage_label }}</span>{% endif %}</div>
   </div>
   <div class="meta">
     <span>{{ icon('pin') }}{{ j.location }}{% if j.remote_label %} · {{ j.remote_label }}{% endif %}</span>

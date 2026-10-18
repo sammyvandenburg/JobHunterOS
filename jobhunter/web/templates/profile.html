@@ -36,7 +36,7 @@
       {% if profile.status != 'approved' or profile.needs_review %}<form method="post" action="/do/profile/approve"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Yes, this looks right</button></form>{% endif %}
       <form method="post" action="/do/profile/rematch"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Re-check my matches</button></form>
     </div>
-    <form method="post" action="/do/profile/correct" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="text" name="text" placeholder="Something wrong? Tell me in a sentence." size="60" required><button>Fix it</button></form>
+    <form method="post" action="/do/profile/correct" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="text" name="text" placeholder="Something wrong? Tell me in a sentence." required><button>Fix it</button></form>
     <details class="more"><summary>Every fact and where it comes from</summary>
       {% for cat, facts in profile.facts_by_category.items() %}<h4>{{ cat }}</h4><ul>{% for f in facts %}<li>{{ f.text }} <span class="muted">({{ f.kind }}{% if f.status != 'confirmed' %}, {{ f.status }}{% endif %}){% for e in f.evidence %} · {{ e.type }}{% if e.quote %}: "{{ e.quote[:80] }}"{% endif %}{% endfor %}</span></li>{% endfor %}</ul>{% endfor %}
       {% if profile.warnings %}<p class="muted">Notes: {{ profile.warnings|join(' ') }}</p>{% endif %}

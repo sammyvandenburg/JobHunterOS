@@ -237,3 +237,18 @@ details.more { margin:12px 0; } details summary { cursor:pointer; color:var(--mu
 pre.desc { overflow-wrap:anywhere; }
 svg, img { max-width:100%; }
 .facts { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
+
+/* Ready to apply + outdated help */
+.chip.stage.ready { background:rgba(255,122,0,.14); color:var(--orange); border-color:rgba(255,122,0,.35); }
+.notice { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--panel-2); margin-bottom:10px; font-size:.92rem; }
+.notice.warn { border-color:rgba(255,196,0,.35); background:rgba(255,196,0,.08); }
+/* Inline forms never widen a phone screen */
+form.inline { display:flex; flex-wrap:wrap; gap:8px; align-items:center; max-width:100%; }
+form.inline input[type=text], form.inline input[type=email], form.inline input[type=url], form.inline select { flex:1 1 180px; min-width:0; max-width:100%; }
+.content, .panel, .card, .section { max-width:100%; }
+
+.save-state.bad { color:#ff6b6b; }
+/* Labels that wrap a control share the row and never push past the screen edge */
+form.inline label { display:flex; gap:6px; align-items:center; flex:1 1 200px; min-width:0; max-width:100%; }
+form.inline label select, form.inline label input { flex:1 1 auto; min-width:0; width:auto; max-width:100%; }
+select, input, textarea { max-width:100%; }

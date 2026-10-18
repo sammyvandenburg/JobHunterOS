@@ -32,3 +32,6 @@ Practical paths: (a) each student creates their own Google Cloud project and Des
 
 ## Model processing of mail
 Mailbox content is never sent to Claude by default. Classification and linking are deterministic. If you later enable model help for drafting, only minimized job and profile text is sent, not emails.
+
+## How sending is kept safe
+Every digest is written to an outbox row before anything leaves your computer. The same digest content to the same address is sent at most once; two commands or a worker and a click at the same moment cannot both send it. A failed send may be retried. A timeout or a crash during sending leaves the row "uncertain", and uncertain digests are never resent automatically: they appear under Needs attention with "It arrived" and "Send again". Connecting or disconnecting a sending account never changes the confirmed recipient; only `jobhunter digest address` does.

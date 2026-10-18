@@ -190,8 +190,8 @@ def test_help_me_apply_explains_fit_in_plain_words(ctx, db):
     db.execute("UPDATE jobs SET description_text = ? WHERE id = ?", ("What you bring\nExperience running Kubernetes in production\nTerraform and AWS\nPulumi is a plus\n5+ years in infrastructure\nWhat you'll do\nOwn the platform\nBe on call", jid))
     pkg = drafts.prepare(ctx, db, jid)
     fit = pkg["fit"]
-    assert fit["fit_line"].startswith("You match")
-    assert any("Tools they name" in w for w in fit["who_they_want"]) and any("They say:" in w for w in fit["who_they_want"])
-    assert any("kubernetes" in m for m in fit["you_match"])
-    assert any("pulumi" in m for m in fit["you_miss"])
-    assert fit["how_to_present"] and all(len(p) < 220 for p in fit["how_to_present"])
+    assert fit["fit_line"].startswith("Tools they name that your CV shows:")
+    assert any("Tools they name" in w for w in fit["what_they_need"]) and any("They say:" in w for w in fit["what_they_need"])
+    assert any("kubernetes" in m for m in fit["your_proof"])
+    assert any("pulumi" in m for m in fit["what_to_check"])
+    assert fit["next_step"] and all(len(p) < 220 for p in fit["next_step"])

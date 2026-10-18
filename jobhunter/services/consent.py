@@ -11,6 +11,7 @@ KINDS = {
     "readiness": "You confirmed your CV and LinkedIn profile are finished.",
     "profile_approved": "You approved the profile Hunter built from your materials.",
     "digest_email": "Hunter may email job digests to one confirmed address.",
+    "digest_sender": "Hunter may send those digests through the email account you connected.",
     "mailbox_read": "Hunter may read a bounded set of your job-search emails.",
     "model_processing": "Hunter may send minimized job and profile text to Claude for explanations.",
     "github_read": "Hunter may read the public repositories you listed.",

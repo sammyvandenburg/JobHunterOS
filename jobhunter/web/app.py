@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -160,7 +161,10 @@ def create_app(ctx: AppContext) -> FastAPI:
         if view not in LIST_PAGES:
             return PlainTextResponse("No such list.", status_code=404)
         q = request.query_params
-        page = int(q.get("page", "1") or 1)
+        try:
+            page = max(1, int(q.get("page", "1") or 1))
+        except ValueError:
+            page = 1
         d = db()
         try:
             res = views.list_jobs(
@@ -181,7 +185,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         finally:
             d.close()
         heading, sub, empty_icon, empty_title, empty_text = LIST_PAGES[view]
-        qs = "&".join(f"{k}={v}" for k, v in q.items() if k != "page" and v)
+        qs = urlencode([(k, v) for k, v in q.multi_items() if k != "page" and v])
         active = view if view in {"new", "favorites", "saved", "finished"} else "new"
         return render(request, "jobs.html", active=active, view=view, res=res, last_run=last, heading=heading, subheading=sub, empty_icon=empty_icon, empty_title=empty_title, empty_text=empty_text, qs=qs)
 
@@ -237,7 +241,11 @@ def create_app(ctx: AppContext) -> FastAPI:
     def connections_page(request: Request):
         d = db()
         try:
-            kw = dict(gmail=gmail.describe(d), digest={"recipient": notifications.recipient(d), "transport": transport.describe(d)}, model=model_provider.describe(ctx, d), secrets=SecretStore(ctx.paths).describe(), sched=schedule.describe(d), pending=linking.pending_confirmations(d), notifications=notifications.history(d, 10))
+            secrets_info = SecretStore(ctx.paths).describe()
+            if not secrets_info.get("readable", True):
+                # A locked store (wrong passphrase, damaged file) must be visible, not a silent "not set".
+                secrets_info["note"] = f"{secrets_info['note']} {secrets_info['problem']}"
+            kw = dict(gmail=gmail.describe(d), digest={"recipient": notifications.recipient(d), "transport": transport.describe(d)}, model=model_provider.describe(ctx, d), secrets=secrets_info, sched=schedule.describe(d), pending=linking.pending_confirmations(d), notifications=notifications.history(d, 10))
         finally:
             d.close()
         return render(request, "connections.html", active="settings", settings_tab="connections", **kw)
@@ -324,8 +332,8 @@ def create_app(ctx: AppContext) -> FastAPI:
                 actions.mark_applied(d, job_id, applied_at=when or None)
                 msg = "Recorded: you applied."
             elif action == "prepare":
-                drafts.prepare(ctx, d, job_id)
-                msg = "Here is your help to apply (below)."
+                pkg = drafts.prepare(ctx, d, job_id, regenerate=(stage == "regenerate"))
+                msg = "Here is your help to apply (below)." if not pkg.get("reused") else "Nothing changed since last time, so here is the same help to apply (below)."
             elif action == "stage" and stage:
                 actions.set_stage(d, job_id, stage, actor="user", occurred_at=when or None, allow_backwards=True)
                 msg = f"Status set to {stage}."
@@ -424,8 +432,11 @@ def create_app(ctx: AppContext) -> FastAPI:
                 return RedirectResponse(f"/?msg={_q('Demo mode uses made-up data; there is nothing to fetch.')}", status_code=303)
             try:
                 st = hunt.run_hunt(ctx, d, trigger="manual")
-                msg = f"Search {st['status']}: {st['jobs_new']} new jobs, {st['jobs_relevant_new']} relevant" + (f"; {st['sources_failed']} site(s) could not be checked." if st["sources_failed"] else ".")
-            except hunt.HuntInProgress as exc:
+                if st["status"] == "no_sources":
+                    msg = "I could not search: " + (st.get("note") or "there are no job sources.")
+                else:
+                    msg = f"Search {st['status']}: {st['jobs_new']} new jobs, {st['jobs_relevant_new']} relevant" + (f"; {st['sources_failed']} site(s) could not be checked." if st["sources_failed"] else ".")
+            except (hunt.HuntInProgress, hunt.HuntNotAllowed) as exc:
                 msg = str(exc)
         finally:
             d.close()
@@ -652,10 +663,11 @@ def create_app(ctx: AppContext) -> FastAPI:
                 msg = str(exc)
         finally:
             d.close()
-        return RedirectResponse(f"/connections?msg={_q(msg)}", status_code=303)
+        back = "/attention" if action in {"retry", "arrived", "not_arrived"} else "/connections"
+        return RedirectResponse(f"{back}?msg={_q(msg)}", status_code=303)
 
     @app.post("/do/digest")
-    def digest_action(request: Request, csrf: str = Form(...), action: str = Form(...), address: str = Form(None)):
+    def digest_action(request: Request, csrf: str = Form(...), action: str = Form(...), address: str = Form(None), notification_id: int = Form(None)):
         bad = guard(request, csrf)
         if bad:
             return bad
@@ -668,6 +680,13 @@ def create_app(ctx: AppContext) -> FastAPI:
                 elif action == "send":
                     res = notifications.send_digest(ctx, d)
                     msg = f"Digest: {res['status']}. " + (res.get("note") or res.get("error") or "")
+                elif action == "retry" and notification_id:
+                    res = notifications.send_digest(ctx, d, force=True, notification_id=notification_id)
+                    msg = f"Digest: {res['status']}. " + (res.get("note") or res.get("error") or "")
+                elif action == "arrived" and notification_id:
+                    msg = notifications.resolve(d, notification_id, "arrived")["note"]
+                elif action == "not_arrived" and notification_id:
+                    msg = notifications.resolve(d, notification_id, "not_arrived")["note"]
                 elif action == "sync":
                     res = gmail.sync(ctx, d)
                     msg = f"Mailbox synced: {res['new']} new message(s) looked at."

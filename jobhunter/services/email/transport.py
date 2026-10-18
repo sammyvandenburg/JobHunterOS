@@ -15,7 +15,7 @@ from email.utils import make_msgid
 from jobhunter.config import AppContext
 from jobhunter.db import Database
 from jobhunter.services import consent
-from jobhunter.services.secrets import SecretStore
+from jobhunter.services.secrets import SecretStore, SecretStoreLocked
 
 
 class TransportError(Exception):
@@ -62,15 +62,18 @@ def describe(db: Database, store: SecretStore | None = None) -> dict:
 
 
 def send(ctx: AppContext, db: Database, to_address: str, subject: str, text: str, html: str | None = None) -> dict:
-    _allowed_recipient(db, to_address)
-    t = db.get_setting("digest.transport")
-    if t == "smtp":
-        return _send_smtp(ctx, db, to_address, subject, text, html)
-    if t == "gmail":
-        from jobhunter.services.email import gmail
+    try:
+        _allowed_recipient(db, to_address)
+        t = db.get_setting("digest.transport")
+        if t == "smtp":
+            return _send_smtp(ctx, db, to_address, subject, text, html)
+        if t == "gmail":
+            from jobhunter.services.email import gmail
 
-        return gmail.send_message(ctx, db, to_address, subject, text, html)
-    raise TransportNotConfigured("No email transport is configured. Run `jobhunter digest smtp ...` or `jobhunter email connect gmail-send`.")
+            return gmail.send_message(ctx, db, to_address, subject, text, html)
+        raise TransportNotConfigured("No email transport is configured. Run `jobhunter digest smtp ...` or `jobhunter email connect gmail-send`.")
+    except SecretStoreLocked as exc:
+        raise TransportNotConfigured(str(exc)) from exc
 
 
 def _send_smtp(ctx: AppContext, db: Database, to_address: str, subject: str, text: str, html: str | None) -> dict:

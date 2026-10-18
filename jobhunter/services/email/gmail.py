@@ -86,7 +86,9 @@ def connect(ctx: AppContext, db: Database, purpose: str, client_secret_path: str
                 "connected_at": now_iso(),
             },
         )
-        consent.grant(db, "mailbox_read" if purpose == "read" else "digest_email", {"provider": "gmail", "address": address, "scopes": sorted(granted), **({"confirmed": True, "address": address} if purpose == "send" and False else {})})
+        # Reading the mailbox and sending through an account are separate permissions. Neither one is the
+        # recipient decision ("digest_email"), which only `notifications.set_recipient` may change.
+        consent.grant(db, "mailbox_read" if purpose == "read" else "digest_sender", {"provider": "gmail", "address": address, "scopes": sorted(granted)})
     if purpose == "send":
         db.set_setting("digest.transport", "gmail")
     return {"account_id": acct_id, "address": address, "scopes": sorted(granted), "note": _scope_note(purpose)}
@@ -153,7 +155,7 @@ def disconnect(ctx: AppContext, db: Database, purpose: str) -> dict:
     store.delete(acct["secret_ref"])
     with db.tx():
         db.update("email_accounts", {"status": "disconnected", "disconnected_at": now_iso()}, "id = ?", (acct["id"],))
-        consent.revoke(db, "mailbox_read" if purpose == "read" else "digest_email")
+        consent.revoke(db, "mailbox_read" if purpose == "read" else "digest_sender")
         if purpose == "send" and db.get_setting("digest.transport") == "gmail":
             db.delete_setting("digest.transport")
     return {"disconnected": True, "revoked_at_google": revoked, "note": "Token deleted locally" + (" and revoked at Google." if revoked else "; Google revocation could not be confirmed. You can also remove access at https://myaccount.google.com/permissions."), "history_kept": True}

@@ -118,14 +118,35 @@ def _get_or_create_application(db: Database, job_id: int, stage: str, ts: str) -
 
 
 def mark_prepared(db: Database, job_id: int, cv_document_id: int | None = None) -> dict:
+    """A package was made. This is not applying: the stage stays 'prepared' and no date is set."""
     _require_job(db, job_id)
     ts = now_iso()
     with db.tx():
         app = _get_or_create_application(db, job_id, "prepared", ts)
-        if cv_document_id and not app.get("cv_document_id"):
-            db.update("applications", {"cv_document_id": cv_document_id, "updated_at": ts}, "id = ?", (app["id"],))
         _event(db, "prepared", job_id, "user", application_id=app["id"])
     return {"application_id": app["id"], "stage": app["stage"]}
+
+
+def _bind_submission(db: Database, app: dict, ts: str, cv_document_id: int | None = None) -> None:
+    """Attach the CV and package that were current when the person applied. Never overwritten later."""
+    values = {}
+    if not app.get("package_draft_id"):
+        pkg = db.fetchone("SELECT id, content_json FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (app["job_id"],))
+        if pkg:
+            values["package_draft_id"] = pkg["id"]
+            if not app.get("cv_document_id") and not cv_document_id:
+                cv = (json.loads(pkg["content_json"] or "{}").get("cv") or {}).get("document_id")
+                if cv:
+                    values["cv_document_id"] = cv
+    if not app.get("cv_document_id") and cv_document_id:
+        values["cv_document_id"] = cv_document_id
+    if not app.get("cv_document_id") and "cv_document_id" not in values:
+        cur = db.fetchone("SELECT id FROM source_documents WHERE kind = 'cv' ORDER BY version DESC, id DESC LIMIT 1")
+        if cur:
+            values["cv_document_id"] = cur["id"]
+    if values:
+        values["updated_at"] = ts
+        db.update("applications", values, "id = ?", (app["id"],))
 
 
 def mark_applied(db: Database, job_id: int, applied_at: str | None = None, source: str = "user", evidence: dict | None = None, cv_document_id: int | None = None, dedupe_key: str | None = None) -> dict:
@@ -144,11 +165,10 @@ def mark_applied(db: Database, job_id: int, applied_at: str | None = None, sourc
             return {"application_id": app["id"], "stage": app["stage"], "duplicate": True}
         _event(db, "applied", job_id, source, {"evidence": evidence or {}}, occurred_at=when, application_id=app["id"], dedupe_key=dedupe_key)
         values = {"applied_at": when, "applied_source": source, "updated_at": ts}
-        if cv_document_id:
-            values["cv_document_id"] = cv_document_id
         if STAGE_ORDER[app["stage"]] < STAGE_ORDER["applied"]:
             values.update({"stage": "applied", "stage_changed_at": ts})
         db.update("applications", values, "id = ?", (app["id"],))
+        _bind_submission(db, app, ts, cv_document_id)
     return {"application_id": app["id"], "stage": "applied", "duplicate": False}
 
 
@@ -159,6 +179,9 @@ def set_stage(db: Database, job_id: int, stage: str, actor: str = "user", occurr
     _require_job(db, job_id)
     ts = now_iso()
     kind = {"applied": "applied", "replied": "reply_received", "interview": "interview", "offer": "offer", "rejected": "rejected", "withdrawn": "withdrawn", "prepared": "prepared"}[stage]
+    if stage == "applied" and actor == "user":
+        # One path for "I applied": records the date, the CV and the package.
+        return mark_applied(db, job_id, applied_at=occurred_at, source="user", evidence=payload, dedupe_key=dedupe_key)
     with db.tx():
         app = _get_or_create_application(db, job_id, stage, ts)
         current = app["stage"]
@@ -166,13 +189,27 @@ def set_stage(db: Database, job_id: int, stage: str, actor: str = "user", occurr
         if moving_back and not (allow_backwards and actor == "user"):
             _event(db, kind, job_id, actor, {**(payload or {}), "ignored_for_pipeline": True, "reason": f"pipeline already at {current}"}, occurred_at, app["id"], dedupe_key)
             return {"application_id": app["id"], "stage": current, "changed": False, "note": f"Kept stage '{current}'; a later-recorded '{stage}' does not move it back."}
-        if current in FINISHED_STAGES and actor != "user" and stage not in FINISHED_STAGES:
-            _event(db, kind, job_id, actor, {**(payload or {}), "ignored_for_pipeline": True, "reason": f"pipeline finished at {current}"}, occurred_at, app["id"], dedupe_key)
-            return {"application_id": app["id"], "stage": current, "changed": False, "note": f"Kept stage '{current}'; automated events do not reopen a finished application."}
+        if actor != "user":
+            # Automated or email evidence never overrides what the person decided.
+            if current in FINISHED_STAGES:
+                _event(db, kind, job_id, actor, {**(payload or {}), "ignored_for_pipeline": True, "reason": f"pipeline finished at {current}"}, occurred_at, app["id"], dedupe_key)
+                return {"application_id": app["id"], "stage": current, "changed": False, "note": f"Kept stage '{current}': you set that yourself, so an email does not change it. You can change it any time."}
+            last_user = db.fetchone(
+                "SELECT occurred_at FROM events WHERE application_id = ? AND actor = 'user' AND reverted_by IS NULL AND kind IN ('applied','reply_received','interview','offer','rejected','withdrawn') ORDER BY occurred_at DESC LIMIT 1",
+                (app["id"],),
+            )
+            if last_user and occurred_at and occurred_at < last_user["occurred_at"]:
+                _event(db, kind, job_id, actor, {**(payload or {}), "ignored_for_pipeline": True, "reason": f"older than your own update at {last_user['occurred_at']}"}, occurred_at, app["id"], dedupe_key)
+                return {"application_id": app["id"], "stage": current, "changed": False, "note": f"Kept stage '{current}': this email is older than your own update."}
         eid = _event(db, kind, job_id, actor, payload or {}, occurred_at, app["id"], dedupe_key)
         if eid is None:
             return {"application_id": app["id"], "stage": current, "changed": False, "note": "Duplicate event ignored."}
-        db.update("applications", {"stage": stage, "stage_changed_at": ts, "updated_at": ts}, "id = ?", (app["id"],))
+        values = {"stage": stage, "stage_changed_at": ts, "updated_at": ts}
+        if stage == "applied" and not app.get("applied_at"):
+            values.update({"applied_at": occurred_at or ts, "applied_source": actor})
+        db.update("applications", values, "id = ?", (app["id"],))
+        if stage == "applied":
+            _bind_submission(db, app, ts)
         if stage in FINISHED_STAGES or stage == "replied":
             db.execute("UPDATE followups SET status = 'cancelled', resolved_at = ?, reason = ? WHERE application_id = ? AND status = 'pending'", (ts, f"stage changed to {stage}", app["id"]))
     return {"application_id": app["id"], "stage": stage, "changed": True}

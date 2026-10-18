@@ -16,6 +16,7 @@ from pathlib import Path
 from jobhunter import __version__
 from jobhunter.config import AppContext, dashboard_bind
 from jobhunter.db import Database, connect
+from jobhunter.services.secrets import SecretStoreLocked
 
 
 class CliError(Exception):
@@ -323,7 +324,7 @@ def cmd_hunt(args):
             raise CliError("Demo mode uses synthetic data only (`jobhunter --demo demo seed`). Live hunts run without --demo.")
         try:
             stats = hunt.run_hunt(ctx, db, trigger=args.trigger, source_ids=args.source or None, progress=(None if args.json else lambda sid, st: print(f"  {sid}: {st}", file=sys.stderr)))
-        except hunt.HuntInProgress as exc:
+        except (hunt.HuntInProgress, hunt.HuntNotAllowed) as exc:
             raise CliError(str(exc)) from exc
         emit(args, stats, text=None if args.json else _hunt_text(stats))
     elif args.hunt_cmd == "status":
@@ -485,7 +486,7 @@ def cmd_apply(args):
     ctx, db = _open(args)
     try:
         if args.apply_cmd == "prepare":
-            emit(args, drafts.prepare(ctx, db, args.id, use_model=args.model))
+            emit(args, drafts.prepare(ctx, db, args.id, use_model=args.model, regenerate=args.regenerate))
         elif args.apply_cmd == "followup":
             emit(args, drafts.schedule_followup(db, args.id, days=args.days))
         elif args.apply_cmd == "handoff":
@@ -543,7 +544,7 @@ def cmd_schedule(args):
             else:
                 print(f"# Detected platform: {t['platform']}\n# Nothing is installed automatically. Review, then install the one you want.\n")
                 print("## Linux (systemd user service)\n" + t["systemd"])
-                print("## macOS (launchd)\n" + t["launchd"])
+                print("## macOS (launchd)\n" + t["launchd_instructions"] + t["launchd"])
                 print("## Windows (Task Scheduler)\n" + t["windows"])
                 print("## Any Unix (cron, no long-running process)\n" + t["cron"])
     except (ValueError, KeyError) as exc:
@@ -569,7 +570,11 @@ def cmd_digest(args):
     ctx, db = _open(args)
     try:
         c = args.digest_cmd
-        if c == "address":
+        if c == "retry":
+            emit(args, notifications.send_digest(ctx, db, force=args.force, notification_id=args.id))
+        elif c == "resolve":
+            emit(args, notifications.resolve(db, args.id, args.outcome.replace("-", "_")))
+        elif c == "address":
             emit(args, {**notifications.set_recipient(db, args.email), "note": "Digests can only ever go to this address. Change it with the same command."})
         elif c == "preview":
             emit(args, notifications.send_digest(ctx, db, dry_run=True))
@@ -722,6 +727,10 @@ def cmd_data(args):
             emit(args, datamgmt.backup(ctx, db))
         elif args.data_cmd == "delete":
             emit(args, datamgmt.delete_all(ctx, db, args.confirm or ""))
+        elif args.data_cmd == "reset-secrets":
+            from jobhunter.services.secrets import reset_file_store
+
+            emit(args, reset_file_store(ctx.paths, force=args.force))
     except ValueError as exc:
         raise CliError(str(exc)) from exc
 
@@ -937,6 +946,7 @@ def build_parser() -> argparse.ArgumentParser:
     x = aps.add_parser("prepare")
     x.add_argument("id", type=int)
     x.add_argument("--model", action="store_true")
+    x.add_argument("--regenerate", action="store_true", help="make a new version even if nothing changed")
     x = aps.add_parser("followup")
     x.add_argument("id", type=int)
     x.add_argument("--days", type=int, default=7)
@@ -996,6 +1006,12 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--tls", default="starttls", choices=["starttls", "ssl", "none"])
     dgs.add_parser("history")
     dgs.add_parser("status")
+    x = dgs.add_parser("retry", help="send a failed or uncertain digest again (asks for --force when it may already have arrived)")
+    x.add_argument("id", type=int)
+    x.add_argument("--force", action="store_true")
+    x = dgs.add_parser("resolve", help="tell Hunter whether an uncertain digest arrived")
+    x.add_argument("id", type=int)
+    x.add_argument("outcome", choices=["arrived", "not-arrived"])
     dg.set_defaults(fn=cmd_digest)
 
     el = sub.add_parser("email", help="read your job-search emails (Gmail, read-only) or import them")
@@ -1063,6 +1079,8 @@ def build_parser() -> argparse.ArgumentParser:
     das.add_parser("backup")
     x = das.add_parser("delete")
     x.add_argument("--confirm", help="type DELETE")
+    x = das.add_parser("reset-secrets", help="move an unreadable secrets file aside (kept, never deleted) and start fresh")
+    x.add_argument("--force", action="store_true", help="move it aside even when it can be read")
     da.set_defaults(fn=cmd_data)
 
     de = sub.add_parser("demo", help="synthetic demo (requires --demo)")
@@ -1092,7 +1110,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args.fn(args)
         return 0
-    except CliError as exc:
+    except (CliError, SecretStoreLocked) as exc:
         if args.json:
             print(json.dumps({"error": str(exc)}))
         else:

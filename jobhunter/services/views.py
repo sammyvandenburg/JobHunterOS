@@ -24,7 +24,8 @@ BASE_SELECT = (
     "LEFT JOIN applications a ON a.job_id = j.id "
 )
 
-RECOMMENDED = "match_group IN ('good','worth_a_shot','backup') AND availability != 'closed' AND COALESCE(dismiss_state,'') != 'dismissed' AND app_stage IS NULL"
+RECOMMENDED = "match_group IN ('good','worth_a_shot','backup') AND availability != 'closed' AND COALESCE(dismiss_state,'') != 'dismissed' AND (app_stage IS NULL OR app_stage = 'prepared')"
+STAGE_LABELS = {"prepared": "Ready to apply", "applied": "Applied", "replied": "Reply received", "interview": "Interview", "offer": "Offer", "rejected": "Rejected", "withdrawn": "Withdrawn"}
 
 
 def _where(view: str, group: str | None, query: str | None, remote: str | None = None, age: str | None = None, country: str | None = None, fav_only: bool = False, saved_only: bool = False) -> tuple[str, list]:
@@ -133,6 +134,7 @@ def summarize(r: dict) -> dict:
         "dismissed": r.get("dismiss_state") == "dismissed",
         "notes_count": r.get("notes_count") or 0,
         "stage": r.get("app_stage"),
+        "stage_label": STAGE_LABELS.get(r.get("app_stage") or "", r.get("app_stage")),
         "applied_at": r.get("app_applied_at"),
         "sponsorship": r.get("sponsorship"),
         "posted_at": r.get("posted_at"),
@@ -157,8 +159,11 @@ def job_detail(db: Database, job_id: int) -> dict | None:
     s["history"] = actions.history(db, job_id)
     s["notes"] = notes.list_for_job(db, job_id)
     s["drafts"] = db.fetchall("SELECT id, kind, status, created_by, created_at, sent_confirmed_at FROM drafts WHERE job_id = ? ORDER BY id DESC", (job_id,))
-    pkg = db.fetchone("SELECT content_json FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (job_id,))
-    s["package"] = json.loads(pkg["content_json"]) if pkg else None
+    from jobhunter.services import drafts as drafts_svc
+
+    s["package"] = drafts_svc.current_package(db, job_id)
+    s["package_outdated"] = drafts_svc.package_is_outdated(db, row, s["package"])
+    s["package_versions"] = db.fetchone("SELECT COUNT(*) AS n FROM drafts WHERE job_id = ? AND kind = 'package'", (job_id,))["n"]
     s["outreach"] = [{**r, "content": json.loads(r["content_json"])} for r in db.fetchall("SELECT id, kind, status, content_json FROM drafts WHERE job_id = ? AND kind IN ('outreach','followup') ORDER BY id DESC LIMIT 5", (job_id,))]
     s["application"] = db.fetchone("SELECT * FROM applications WHERE job_id = ?", (job_id,))
     s["followup"] = db.fetchone("SELECT * FROM followups WHERE application_id = ? AND status = 'pending' ORDER BY due_at LIMIT 1", (s["application"]["id"],)) if s["application"] else None
@@ -315,6 +320,10 @@ def attention(db: Database) -> dict:
 
         if not str(describe(db)["worker"]).startswith("running"):
             items.append({"kind": "worker", "text": "Daily searching is on, but the worker is not running, so nothing happens by itself. Start it with one command.", "action": "jobhunter worker run   (or see jobhunter schedule install --print)"})
+    from jobhunter.services import notifications
+
+    for n in notifications.unresolved(db)[:3]:
+        items.append({"kind": "digest_uncertain", "text": f"An email digest from {n['created_at'][:16].replace('T', ' ')} may or may not have arrived. Check your inbox. If you have it, press 'It arrived'. If not, press 'Send again'.", "action": f"jobhunter digest resolve {n['id']} arrived  |  jobhunter digest retry {n['id']} --force", "notification_id": n["id"]})
     g = gmail.describe(db)
     if g["read"]["connected"] and g["read"].get("last_error"):
         items.append({"kind": "mailbox", "text": f"Mailbox sync problem: {g['read']['last_error']}", "action": "jobhunter email sync"})

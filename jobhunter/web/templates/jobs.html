@@ -31,9 +31,9 @@
 {% endif %}
 {% if res.pages > 1 %}
 <nav class="pager" aria-label="Pages">
-  {% if res.page > 1 %}<a class="btn btn-sm" href="?{{ qs }}&page={{ res.page - 1 }}">Previous</a>{% endif %}
+  {% if res.page > 1 %}<a class="btn btn-sm" href="?{{ qs }}&amp;page={{ res.page - 1 }}">Previous</a>{% endif %}
   <span>Page {{ res.page }} of {{ res.pages }}</span>
-  {% if res.page < res.pages %}<a class="btn btn-sm" href="?{{ qs }}&page={{ res.page + 1 }}">Next</a>{% endif %}
+  {% if res.page < res.pages %}<a class="btn btn-sm" href="?{{ qs }}&amp;page={{ res.page + 1 }}">Next</a>{% endif %}
 </nav>
 {% endif %}
 {% if view == 'new' %}

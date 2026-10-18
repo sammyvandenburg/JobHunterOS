@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from dataclasses import dataclass
+from datetime import timedelta
 
 from jobhunter.config import AppContext, write_private_file
 from jobhunter.db import Database
 from jobhunter.services import consent, freshness
 from jobhunter.services.matching.engine import group_label
-from jobhunter.util import now_iso, sha256_text
+from jobhunter.util import now, now_iso, parse_iso, sha256_text
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -53,7 +55,7 @@ def pending_jobs(db: Database, since: str | None = None, limit: int = 15) -> lis
         "SELECT j.*, m.match_group, m.score, m.explanation_text, m.next_step FROM matches m JOIN jobs j ON j.id = m.job_id "
         "WHERE m.match_group IN ('good','worth_a_shot','backup') AND j.availability != 'closed' "
         "AND j.id NOT IN (SELECT job_id FROM events WHERE kind = 'dismissed' AND reverted_by IS NULL) "
-        "AND j.id NOT IN (SELECT CAST(value AS INTEGER) FROM notifications, json_each(notifications.job_ids_json) WHERE notifications.status = 'sent') "
+        "AND j.id NOT IN (SELECT CAST(value AS INTEGER) FROM notifications, json_each(notifications.job_ids_json) WHERE notifications.status IN ('sent','uncertain','sending')) "
         + ("AND j.first_seen_at >= ? " if since else "")
         + "ORDER BY CASE m.match_group WHEN 'good' THEN 0 WHEN 'worth_a_shot' THEN 1 ELSE 2 END, m.score DESC LIMIT ?",
         ((since, limit) if since else (limit,)),
@@ -102,8 +104,40 @@ def _esc(s: str | None) -> str:
     return html.escape(s or "")
 
 
+STALE_SENDING_MINUTES = 15
+
+
+def delivery_key(recipient_addr: str, content_hash: str) -> str:
+    return sha256_text(f"{recipient_addr.strip().lower()}|{content_hash}")
+
+
 def already_sent(db: Database, content_hash: str) -> bool:
     return db.fetchone("SELECT id FROM notifications WHERE content_hash = ? AND status = 'sent'", (content_hash,)) is not None
+
+
+def _is_stale_sending(row: dict) -> bool:
+    if row.get("status") != "sending":
+        return False
+    claimed = parse_iso(row.get("claimed_at") or row.get("created_at"))
+    return bool(claimed) and (now() - claimed) > timedelta(minutes=STALE_SENDING_MINUTES)
+
+
+def unresolved(db: Database) -> list[dict]:
+    """Digests whose delivery is unknown: the provider did not confirm, or Hunter stopped mid-send."""
+    rows = db.fetchall("SELECT * FROM notifications WHERE channel = 'email' AND resolved_at IS NULL AND status IN ('uncertain','sending') ORDER BY id DESC")
+    return [r for r in rows if r["status"] == "uncertain" or _is_stale_sending(r)]
+
+
+def resolve(db: Database, notification_id: int, outcome: str) -> dict:
+    """The person tells Hunter what happened: 'arrived' (count it as sent) or 'not_arrived' (free it for a retry)."""
+    row = db.fetchone("SELECT * FROM notifications WHERE id = ?", (notification_id,))
+    if not row:
+        raise DigestError(f"Digest {notification_id} not found.")
+    if outcome not in {"arrived", "not_arrived"}:
+        raise DigestError("Outcome must be 'arrived' or 'not_arrived'.")
+    with db.tx():
+        db.update("notifications", {"status": "sent" if outcome == "arrived" else "failed", "resolved_at": now_iso(), "resolution": outcome, "sent_at": row.get("sent_at") or (now_iso() if outcome == "arrived" else None)}, "id = ?", (notification_id,))
+    return {"notification_id": notification_id, "status": "sent" if outcome == "arrived" else "failed", "note": "Marked as arrived." if outcome == "arrived" else "Okay. You can send it again; those jobs are back in the next digest."}
 
 
 def record(db: Database, digest: Digest, channel: str, recipient_addr: str | None, status: str, error: str | None = None, provider_message_id: str | None = None, body_path: str | None = None) -> int:
@@ -123,41 +157,100 @@ def record(db: Database, digest: Digest, channel: str, recipient_addr: str | Non
             "error": error,
             "created_at": now_iso(),
             "sent_at": now_iso() if status == "sent" else None,
+            "delivery_key": delivery_key(recipient_addr, digest.content_hash) if recipient_addr else None,
+            "claimed_at": now_iso(),
         },
     )
 
 
-def send_digest(ctx: AppContext, db: Database, jobs: list[dict] | None = None, dry_run: bool = False) -> dict:
-    """Send a digest to the confirmed recipient only. Returns the outcome record."""
+def _claim(db: Database, digest: Digest, addr: str, body_path: str, force: bool) -> tuple[int | None, dict | None]:
+    """Reserve the right to send this exact digest. Returns (notification_id, None) or (None, why_not)."""
+    key = delivery_key(addr, digest.content_hash)
+    with db.tx():
+        row = db.fetchone("SELECT * FROM notifications WHERE delivery_key = ?", (key,))
+        if row:
+            st = row["status"]
+            if st == "sent":
+                return None, {"status": "skipped", "note": "This exact digest was already sent.", "notification_id": row["id"]}
+            if st == "sending" and not _is_stale_sending(row):
+                return None, {"status": "in_progress", "note": "This digest is being sent right now.", "notification_id": row["id"]}
+            if (st == "uncertain" or st == "sending") and not force:
+                return None, {"status": "blocked", "notification_id": row["id"], "note": "An earlier try may already have delivered this email. Hunter will not send it again by itself. Check your inbox; under Needs attention you can say it arrived, or send it again."}
+            db.update("notifications", {"status": "sending", "claimed_at": now_iso(), "attempts": int(row.get("attempts") or 0) + 1, "error": None, "resolved_at": None, "resolution": None, "body_path": body_path, "recipient": addr}, "id = ?", (row["id"],))
+            return row["id"], None
+        try:
+            nid = db.insert(
+                "notifications",
+                {"kind": "digest", "channel": "email", "recipient": addr, "subject": digest.subject, "content_hash": digest.content_hash, "job_ids_json": json.dumps(digest.job_ids), "body_path": body_path, "status": "sending", "attempts": 1, "created_at": now_iso(), "claimed_at": now_iso(), "delivery_key": key},
+            )
+        except sqlite3.IntegrityError:
+            return None, {"status": "in_progress", "note": "This digest is being sent right now."}
+        return nid, None
+
+
+def send_digest(ctx: AppContext, db: Database, jobs: list[dict] | None = None, dry_run: bool = False, force: bool = False, notification_id: int | None = None) -> dict:
+    """Send a digest to the confirmed recipient only, at most once per content.
+
+    Outbox rules: the send is claimed in the database before anything leaves the machine; two callers cannot
+    claim the same digest; a timeout or crash leaves the row 'uncertain' or stale 'sending', and nothing
+    resends those automatically. `force=True` is the person's explicit "send it again".
+    """
     addr = recipient(db)
     if not addr:
         raise DigestError("No confirmed digest address. Set one with `jobhunter digest address you@example.com`.")
+    if notification_id is not None:
+        row = db.fetchone("SELECT * FROM notifications WHERE id = ?", (notification_id,))
+        if not row:
+            raise DigestError(f"Digest {notification_id} not found.")
+        ids = json.loads(row["job_ids_json"] or "[]")
+        jobs = _jobs_by_ids(db, ids)
+        if not jobs:
+            raise DigestError("Those jobs are gone, so there is nothing to send again.")
     jobs = pending_jobs(db) if jobs is None else jobs
     if not jobs:
         return {"status": "skipped", "note": "Nothing new worth emailing."}
     digest = compose(db, jobs)
-    if already_sent(db, digest.content_hash):
-        return {"status": "skipped", "note": "This exact digest was already sent."}
     path = ctx.paths.exports_dir / "digests" / f"digest-{now_iso().replace(':', '')}.txt"
     write_private_file(path, digest.text.encode("utf-8"))
     if dry_run:
         return {"status": "preview", "subject": digest.subject, "to": addr, "body_path": str(path), "jobs": digest.job_ids}
+    nid, why_not = _claim(db, digest, addr, str(path), force)
+    if why_not:
+        return why_not
     from jobhunter.services.email import transport
+
+    def finish(status: str, error: str | None = None, message_id: str | None = None) -> None:
+        with db.tx():
+            db.update("notifications", {"status": status, "error": error, "provider_message_id": message_id, "sent_at": now_iso() if status == "sent" else None}, "id = ?", (nid,))
 
     try:
         result = transport.send(ctx, db, to_address=addr, subject=digest.subject, text=digest.text, html=digest.html)
     except transport.TransportNotConfigured as exc:
-        nid = record(db, digest, "email", addr, "failed", error=str(exc), body_path=str(path))
+        finish("failed", str(exc))
         return {"status": "failed", "error": str(exc), "notification_id": nid, "body_path": str(path)}
     except transport.TransportUncertain as exc:
-        nid = record(db, digest, "email", addr, "uncertain", error=str(exc), body_path=str(path))
-        return {"status": "uncertain", "error": str(exc), "notification_id": nid, "note": "The provider did not confirm delivery. Hunter will not resend this digest automatically."}
+        finish("uncertain", str(exc))
+        return {"status": "uncertain", "error": str(exc), "notification_id": nid, "note": "The email provider did not confirm delivery. Hunter will not send this digest again by itself. Check your inbox, then say under Needs attention whether it arrived."}
     except transport.TransportError as exc:
-        nid = record(db, digest, "email", addr, "failed", error=str(exc), body_path=str(path))
+        finish("failed", str(exc))
         return {"status": "failed", "error": str(exc), "notification_id": nid, "body_path": str(path)}
-    nid = record(db, digest, "email", addr, "sent", provider_message_id=result.get("message_id"), body_path=str(path))
+    except BaseException as exc:  # crash mid-send: leave the claim so a later run treats it as uncertain
+        finish("uncertain", f"interrupted: {type(exc).__name__}")
+        raise
+    finish("sent", None, result.get("message_id"))
     db.execute("UPDATE schedule SET last_digest_at = ? WHERE id = 1", (now_iso(),))
     return {"status": "sent", "to": addr, "notification_id": nid, "jobs": digest.job_ids, "transport": result.get("transport")}
+
+
+def _jobs_by_ids(db: Database, ids: list[int]) -> list[dict]:
+    if not ids:
+        return []
+    marks = ",".join("?" for _ in ids)
+    return db.fetchall(
+        f"SELECT j.*, m.match_group, m.score, m.explanation_text, m.next_step FROM jobs j LEFT JOIN matches m ON m.job_id = j.id "
+        f"WHERE j.id IN ({marks}) GROUP BY j.id ORDER BY j.id",
+        tuple(ids),
+    )
 
 
 def history(db: Database, limit: int = 30) -> list[dict]:

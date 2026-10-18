@@ -145,7 +145,7 @@ def test_acc30_state_survives_restart_and_stays_out_of_git(ctx, db):
     db2 = connect(ctx.paths.db_path)
     assert db2.fetchone("SELECT COUNT(*) AS n FROM jobs")["n"] == 1
     assert views.list_jobs(db2, view="saved")["total"] == 1
-    assert db2.schema_version() == "0002_notes_favorites"
+    assert db2.schema_version() == sorted(p.stem for p in (Path(__file__).resolve().parents[1] / "jobhunter" / "db" / "migrations").glob("*.sql"))[-1]
     db2.close()
     repo = Path(__file__).resolve().parents[1]
     gi = (repo / ".gitignore").read_text()
