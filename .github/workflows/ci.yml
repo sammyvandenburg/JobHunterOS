@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint + tests (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    env:
+      # Synthetic data only. Live-source checks stay opt-in (JOBHUNTER_LIVE=1) and never run here.
+      JOBHUNTER_HOME: ${{ github.workspace }}/.ci-home
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+
+      - name: Install (locked)
+        run: uv sync --frozen --extra dev --extra browser
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Browser for the Playwright test
+        run: uv run playwright install --with-deps chromium
+
+      - name: Tests
+        run: uv run pytest -q -p no:cacheprovider --durations=10
+
+      - name: Service templates parse
+        run: uv run jobhunter schedule install --print > /dev/null

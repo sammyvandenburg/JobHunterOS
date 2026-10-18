@@ -58,3 +58,4 @@ dist/
 tests/_live_output/
 playwright-report/
 test-results/
+.ci-home/
