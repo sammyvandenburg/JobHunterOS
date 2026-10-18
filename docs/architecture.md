@@ -41,5 +41,8 @@ One selection for every surface: `views.list_jobs(view="new")` is what the dashb
 
 Dedupe (`dedupe.py`): tracking parameters are dropped from links but requisition-naming parameters are kept (`?id=100` and `?id=200` are two jobs); the same employer and title in two cities, or with two different work modes, are two jobs; same canonical link or same requisition id merges.
 
+## Hunts in the background
+"Find jobs now" starts the hunt in a background thread (`hunt.start_background`) and returns the run id at once. The run row carries a `progress_json` (stage, sources done, new jobs so far) that `hunt.progress` turns into one plain sentence; the dashboard polls `/api/hunt/<id>` every few seconds and reloads once when the run ends. Each source's jobs are stored as soon as that source answers, so the lists fill up during the search. The file lock and the running row still make overlapping hunts impossible across the dashboard, the CLI and the worker. After matching, the original-listing lookup takes the best matches first.
+
 ## Security boundaries
 See docs/privacy.md. In short: loopback-only dashboard with host/origin/CSRF checks; recipient allowlist enforced in the transport; SSRF-safe fetcher; no file paths from the web; schema-validated model output; secrets in keyring or an encrypted file; untrusted content treated as data.

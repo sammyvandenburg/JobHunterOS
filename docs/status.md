@@ -13,6 +13,8 @@
 | New-employer discovery and board promotion | yes | yes | partially (live feeds read; promotion verified with fixtures) | Bounded to 5 boards per hunt. |
 | Original-listing lookup | yes | yes | no | Never invents URLs. |
 | Dedupe, freshness, availability | yes | yes | n/a | |
+| Background hunt with live progress (dashboard polls, jobs stored source by source) | yes | yes | yes, in a headless Chromium here | Same lock as the worker and CLI. |
+| LinkedIn/Indeed alert import (HTML links kept, tracking removed, multipart) | yes | yes (synthetic alerts) | no real mailbox used | Posting dates stay unknown. |
 | Matching, groups, explanations (rule-based) | yes | yes (candidate x job matrix: beginner, career changer, mid, senior; complete, borderline, decoy, empty and misleading postings) | n/a | Location that cannot be resolved goes to "Needs checking"; one selection feeds dashboard, CLI, digest and counts. |
 | Claude explanations unattended (`claude -p`) | yes | mocked | one tiny live call to confirm flags and JSON shape | Off by default; budget-capped. |
 | Claude explanations via `anthropic` SDK | yes | no | no | Needs `ANTHROPIC_API_KEY` and `--extra api`. |
