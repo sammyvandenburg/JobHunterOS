@@ -52,23 +52,37 @@ class HuntNotAllowed(Exception):
     """Live hunting needs readiness and an approved profile. Enforced here, not only in the UI."""
 
 
-def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids: list[str] | None = None, client: SafeClient | None = None, progress=None) -> dict:
-    """Run one hunt. Raises HuntInProgress if another run holds the lock, HuntNotAllowed before setup is done."""
+def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids: list[str] | None = None, client: SafeClient | None = None, progress=None, run_id: int | None = None) -> dict:
+    """Run one hunt. Raises HuntInProgress if another run holds the lock, HuntNotAllowed before setup is done.
+
+    `run_id` is set when `start_background` already created the row (status 'queued') so the caller has
+    an id to poll before any work starts.
+    """
     from jobhunter.services import onboarding
 
     ok, why = onboarding.live_hunting_allowed(db, ctx.demo)
     if not ok:
+        if run_id:
+            db.update("hunt_runs", {"status": "failed", "finished_at": now_iso(), "error": why}, "id = ?", (run_id,))
         raise HuntNotAllowed(why)
     lock = FileLock(ctx.paths.locks_dir / "hunt.lock")
     try:
         lock.acquire()
     except LockHeld as exc:
+        if run_id:
+            db.update("hunt_runs", {"status": "aborted", "finished_at": now_iso(), "error": "Another search was already running."}, "id = ?", (run_id,))
         raise HuntInProgress("A hunt is already running. Wait for it to finish.") from exc
     try:
         _reap_stale_runs(db)
-        if db.fetchone("SELECT id FROM hunt_runs WHERE status = 'running'"):
+        other = db.fetchone("SELECT id FROM hunt_runs WHERE status = 'running' AND id != ?", (run_id or -1,))
+        if other:
+            if run_id:
+                db.update("hunt_runs", {"status": "aborted", "finished_at": now_iso(), "error": "Another search was already running."}, "id = ?", (run_id,))
             raise HuntInProgress("A hunt is already running. Wait for it to finish.")
-        run_id = db.insert("hunt_runs", {"trigger": trigger, "status": "running", "started_at": now_iso(), "heartbeat_at": now_iso(), "owner": _owner()})
+        if run_id:
+            db.update("hunt_runs", {"status": "running", "started_at": now_iso(), "heartbeat_at": now_iso(), "owner": _owner()}, "id = ?", (run_id,))
+        else:
+            run_id = db.insert("hunt_runs", {"trigger": trigger, "status": "running", "started_at": now_iso(), "heartbeat_at": now_iso(), "owner": _owner()})
         try:
             stats = _execute(ctx, db, run_id, source_ids, client, progress)
             status = "completed" if not stats["sources_failed"] and not stats["sources_partial"] else "partial"
@@ -159,10 +173,84 @@ def sources_state(db: Database, source_ids: list[str] | None = None) -> tuple[li
     return [], "none_for_countries", "None of the enabled job sources cover your countries. Add an employer board for your country, or check your countries under Profile & settings."
 
 
+STAGE_WORDS = {"starting": "Starting", "checking sources": "Checking job sites", "discovering employers": "Looking for new employers", "comparing jobs": "Comparing jobs with your profile", "finding original links": "Finding the original listings", "ready": "Ready"}
+
+
+def _progress_update(db: Database, run_id: int, prog: dict) -> None:
+    db.update("hunt_runs", {"heartbeat_at": now_iso(), "progress_json": json.dumps(prog)}, "id = ?", (run_id,))
+
+
+def progress(db: Database, run_id: int) -> dict | None:
+    """Plain, pollable state of one hunt: stage, sources done, new jobs so far."""
+    row = db.fetchone("SELECT id, trigger, status, started_at, finished_at, stats_json, progress_json, error FROM hunt_runs WHERE id = ?", (run_id,))
+    if not row:
+        return None
+    prog = json.loads(row.get("progress_json") or "{}")
+    st = json.loads(row.get("stats_json") or "{}")
+    stage = prog.get("stage") or ("ready" if row["status"] not in {"running", "queued"} else "starting")
+    done = int(prog.get("sources_done", 0))
+    total = int(prog.get("sources_total", st.get("sources_total", 0) or 0))
+    new = int(prog.get("jobs_new", st.get("jobs_new", 0) or 0))
+    relevant = int(prog.get("jobs_relevant_new", st.get("jobs_relevant_new", 0) or 0))
+    if row["status"] in {"running", "queued"}:
+        if stage == "checking sources" and total:
+            message = f"Checking job sites: {done} of {total} done. {new} new job{'' if new == 1 else 's'} so far."
+        else:
+            message = STAGE_WORDS.get(stage, stage) + "…"
+    elif row["status"] == "no_sources":
+        message = row.get("error") or "No job sources to check."
+    elif row["status"] in {"failed", "aborted"}:
+        message = "The search stopped: " + (row.get("error") or "unknown problem.")
+    else:
+        failed = int(st.get("sources_failed", 0) or 0)
+        message = f"Done: {new} new job{'' if new == 1 else 's'}, {relevant} relevant" + (f". {failed} site(s) could not be checked." if failed else ".")
+    return {"run_id": row["id"], "trigger": row["trigger"], "status": row["status"], "stage": stage, "stage_label": STAGE_WORDS.get(stage, stage), "sources_done": done, "sources_total": total, "jobs_new": new, "jobs_relevant_new": relevant, "message": message, "started_at": row["started_at"], "finished_at": row["finished_at"], "error": row.get("error"), "running": row["status"] in {"running", "queued"}}
+
+
+def running_run(db: Database) -> dict | None:
+    row = db.fetchone("SELECT id FROM hunt_runs WHERE status IN ('running','queued') ORDER BY id DESC LIMIT 1")
+    return progress(db, row["id"]) if row else None
+
+
+def start_background(ctx: AppContext, trigger: str = "manual") -> dict:
+    """Start a hunt in a background thread and return its run id at once. The page can poll
+    `progress(db, run_id)` while jobs appear source by source. Honest early answers: not allowed,
+    or already running, are raised here, before any thread starts."""
+    import threading
+
+    from jobhunter.db import connect
+    from jobhunter.services import onboarding
+
+    db = connect(ctx.paths.db_path)
+    try:
+        ok, why = onboarding.live_hunting_allowed(db, ctx.demo)
+        if not ok:
+            raise HuntNotAllowed(why)
+        _reap_stale_runs(db)
+        if db.fetchone("SELECT id FROM hunt_runs WHERE status IN ('running','queued')"):
+            raise HuntInProgress("A search is already running. Wait for it to finish.")
+        run_id = db.insert("hunt_runs", {"trigger": trigger, "status": "queued", "started_at": now_iso(), "heartbeat_at": now_iso(), "owner": _owner(), "progress_json": json.dumps({"stage": "starting"})})
+    finally:
+        db.close()
+
+    def _bg() -> None:
+        d = connect(ctx.paths.db_path)
+        try:
+            run_hunt(ctx, d, trigger=trigger, run_id=run_id)
+        except Exception:
+            pass  # run_hunt recorded the failure on the row
+        finally:
+            d.close()
+
+    threading.Thread(target=_bg, name=f"hunt-{run_id}", daemon=True).start()
+    return {"run_id": run_id, "status": "queued"}
+
+
 def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] | None, client: SafeClient | None, progress) -> dict:
     ensure_sources_initialized(db)
     sources, problem, note = sources_state(db, source_ids)
     if problem:
+        _progress_update(db, run_id, {"stage": "ready", "sources_total": 0, "sources_done": 0, "jobs_new": 0, "jobs_relevant_new": 0})
         return {"sources_total": 0, "sources_ok": 0, "sources_partial": 0, "sources_failed": 0, "sources_skipped": 0, "postings_fetched": 0, "jobs_new": 0, "jobs_updated": 0, "jobs_relevant_new": 0, "jobs_closed": 0, "employers_new": 0, "sources_added": 0, "failures": [], "problem": problem, "note": note}
     own_client = client is None
     client = client or SafeClient()
@@ -181,45 +269,57 @@ def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] |
         "sources_added": 0,
         "failures": [],
     }
-    results: dict[str, FetchResult] = {}
+    prog = {"stage": "checking sources", "sources_total": len(sources), "sources_done": 0, "jobs_new": 0, "jobs_relevant_new": 0}
+    _progress_update(db, run_id, prog)
+    employers_before = db.fetchone("SELECT COUNT(*) AS n FROM employers")["n"]
+
+    def step(source: dict, res: FetchResult) -> None:
+        # Progressive persistence: each source's jobs are stored as soon as that source answers,
+        # so the dashboard fills up during the search instead of at the end.
+        _record_source_run(db, run_id, source, res, stats)
+        prog.update({"sources_done": prog["sources_done"] + 1, "jobs_new": stats["jobs_new"], "jobs_relevant_new": stats["jobs_relevant_new"]})
+        _progress_update(db, run_id, prog)
+        if progress:
+            progress(source["id"], res.status)
+
     try:
         with ThreadPoolExecutor(max_workers=HTTP_MAX_CONCURRENCY) as pool:
             futures = {}
             for s in sources:
                 skip = _should_skip(s)
                 if skip:
-                    results[s["id"]] = FetchResult(source_id=s["id"], status="skipped", error=skip, complete=False)
+                    step(s, FetchResult(source_id=s["id"], status="skipped", error=skip, complete=False))
                     continue
                 futures[pool.submit(_fetch_one, client, s)] = s
             for fut in as_completed(futures):
                 s = futures[fut]
                 try:
-                    results[s["id"]] = fut.result()
+                    res = fut.result()
                 except Exception as exc:  # adapter bug: still isolate the failure
-                    results[s["id"]] = FetchResult(source_id=s["id"], status="failed", error=f"{type(exc).__name__}: {exc}", complete=False)
-                db.update("hunt_runs", {"heartbeat_at": now_iso()}, "id = ?", (run_id,))
-                if progress:
-                    progress(s["id"], results[s["id"]].status)
-        employers_before = db.fetchone("SELECT COUNT(*) AS n FROM employers")["n"]
-        for s in sources:
-            res = results.get(s["id"])
-            if not res:
-                continue
-            _record_source_run(db, run_id, s, res, stats)
+                    res = FetchResult(source_id=s["id"], status="failed", error=f"{type(exc).__name__}: {exc}", complete=False)
+                step(s, res)
+        prog["stage"] = "discovering employers"
+        _progress_update(db, run_id, prog)
         stats["employers_new"] = db.fetchone("SELECT COUNT(*) AS n FROM employers")["n"] - employers_before
         stats["sources_added"] = _promote_discovered_employers(db, client, limit=MAX_NEW_SOURCES_PER_HUNT)
+        # Matching runs before the original-link lookups so the best matches get looked up first.
+        prog["stage"] = "comparing jobs"
+        _progress_update(db, run_id, prog)
+        try:
+            from jobhunter.services.matching import engine
+
+            stats["matching"] = engine.run_matching(ctx, db, hunt_run_id=run_id)
+        except Exception as exc:
+            stats["matching"] = {"status": "failed", "error": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()[-800:]}
+        prog["stage"] = "finding original links"
+        _progress_update(db, run_id, prog)
         _lookup_originals(db, client, run_id)
     finally:
         original_lookup.clear_cache()
         if own_client:
             client.close()
-    # Matching runs after discovery; failures there must not lose fetched jobs.
-    try:
-        from jobhunter.services.matching import engine
-
-        stats["matching"] = engine.run_matching(ctx, db, hunt_run_id=run_id)
-    except Exception as exc:
-        stats["matching"] = {"status": "failed", "error": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()[-800:]}
+    prog["stage"] = "ready"
+    _progress_update(db, run_id, prog)
     return stats
 
 
@@ -334,9 +434,12 @@ def _promote_discovered_employers(db: Database, client: SafeClient, limit: int) 
 
 
 def _lookup_originals(db: Database, client: SafeClient, run_id: int) -> None:
+    """Resolve the employer's own listing for this run's jobs, best matches first (bounded per run)."""
     rows = db.fetchall(
-        "SELECT * FROM jobs WHERE direct_url_status IN ('none') AND relevance IN ('relevant','uncertain') "
-        "AND id IN (SELECT job_id FROM job_observations WHERE hunt_run_id = ?) LIMIT 40",
+        "SELECT j.* FROM jobs j LEFT JOIN matches m ON m.job_id = j.id AND m.profile_version_id = (SELECT id FROM profile_versions WHERE status = 'approved' ORDER BY version DESC LIMIT 1) "
+        "WHERE j.direct_url_status IN ('none') AND j.relevance IN ('relevant','uncertain') "
+        "AND j.id IN (SELECT job_id FROM job_observations WHERE hunt_run_id = ?) "
+        "ORDER BY CASE m.match_group WHEN 'good' THEN 0 WHEN 'worth_a_shot' THEN 1 WHEN 'backup' THEN 2 WHEN 'uncertain' THEN 3 ELSE 4 END, m.score DESC, j.id LIMIT 40",
         (run_id,),
     )
     for job in rows:

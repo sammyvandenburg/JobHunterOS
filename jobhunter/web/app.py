@@ -277,7 +277,7 @@ def create_app(ctx: AppContext) -> FastAPI:
     def api_status():
         d = db()
         try:
-            return JSONResponse({"totals": stats.totals(d), "attention": views.attention(d)["count"], "schedule": schedule.describe(d)})
+            return JSONResponse({"totals": stats.totals(d), "attention": views.attention(d)["count"], "schedule": schedule.describe(d), "running": hunt.running_run(d)})
         finally:
             d.close()
 
@@ -431,16 +431,25 @@ def create_app(ctx: AppContext) -> FastAPI:
             if ctx.demo:
                 return RedirectResponse(f"/?msg={_q('Demo mode uses made-up data; there is nothing to fetch.')}", status_code=303)
             try:
-                st = hunt.run_hunt(ctx, d, trigger="manual")
-                if st["status"] == "no_sources":
-                    msg = "I could not search: " + (st.get("note") or "there are no job sources.")
-                else:
-                    msg = f"Search {st['status']}: {st['jobs_new']} new jobs, {st['jobs_relevant_new']} relevant" + (f"; {st['sources_failed']} site(s) could not be checked." if st["sources_failed"] else ".")
+                res = hunt.start_background(ctx, trigger="manual")
+                return RedirectResponse(f"/?run={res['run_id']}", status_code=303)
             except (hunt.HuntInProgress, hunt.HuntNotAllowed) as exc:
                 msg = str(exc)
         finally:
             d.close()
         return RedirectResponse(f"/?msg={_q(msg)}", status_code=303)
+
+    @app.get("/api/hunt/{run_id}")
+    def api_hunt(run_id: int):
+        d = db()
+        try:
+            prog = hunt.progress(d, run_id)
+            if not prog:
+                return JSONResponse({"error": "No such search."}, status_code=404)
+            prog["totals"] = {"new": views.current_recommended_count(d)}
+            return JSONResponse(prog)
+        finally:
+            d.close()
 
     # ---- setup ------------------------------------------------------------
     @app.post("/do/setup/answer")

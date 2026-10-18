@@ -29,7 +29,7 @@ from jobhunter.db import Database
 from jobhunter.services import consent
 from jobhunter.services.email import classify, linking
 from jobhunter.services.secrets import SecretStore
-from jobhunter.util import now_iso, parse_iso, strip_html
+from jobhunter.util import now_iso, parse_iso
 
 SCOPE_READ = "https://www.googleapis.com/auth/gmail.readonly"
 SCOPE_SEND = "https://www.googleapis.com/auth/gmail.send"
@@ -278,7 +278,10 @@ def _internal_date(meta: dict) -> str | None:
 
 
 def extract_body(full: dict) -> str:
-    """Prefer text/plain; fall back to stripped HTML. Tracking pixels and scripts are dropped."""
+    """Text/plain when it carries the job links; otherwise the HTML part with its links kept.
+    Tracking pixels are dropped; real links lose only their tracking parameters."""
+    from jobhunter.services.sources.import_text import count_job_links, html_to_text_with_links
+
     parts: list[tuple[str, str]] = []
 
     def walk(p: dict) -> None:
@@ -295,16 +298,22 @@ def extract_body(full: dict) -> str:
 
     walk(full.get("payload") or {})
     plain = next((t for m, t in parts if m == "text/plain"), None)
-    if plain:
-        return _clean(plain)
     html_part = next((t for m, t in parts if m == "text/html"), None)
+    candidates = []
+    if plain:
+        candidates.append(_clean(plain))
     if html_part:
-        return _clean(strip_html(html_part))
-    return ""
+        candidates.append(_clean(html_to_text_with_links(html_part)))
+    if not candidates:
+        return ""
+    # Alerts often put the real vacancy links only in the HTML part.
+    return max(candidates, key=lambda t: (count_job_links(t), -candidates.index(t)))
 
 
 def _clean(text: str) -> str:
-    text = re.sub(r"https?://[^\s]*(?:track|click|pixel|beacon|utm_)[^\s]*", "[link removed]", text, flags=re.I)
+    from jobhunter.services.sources.import_text import strip_tracking_links
+
+    text = strip_tracking_links(text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 

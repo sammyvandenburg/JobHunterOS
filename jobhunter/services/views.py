@@ -253,7 +253,7 @@ def dashboard(db: Database) -> dict:
     for h in hunts:
         h["stats"] = json.loads(h.pop("stats_json") or "{}")
     status = "Idle"
-    running = db.fetchone("SELECT id FROM hunt_runs WHERE status = 'running'")
+    running = hunt.running_run(db)
     if running:
         status = "Searching now"
     elif str(sched.get("worker", "")).startswith("running"):
@@ -282,6 +282,7 @@ def dashboard(db: Database) -> dict:
         },
         "activity": activity,
         "hunts": hunts,
+        "running": running,
     }
 
 

@@ -35,3 +35,6 @@ Mailbox content is never sent to Claude by default. Classification and linking a
 
 ## How sending is kept safe
 Every digest is written to an outbox row before anything leaves your computer. The same digest content to the same address is sent at most once; two commands or a worker and a click at the same moment cannot both send it. A failed send may be retried. A timeout or a crash during sending leaves the row "uncertain", and uncertain digests are never resent automatically: they appear under Needs attention with "It arrived" and "Send again". Connecting or disconnecting a sending account never changes the confirmed recipient; only `jobhunter digest address` does.
+
+## Alert emails
+LinkedIn and Indeed job alerts are imported from the email text, never by visiting those sites. The HTML part of an alert is read with its links kept, so the "View job" buttons still yield the vacancy link and the job card around it (title, company, location). Only tracking parameters are removed from links; the link itself is kept. Several jobs per email are normal. An alert's delivery time is not a posting date: imported jobs have an unknown posting date and say so.

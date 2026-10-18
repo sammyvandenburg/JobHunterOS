@@ -252,3 +252,7 @@ form.inline input[type=text], form.inline input[type=email], form.inline input[t
 form.inline label { display:flex; gap:6px; align-items:center; flex:1 1 200px; min-width:0; max-width:100%; }
 form.inline label select, form.inline label input { flex:1 1 auto; min-width:0; width:auto; max-width:100%; }
 select, input, textarea { max-width:100%; }
+
+.notice.live { border-color:rgba(255,122,0,.35); background:rgba(255,122,0,.08); }
+.notice.live .dot { width:10px; height:10px; border-radius:50%; background:var(--orange); display:inline-block; animation:pulse 1.2s infinite; }
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }

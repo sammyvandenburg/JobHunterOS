@@ -347,6 +347,10 @@ def cmd_hunt(args):
             raise CliError(str(exc)) from exc
         emit(args, stats, text=None if args.json else _hunt_text(stats))
     elif args.hunt_cmd == "status":
+        running = hunt.running_run(db)
+        if running:
+            emit(args, running, text=None if args.json else f"Searching now: {running['message']}")
+            return
         last = hunt.last_run(db)
         emit(args, {"last_run": last, "sources": [{k: s.get(k) for k in ("id", "plain_status", "last_success_at")} for s in hunt.source_health(db)]})
     elif args.hunt_cmd == "history":

@@ -10,8 +10,11 @@
       <h1>Your job hunt, all in one place.</h1>
       <p class="sub">Hunter finds opportunities that match your experience. You decide what happens next.</p>
     </div>
-    <form method="post" action="/do/hunt"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary btn-lg">{{ icon('search') }} Find jobs now</button></form>
+    <form method="post" action="/do/hunt"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary btn-lg" {% if d.running %}disabled aria-disabled="true"{% endif %}>{{ icon('search') }} {{ 'Searching…' if d.running else 'Find jobs now' }}</button></form>
   </div>
+  {% if d.running %}
+  <div class="notice live" data-hunt-poll="{{ d.running.run_id }}" aria-live="polite"><span class="dot busy"></span><span data-hunt-text>{{ d.running.message }}</span><span class="muted small">New jobs appear below as each site answers. You can keep using Hunter.</span></div>
+  {% endif %}
   <div class="status-line">
     <span>Status: <b>{{ d.status }}</b></span>
     <span>Last successful search: <b>{{ (d.last_success.finished_at if d.last_success else none) | dt or 'none yet' }}</b></span>

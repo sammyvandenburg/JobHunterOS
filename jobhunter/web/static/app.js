@@ -26,6 +26,27 @@
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && side) side.classList.remove('open'); });
 
+  // Live search progress: poll while a hunt runs, then reload once so the new jobs show.
+  var live = document.querySelector('[data-hunt-poll]');
+  if (live) {
+    var runId = live.getAttribute('data-hunt-poll'), textEl = live.querySelector('[data-hunt-text]'), misses = 0;
+    var tick = function () {
+      fetch('/api/hunt/' + runId, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function (p) {
+          misses = 0;
+          if (textEl && p.message) textEl.textContent = p.message;
+          if (p.running) { setTimeout(tick, 2500); return; }
+          if (textEl) textEl.textContent = p.message + ' Refreshing…';
+          var url = new URL(window.location.href); url.searchParams.delete('run');
+          if (p.status === 'no_sources' || p.status === 'failed' || p.status === 'aborted') url.searchParams.set('msg', p.message);
+          setTimeout(function () { window.location.replace(url.toString()); }, 800);
+        })
+        .catch(function () { misses += 1; if (misses < 20) setTimeout(tick, 4000); else if (textEl) textEl.textContent = 'Lost contact with Hunter. Reload the page to see where the search is.'; });
+    };
+    setTimeout(tick, 1500);
+  }
+
   // Async toggles (favorite / save). One request at a time per job+kind; the server's answer is the truth.
   var inflight = {};
   document.querySelectorAll('form[data-async]').forEach(function (form) {
