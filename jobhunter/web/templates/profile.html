@@ -60,19 +60,29 @@
 <section class="card" id="preferences">
   <h2>What you told me</h2>
   <ul>{% for line in pref_lines %}<li>{{ line }}</li>{% endfor %}</ul>
-  <form method="post" action="/do/prefs" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Change <select name="key"><option value="current_location">where I live</option><option value="work_countries">countries I can work in</option><option value="salary_min">lowest salary (e.g. 55000 EUR a year)</option><option value="remote">remote (must have / nice to have / don't mind)</option><option value="timezone">timezone</option></select></label>
-    <input type="text" name="value" required>
-    <label>How strict <select name="strength"><option value="nice">nice to have</option><option value="must">must have</option></select></label>
-    <button>Save</button>
+  <form method="post" action="/do/prefs/basics" class="prefs-form" id="prefs-form"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Where I live <input type="text" name="location" value="{{ prefs.current_location or '' }}" placeholder="city and country"></label>
+    <label>Countries I can work in <input type="text" name="countries" value="{{ prefs.work_countries | countries_input if prefs.work_countries else '' }}" placeholder="for example EU, or Netherlands and Germany"></label>
+    <label>Lowest salary I would be happy with <input type="text" name="salary" value="{% if prefs.salary_min %}{{ prefs.salary_min | int }} {{ prefs.salary_currency }} per {{ prefs.salary_period }}{% endif %}" placeholder="optional, for example 55000 EUR a year (type skip to clear)"></label>
+    <label>Timezone <input type="text" name="timezone" value="{{ prefs.timezone or '' }}" placeholder="Europe/Amsterdam"></label>
+    <fieldset><legend>Work arrangement</legend>
+      <label><input type="radio" name="remote_mode" value="remote_only" {% if prefs.remote == 'required' %}checked{% endif %}> Remote only</label>
+      <label><input type="radio" name="remote_mode" value="remote_preferred" {% if prefs.remote == 'preferred' %}checked{% endif %}> Remote preferred</label>
+      <label><input type="radio" name="remote_mode" value="no_preference" {% if prefs.remote in ['no_preference', 'unset'] %}checked{% endif %}> Don't mind</label>
+      <label><input type="checkbox" name="no_onsite" value="1" {% if 'onsite' not in prefs.work_modes %}checked{% endif %}> Never fully in the office</label>
+      <label><input type="checkbox" name="no_hybrid" value="1" {% if 'hybrid' not in prefs.work_modes %}checked{% endif %}> No hybrid</label>
+      <label><input type="checkbox" name="salary_must" value="1" {% if prefs.salary_strength == 'must' %}checked{% endif %}> The salary is a must, not a wish</label>
+    </fieldset>
+    <div class="full-row"><button class="primary">Save settings</button> <span class="muted small">Saving checks your matches again. Nothing is fetched.</span></div>
   </form>
   <details class="more"><summary>More options</summary>
     <form method="post" action="/do/prefs" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
-      <label><select name="key"><option value="needs_sponsorship">I need a visa (yes/no)</option><option value="relocation">I would move for a job (yes/no)</option><option value="fewer_consultancy">fewer consultancy jobs (yes/no)</option><option value="cloud_provider">preferred cloud</option><option value="on_call">on-call okay (yes/no)</option><option value="employment_type">employment type</option><option value="language">working language</option><option value="industry">industry</option></select></label>
+      <label><select name="key"><option value="fewer_consultancy">fewer consultancy jobs (yes/no)</option><option value="cloud_provider">preferred cloud</option><option value="on_call">on-call okay (yes/no)</option><option value="employment_type">employment type</option><option value="language">working language</option><option value="industry">industry</option><option value="needs_sponsorship">I need visa sponsorship (yes/no)</option><option value="relocation">I would move for a job (yes/no)</option></select></label>
       <input type="text" name="value" required>
       <label>How strict <select name="strength"><option value="nice">nice to have</option><option value="must">must have</option></select></label>
       <button>Save</button>
     </form>
+    <p class="muted small">Hunter never asks about visas during setup. Set it here only if it matters to you.</p>
   </details>
 </section>
 

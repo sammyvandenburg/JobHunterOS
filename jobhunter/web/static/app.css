@@ -256,3 +256,29 @@ select, input, textarea { max-width:100%; }
 .notice.live { border-color:rgba(255,122,0,.35); background:rgba(255,122,0,.08); }
 .notice.live .dot { width:10px; height:10px; border-radius:50%; background:var(--orange); display:inline-block; animation:pulse 1.2s infinite; }
 @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+
+/* Phase 4: compact cards, section nav, editable drafts, direct settings */
+.job { padding:12px 16px 10px; }
+.jobs { gap:10px; }
+.job .title { font-size:1.02rem; }
+.job .meta { margin:6px 0 4px; font-size:.88rem; gap:4px 12px; }
+.job .why { margin-top:6px; font-size:.95rem; }
+.job .why li { margin:1px 0; }
+.job .consider { margin-top:4px; font-size:.88rem; }
+.job .foot { margin-top:8px; }
+.section-nav { position:sticky; top:0; z-index:5; display:flex; gap:4px; flex-wrap:wrap; padding:8px 0; margin:0 0 12px; background:linear-gradient(var(--bg) 85%, transparent); }
+.section-nav a { font-size:.88rem; padding:6px 10px; border-radius:999px; color:var(--ink-2); border:1px solid var(--line); background:var(--panel); }
+.section-nav a:hover, .section-nav a:focus { color:var(--orange); border-color:var(--orange); text-decoration:none; }
+.section[id], .detail-head[id] { scroll-margin-top:64px; }
+.answer textarea { width:100%; min-height:90px; margin-top:4px; }
+.answer .tools-row { margin-top:6px; }
+.answer .suggested { font-size:.85rem; color:var(--muted); }
+.answer .suggested summary { cursor:pointer; }
+.prefs-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px 16px; align-items:start; }
+.prefs-form label { display:flex; flex-direction:column; gap:4px; font-size:.92rem; color:var(--ink-2); }
+.prefs-form label input[type=text], .prefs-form label select { width:100%; }
+.prefs-form fieldset { border:1px solid var(--line); border-radius:10px; padding:8px 12px; margin:0; grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:8px 16px; }
+.prefs-form fieldset legend { color:var(--muted); font-size:.85rem; padding:0 4px; }
+.prefs-form fieldset label { flex-direction:row; align-items:center; gap:6px; }
+.prefs-form .full-row { grid-column:1 / -1; }
+@media (max-width: 560px) { .section-nav { gap:3px; } .section-nav a { padding:5px 8px; font-size:.82rem; } }

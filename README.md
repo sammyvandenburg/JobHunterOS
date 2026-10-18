@@ -24,7 +24,7 @@ uv run jobhunter doctor      # checks your environment and explains any fix
 Then either:
 
 - **In Claude Code:** open this folder and run `/jobhunter`. Hunter asks one question at a time, builds your profile, and finds jobs.
-- **In a browser:** `uv run jobhunter dashboard` opens http://127.0.0.1:8765/ (local only). The left menu has Dashboard, New jobs, Favorites, Saved, Applied, Finished, Needs attention, and Profile & settings. Every job has its own page (`/job/<id>`) with why it fits, things to consider, the full text, Help me apply, and your private notes.
+- **In a browser:** `uv run jobhunter dashboard` opens http://127.0.0.1:8765/ (local only). The left menu has Dashboard, New jobs, Favorites, Saved, Applied, Finished, Needs attention, and Profile & settings. Every job has its own page (`/job/<id>`) with a small section menu: Overview, Why it fits, Help me apply (what they need, your proof, what to check, your next step, and draft answers you can edit, save in your own words, and copy), Job description, My notes, History. "Find jobs now" runs in the background and shows its progress; new jobs appear while it runs. Settings are plain controls: where you live, countries, salary, timezone, and work arrangement (remote only / remote preferred / don't mind, never in the office, no hybrid). Jobs whose location cannot be resolved wait under "Needs checking" instead of mixing into your list.
 - **Just to look around:** `uv run jobhunter --demo demo seed` then `uv run jobhunter --demo dashboard`. Demo data is synthetic and lives in a separate folder; every page says so.
 
 Your private data lives in `~/.jobhunteros` (change with `JOBHUNTER_HOME`). Nothing personal is ever written into this repository.

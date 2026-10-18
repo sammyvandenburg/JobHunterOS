@@ -5,7 +5,7 @@
    - **What they need** (3 to 5 lines).
    - **Your proof** (what in the CV matches, each line tied to a fact). Then **What to check** (what is not in the profile yet, years asked for, location rules). Say "not in your profile yet", never "you have never done this".
    - **Your next step** (3 short tips: what to lead with, how to cover a gap honestly, one example to tell).
-   - **Your drafts** (improve them yourself using only approved facts; keep the person's own wording; no filler, no invented numbers or credentials; never turn the employer's numbers or responsibilities into the person's achievements, and never claim they led people, owned a system, or ran production unless a paid role in their facts shows it).
+   - **Your drafts** (in the dashboard each draft answer is an editable box with "Save my wording" and "Copy"; improve them using only approved facts; keep the person's own wording; no filler, no invented numbers or credentials; never turn the employer's numbers or responsibilities into the person's achievements, and never claim they led people, owned a system, or ran production unless a paid role in their facts shows it).
    - **Only you can answer** (work country, pay, availability, personal questions). Never fill these in.
 3. End with: "Hunter prepares, you apply. When you have sent it, tell me and I will record it." Then `uv run jobhunter act applied <id> [--when YYYY-MM-DD]`.
 

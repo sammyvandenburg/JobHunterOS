@@ -492,3 +492,22 @@ def due_followups(db: Database) -> list[dict]:
 
 def resolve_followup(db: Database, followup_id: int, status: str = "done") -> None:
     db.update("followups", {"status": status, "resolved_at": now_iso()}, "id = ?", (followup_id,))
+
+
+def save_user_answer(db: Database, draft_id: int, question: str, text: str) -> dict:
+    """Keep the person's own wording for one drafted answer. Hunter's draft stays as 'suggested';
+    what they wrote is what they will copy and send. Nothing is validated against facts here:
+    these are the person's words, not Hunter's claims."""
+    row = db.fetchone("SELECT * FROM drafts WHERE id = ? AND kind = 'package'", (draft_id,))
+    if not row:
+        raise DraftError("That help-to-apply package was not found.")
+    content = json.loads(row["content_json"])
+    edits = content.setdefault("user_answers", {})
+    text = (text or "").strip()
+    if text:
+        edits[question] = {"text": text[:4000], "saved_at": now_iso()}
+    else:
+        edits.pop(question, None)
+    with db.tx():
+        db.update("drafts", {"content_json": json.dumps(content)}, "id = ?", (draft_id,))
+    return {"draft_id": draft_id, "question": question, "saved": bool(text)}

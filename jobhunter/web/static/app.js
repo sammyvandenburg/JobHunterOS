@@ -26,6 +26,26 @@
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && side) side.classList.remove('open'); });
 
+  // Draft answers: save the person's own wording without a reload; copy to the clipboard.
+  document.querySelectorAll('form[data-answer-form]').forEach(function (form) {
+    var state = form.querySelector('.save-state'), ta = form.querySelector('textarea');
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      if (state) state.textContent = 'Saving…';
+      fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' }, credentials: 'same-origin' })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) { if (!res.ok || res.d.error) { if (state) state.textContent = res.d.error || 'Not saved. Try again.'; return; } if (state) state.textContent = res.d.saved ? 'Your wording, saved ' + (res.d.when || '') : "Back to Hunter's draft."; })
+        .catch(function () { if (state) state.textContent = 'Not saved. Check your connection.'; });
+    });
+    var copy = form.querySelector('[data-copy]');
+    if (copy) copy.addEventListener('click', function () {
+      var text = ta ? ta.value : '';
+      var done = function () { toast('Copied.'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { ta.select(); document.execCommand('copy'); done(); });
+      else { ta.select(); document.execCommand('copy'); done(); }
+    });
+  });
+
   // Live search progress: poll while a hunt runs, then reload once so the new jobs show.
   var live = document.querySelector('[data-hunt-poll]');
   if (live) {

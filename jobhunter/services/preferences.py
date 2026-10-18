@@ -134,8 +134,11 @@ def describe(prefs: Preferences) -> list[str]:
     from jobhunter.services.normalize import country_names
 
     lines.append(f"Countries where you can work: {country_names(prefs.work_countries) if prefs.work_countries else 'not set'}")
-    lines.append(f"Need visa sponsorship: {prefs.needs_sponsorship.replace('_', ' ')}")
-    lines.append(f"Willing to relocate: {prefs.relocation.replace('_', ' ')}")
+    # Optional, advanced: only shown when the person set them (never asked during setup).
+    if prefs.needs_sponsorship not in {"unset", "not_sure"}:
+        lines.append(f"Need visa sponsorship: {prefs.needs_sponsorship.replace('_', ' ')}")
+    if prefs.relocation not in {"unset", "not_sure"}:
+        lines.append(f"Willing to relocate: {prefs.relocation.replace('_', ' ')}")
     if prefs.salary_min:
         lines.append(
             f"Minimum salary: {prefs.salary_min:,.0f} {prefs.salary_currency or ''} per {prefs.salary_period or 'year'} ({prefs.salary_strength})"
@@ -149,3 +152,59 @@ def describe(prefs: Preferences) -> list[str]:
     for k, v in prefs.extras.items():
         lines.append(f"{k}: {v.value} ({v.strength})")
     return lines
+
+
+def update_basics(db: Database, location: str | None = None, countries: str | None = None, salary: str | None = None, salary_must: bool | None = None, remote_text: str | None = None, timezone: str | None = None, reason: str = "settings") -> dict:
+    """Direct settings controls (no key/value editor). Empty fields leave the current value alone;
+    the word 'skip' or 'none' clears the salary. Returns plain notes for the person."""
+    from jobhunter.services.onboarding import parse_salary_answer, parse_work_modes
+
+    prefs = get(db)
+    notes: list[str] = []
+    if location is not None and location.strip():
+        prefs.current_location = location.strip()
+    if countries is not None and countries.strip():
+        low = countries.strip().lower()
+        if low in {"not sure", "unsure", "anywhere", "don't know", "dont know"}:
+            prefs.work_countries = []
+            prefs.work_countries_note = "not sure"
+            notes.append("Okay, I will show jobs everywhere and mark the country on each one.")
+        else:
+            codes, unknown = parse_country_list(countries)
+            if not codes:
+                raise ValueError("I did not recognize any country. Try names like 'Netherlands, Germany' or 'EU'.")
+            prefs.work_countries = codes
+            prefs.work_countries_note = ("unrecognized: " + ", ".join(unknown)) if unknown else None
+            if unknown:
+                notes.append("I did not recognize: " + ", ".join(unknown) + ". The others are saved.")
+    if salary is not None:
+        low = salary.strip().lower()
+        if low in {"skip", "none", "no", "clear", "-"}:
+            prefs.salary_min, prefs.salary_strength = None, "unset"
+        elif low:
+            parsed = parse_salary_answer(salary)
+            if not parsed:
+                raise ValueError("For salary, try something like '55000 EUR a year' or leave it empty.")
+            prefs.salary_min, prefs.salary_currency, prefs.salary_period = parsed
+            prefs.salary_strength = "must" if salary_must else "nice"
+        if salary_must is not None and prefs.salary_min:
+            prefs.salary_strength = "must" if salary_must else "nice"
+    if remote_text is not None and remote_text.strip():
+        hit, modes = parse_work_modes(remote_text)
+        if not hit:
+            raise ValueError("For remote, choose one of the options.")
+        prefs.remote = hit  # type: ignore[assignment]
+        prefs.work_modes = modes
+    if timezone is not None and timezone.strip():
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(timezone.strip())
+        except (ZoneInfoNotFoundError, ValueError, KeyError) as exc:
+            raise ValueError("I do not know that timezone. Use a name like Europe/Berlin.") from exc
+        prefs.timezone = timezone.strip()
+        from jobhunter.services import schedule as sched
+
+        sched.set_timezone(db, prefs.timezone)
+    save(db, prefs, reason=reason)
+    return {"ok": True, "note": " ".join(notes) or "Saved.", "preferences": prefs.model_dump(mode="json")}

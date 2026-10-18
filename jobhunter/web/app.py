@@ -41,11 +41,22 @@ from jobhunter.services.matching import engine
 from jobhunter.services.model import provider as model_provider
 from jobhunter.services.normalize import country_names
 from jobhunter.services.secrets import SecretStore
-from jobhunter.util import parse_iso
+from jobhunter.util import now_iso, parse_iso
 from jobhunter.web.security import LocalOnlyMiddleware, check_csrf
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
+
+
+def _countries_input(codes) -> str:
+    """A value the countries box can be saved back from: 'EU' for the whole EU/EEA, else country names."""
+    from jobhunter.services.normalize import COUNTRY_NAMES
+    from jobhunter.services.preferences import EU_EEA
+
+    codes = list(codes or [])
+    if codes and set(codes) == set(EU_EEA):
+        return "EU"
+    return ", ".join(COUNTRY_NAMES.get(c, c) for c in codes)
 
 
 def _dt(value):
@@ -64,6 +75,7 @@ def _countries(codes):
 
 templates.env.filters["dt"] = _dt
 templates.env.filters["countries"] = _countries
+templates.env.filters["countries_input"] = _countries_input
 
 LIST_PAGES = {
     "new": ("New jobs", "Ranked for you. Best match first; fresh jobs are highlighted.", "search", "No new jobs right now", "Press <strong>Find jobs now</strong>, or check <a href='/jobs/old'>older matches</a> and <a href='/jobs/excluded'>what was left out</a>."),
@@ -614,6 +626,48 @@ def create_app(ctx: AppContext) -> FastAPI:
         finally:
             d.close()
         return RedirectResponse(f"/profile?msg={_q(msg)}#preferences", status_code=303)
+
+    @app.post("/do/prefs/basics")
+    def prefs_basics(request: Request, csrf: str = Form(...), location: str = Form(""), countries: str = Form(""), salary: str = Form(""), salary_must: str = Form(""), remote_mode: str = Form(""), no_onsite: str = Form(""), no_hybrid: str = Form(""), timezone: str = Form("")):
+        bad = guard(request, csrf)
+        if bad:
+            return bad
+        d = db()
+        try:
+            words = {"remote_only": "remote only", "remote_preferred": "remote preferred", "no_preference": "don't mind"}.get(remote_mode, "")
+            if words and no_onsite:
+                words += ", never in the office"
+            if words and no_hybrid:
+                words += ", no hybrid"
+            try:
+                res = prefs_svc.update_basics(d, location=location, countries=countries, salary=salary, salary_must=bool(salary_must), remote_text=words or None, timezone=timezone)
+                engine.rematch_quietly(ctx, d)
+                msg = res["note"] + " Your matches were checked again."
+            except ValueError as exc:
+                msg = str(exc)
+        finally:
+            d.close()
+        return RedirectResponse(f"/profile?msg={_q(msg)}#preferences", status_code=303)
+
+    @app.post("/do/draft/{draft_id}/answer")
+    def draft_answer(request: Request, draft_id: int, csrf: str = Form(...), job_id: int = Form(...), question: str = Form(...), text: str = Form("")):
+        bad = guard(request, csrf)
+        if bad:
+            return JSONResponse({"error": "Form expired. Reload the page."}, status_code=403) if wants_json(request) else bad
+        d = db()
+        try:
+            try:
+                res = drafts.save_user_answer(d, draft_id, question, text)
+                if wants_json(request):
+                    return JSONResponse({"saved": res["saved"], "when": _dt(now_iso())})
+                msg = "Saved your wording." if res["saved"] else "Back to Hunter's draft."
+            except drafts.DraftError as exc:
+                if wants_json(request):
+                    return JSONResponse({"error": str(exc)}, status_code=400)
+                msg = str(exc)
+        finally:
+            d.close()
+        return RedirectResponse(f"/job/{job_id}?msg={_q(msg)}#apply", status_code=303)
 
     @app.post("/do/feedback/{key}")
     def feedback_apply(request: Request, key: str, csrf: str = Form(...), answer: str = Form(...)):

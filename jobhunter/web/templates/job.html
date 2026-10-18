@@ -6,7 +6,8 @@
 <p class="small"><a href="/jobs/new">← New jobs</a></p>
 <div class="with-aside">
 <div>
-  <header class="detail-head g-{{ job.group }}">
+  <nav class="section-nav" aria-label="Sections of this job"><a href="#overview">Overview</a><a href="#why">Why it fits</a><a href="#apply">Help me apply</a><a href="#description">Job description</a><a href="#notes">My notes</a><a href="#history">History</a></nav>
+  <header class="detail-head g-{{ job.group }}" id="overview">
     <div class="row between">
       <div><h1>{{ job.title }}</h1><div class="company">{{ job.employer }}</div></div>
       <div class="left hstack">{{ toggles(job, csrf) }}</div>
@@ -30,7 +31,7 @@
     {% if job.source_note %}<p class="muted small">{{ job.source_note }}</p>{% endif %}
   </header>
 
-  <section class="section">
+  <section class="section" id="why">
     <h2>Why Hunter recommends it</h2>
     {% if job.explanation %}<p class="lead">{{ job.explanation }}</p>{% endif %}
     {% if job.exclusion_reason %}<p class="lead"><strong>Left out:</strong> {{ job.exclusion_reason }}</p>{% endif %}
@@ -49,7 +50,13 @@
     <p class="muted small mt-8">{{ job.explanation_label }}</p>
   </section>
 
-  {% if job.package %}
+  {% if not job.package %}
+  <section class="section" id="apply">
+    <h2>Help me apply</h2>
+    <p>Press <strong>Help me apply</strong> and Hunter shows what they need, your proof from your CV, what to check, and your next step, plus draft answers you can edit and copy.</p>
+    <form method="post" action="/do/job/{{ job.id }}/prepare"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">{{ icon('sparkle') }} Help me apply</button></form>
+  </section>
+  {% else %}
   <section class="section" id="apply">
     <h2>Help me apply</h2>
     {% if job.package_outdated %}<div class="notice warn"><strong>This help is from an older version.</strong> The job text, your profile, or your CV changed since then. <form method="post" action="/do/job/{{ job.id }}/prepare" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="stage" value="regenerate"><button class="btn-sm">Make a new version</button></form></div>{% endif %}
@@ -60,15 +67,28 @@
       <div><h3>Your next step</h3><ul>{% for p in job.package.fit.next_step %}<li>{{ p }}</li>{% endfor %}</ul></div>
       <div><h3>What to send</h3><ul>{% if job.package.cv %}<li>Your CV, unchanged: {{ job.package.cv.filename or job.package.cv.path.split('/')[-1] }}{% if job.package.cv.version > 1 %} (version {{ job.package.cv.version }}){% endif %}</li>{% endif %}{% for l in job.package.project_links %}<li>Project link: <a href="{{ l }}" target="_blank" rel="noopener noreferrer">{{ l }}</a></li>{% endfor %}</ul></div>
     </div>
-    <h3 class="mt-14">Draft answers (edit them so they sound like you)</h3>
-    {% for a in job.package.draft.answers if a.answer %}<div class="answer"><p class="q">{{ a.question }}</p><p>{{ a.answer }}</p>{% if a.note %}<p class="note">{{ a.note }}</p>{% endif %}</div>{% endfor %}
+    <h3 class="mt-14">Draft answers</h3>
+    <p class="muted small">Edit each one so it sounds like you, press Save, then Copy when you fill in the application. Hunter's suggestion stays below your version.</p>
+    {% set edits = job.package.user_answers or {} %}
+    {% for a in job.package.draft.answers if a.answer %}
+    <div class="answer">
+      <p class="q">{{ a.question }}</p>
+      <form method="post" action="/do/draft/{{ job.package.draft_id }}/answer" data-answer-form>
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="job_id" value="{{ job.id }}"><input type="hidden" name="question" value="{{ a.question }}">
+        <textarea name="text" aria-label="Your answer to: {{ a.question }}">{{ edits[a.question].text if a.question in edits else a.answer }}</textarea>
+        <div class="tools-row"><button class="btn-sm">Save my wording</button><button type="button" class="btn-sm" data-copy>{{ icon('note') }} Copy</button><span class="save-state" aria-live="polite">{% if a.question in edits %}Your wording, saved {{ edits[a.question].saved_at | dt }}{% endif %}</span></div>
+      </form>
+      {% if a.question in edits %}<details class="suggested"><summary>Hunter's suggestion</summary><p>{{ a.answer }}</p></details>{% endif %}
+      {% if a.note %}<p class="note">{{ a.note }}</p>{% endif %}
+    </div>
+    {% endfor %}
     <h3 class="mt-14">Only you can answer these</h3>
     <ul class="plain">{% for a in job.package.draft.answers if a.needs_user %}<li>{{ a.question }}</li>{% endfor %}{% for m in job.package.draft.missing %}<li>{{ m }}</li>{% endfor %}</ul>
     <p class="muted small">{{ job.package.reminder }}</p>
   </section>
   {% endif %}
 
-  <section class="section">
+  <section class="section" id="description">
     <h2>Full job description</h2>
     {% if job.description %}<pre class="desc">{{ job.description }}</pre>{% else %}<p class="muted">No description text was available from the source. Open the job to read it there.</p>{% endif %}
     <details class="more"><summary>Where this job was seen</summary><ul class="plain">{% for o in job.observations %}<li>{{ o.source_id }} · first {{ o.first_observed_at | dt }} · last {{ o.last_observed_at | dt }}{% if o.url %} · <a href="{{ o.url }}" rel="noopener noreferrer" target="_blank">link</a>{% endif %}</li>{% endfor %}</ul><p class="muted small">Posting date comes from the source field "{{ job.dates.posted_at_provenance }}". First seen by Hunter {{ job.dates.first_seen_at | dt }}.</p></details>
@@ -95,7 +115,7 @@
     {% endfor %}
   </section>
 
-  <section class="section">
+  <section class="section" id="history">
     <h2>History</h2>
     <ul class="history">{% for ev in job.history %}<li><span class="when">{{ ev.occurred_at | dt }}</span><span>{{ ev.label }}{% if ev.reverted_by %} <span class="faint">(undone)</span>{% endif %}{% if ev.note %} · {{ ev.note }}{% endif %}</span>{% if not ev.reverted_by and ev.kind not in ['correction','opened','favorited','unfavorited','saved','unsaved'] %}<form method="post" action="/do/event/{{ ev.id }}/undo" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="job_id" value="{{ job.id }}"><button class="ghost btn-sm">Undo</button></form>{% endif %}</li>{% else %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
   </section>
