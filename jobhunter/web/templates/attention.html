@@ -1,26 +1,29 @@
 {% extends "base.html" %}
-{% block title %}What needs my attention{% endblock %}
+{% from "_icons.html" import icon %}
+{% block title %}Needs attention{% endblock %}
 {% block content %}
-<section class="card">
-  <h1>Needs your attention</h1>
-  {% if att.setup_pending %}<p><strong>Setup:</strong> {{ att.setup_pending.question }} <a href="/profile">Continue setup</a></p>{% endif %}
-  {% if not att['items'] and not att.setup_pending %}<p>Nothing right now. All good.</p>{% endif %}
-  <ul class="attention">
-  {% for it in att['items'] %}
-    <li>
-      <p>{{ it.text }}</p>
-      {% if it.kind == 'suggestion' %}
-        <form method="post" action="/do/feedback/{{ it.key }}" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button name="answer" value="yes" class="primary">Yes</button><button name="answer" value="no">No, keep them</button></form>
-      {% elif it.kind == 'email_confirmation' %}
-        <form method="post" action="/do/email/{{ it.email_id }}/confirm" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">{% if it.job_id %}<input type="hidden" name="job_id" value="{{ it.job_id }}"><button class="primary">Yes</button>{% else %}<label>Job id <input type="number" name="job_id" required></label><button class="primary">Link</button>{% endif %}</form>
-        <form method="post" action="/do/email/{{ it.email_id }}/reject" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>No</button></form>
-      {% elif it.kind == 'question' %}
-        <form method="post" action="/do/profile/answer" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ it.key }}"><input type="text" name="answer" placeholder="Your answer" required><button class="primary">Answer</button></form>
-        <form method="post" action="/do/profile/skip" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ it.key }}"><button>Skip</button></form>
-      {% elif it.job_id %}<a href="/job/{{ it.job_id }}">Open the job</a>
-      {% else %}<code>{{ it.action }}</code>{% endif %}
-    </li>
-  {% endfor %}
-  </ul>
-</section>
+<div class="page-head"><div><h1>Needs attention</h1><p class="sub">Questions and problems that are waiting for you.</p></div></div>
+{% if att.setup_pending %}<div class="flash">{{ icon('alert') }}<span><strong>Setup:</strong> {{ att.setup_pending.question | truncate(120) }} <a href="/">Continue setup</a></span></div>{% endif %}
+{% if not att['items'] and not att.setup_pending %}<div class="empty">{{ icon('check') }}<h2>Nothing right now</h2><p>All good.</p></div>{% endif %}
+<ul class="attention">
+{% for it in att['items'] %}
+  <li>
+    {{ icon('alert') }}
+    <p>{{ it.text }}</p>
+    {% if it.kind == 'suggestion' %}
+      <form method="post" action="/do/feedback/{{ it.key }}" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button name="answer" value="yes" class="primary btn-sm">Yes</button><button name="answer" value="no" class="btn-sm">No, keep them</button></form>
+    {% elif it.kind == 'email_confirmation' %}
+      <form method="post" action="/do/email/{{ it.email_id }}/confirm" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">{% if it.job_id %}<input type="hidden" name="job_id" value="{{ it.job_id }}"><button class="primary btn-sm">Yes</button>{% else %}<label>Job id <input class="w-90" type="number" name="job_id" required></label><button class="primary btn-sm">Link</button>{% endif %}</form>
+      <form method="post" action="/do/email/{{ it.email_id }}/reject" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn-sm">No</button></form>
+    {% elif it.kind == 'question' %}
+      <form method="post" action="/do/profile/answer" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ it.key }}"><input type="text" name="answer" placeholder="Your answer" required><button class="primary btn-sm">Answer</button></form>
+      <form method="post" action="/do/profile/skip" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ it.key }}"><button class="btn-sm">Skip</button></form>
+    {% elif it.kind == 'profile_review' %}<a class="btn btn-sm" href="/profile">Check profile</a>
+    {% elif it.kind == 'source_failure' %}<a class="btn btn-sm" href="/health">Search health</a>
+    {% elif it.kind == 'worker' %}<a class="btn btn-sm" href="/connections">How to start it</a>
+    {% elif it.job_id %}<a class="btn btn-sm" href="/job/{{ it.job_id }}">Open the job</a>
+    {% else %}<code>{{ it.action }}</code>{% endif %}
+  </li>
+{% endfor %}
+</ul>
 {% endblock %}

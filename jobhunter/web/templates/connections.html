@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Connections{% endblock %}
 {% block content %}
-<h1>Connections</h1>
+{% from "_icons.html" import icon %}
+{% set tabs = [('profile','/profile','Profile & preferences'),('connections','/connections','Connections & schedule'),('health','/health','Search health')] %}
+<div class="page-head"><div><h1>Profile &amp; settings</h1><p class="sub">Your profile, what you told Hunter, connections, and search health.</p></div></div>
+<nav class="tabs" aria-label="Settings sections">{% for key, href, label in tabs %}<a href="{{ href }}" {% if settings_tab == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
 <section class="card"><h2>How often should I look? When should I tell you?</h2>
   <p>Now: looking <strong>{{ sched.frequency_label }}</strong>{% if sched.frequency == 'daily' %} at {{ sched.time_of_day }}{% endif %} ({{ sched.timezone }}) · telling you via <strong>{{ sched.notify_label }}</strong> · schedule {{ 'on' if sched.enabled and not sched.paused else ('paused' if sched.paused else 'off') }} · next planned run: {{ sched.next_run_at or 'none' }} · last run: {{ sched.last_run_at or 'never' }}</p>
   <p>Worker: <strong>{{ sched.worker }}</strong>. {{ sched.note }}</p>

@@ -131,7 +131,9 @@ def describe(prefs: Preferences) -> list[str]:
     """Plain-language lines for the dashboard and the skill."""
     lines = []
     lines.append(f"Current location: {prefs.current_location or 'not set'}")
-    lines.append(f"Countries where you can work: {', '.join(prefs.work_countries) if prefs.work_countries else 'not set'}")
+    from jobhunter.services.normalize import country_names
+
+    lines.append(f"Countries where you can work: {country_names(prefs.work_countries) if prefs.work_countries else 'not set'}")
     lines.append(f"Need visa sponsorship: {prefs.needs_sponsorship.replace('_', ' ')}")
     lines.append(f"Willing to relocate: {prefs.relocation.replace('_', ' ')}")
     if prefs.salary_min:

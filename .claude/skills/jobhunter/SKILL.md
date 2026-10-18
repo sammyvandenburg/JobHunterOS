@@ -39,7 +39,7 @@ Argument handling (`$ARGUMENTS`):
 
 ## Presenting jobs
 
-Use `uv run jobhunter jobs list --json` (views: new, saved, applied, interviews, finished, old, excluded, uncertain, dismissed). Show the best few first. For each job: title and company, group, location and the real remote rule, salary as stated or "Not listed", freshness and verification status, two or three reasons tied to approved facts, gaps or open questions, links, and one clear next step. Older or undated matches are available separately; never pad a list.
+Use `uv run jobhunter jobs list --json` (views: new, favorites, saved, applied, interviews, finished, old, excluded, uncertain, dismissed). Show the best few first. For each job: title and company, group, location and the real remote rule, salary as stated or "Not listed", freshness and verification status, two or three reasons tied to approved facts, gaps or open questions, links, and one clear next step. Older or undated matches are available separately; never pad a list.
 
 Explanations: `jobs list` carries rule-based explanations. To write better ones yourself (you are the model in this session), run `uv run jobhunter match pending --json`, write explanations only from the listed facts with fact ids, save them as JSON matching the given schema, then `uv run jobhunter match submit --file <path>`. Rejected items stay rule-based; say so.
 

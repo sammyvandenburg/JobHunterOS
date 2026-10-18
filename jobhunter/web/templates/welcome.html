@@ -1,19 +1,20 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Let's get you set up{% endblock %}
 {% block content %}
-<section class="card narrow">
+<section class="section setup">
   <h1>Let's get you set up.</h1>
-  <p>Hunter finds jobs that fit you and helps you apply. It works from your finished CV and LinkedIn profile and never changes them. Four short steps.</p>
+  <p class="muted">Hunter finds jobs that fit you and helps you apply. It works from your finished CV and LinkedIn profile and never changes them. Four short steps.</p>
   {% if step.key == 'readiness' %}
-    <h2>Step 1 of 4: {{ step.question }}</h2>
-    <form method="post" action="/do/setup/answer" class="inline">
+    <h2 class="mt-16">Step 1 of 4: {{ step.question }}</h2>
+    <form method="post" action="/do/setup/answer" class="inline mt-10">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="readiness">
-      <button name="value" value="yes" class="primary">Yes, both are finished</button>
+      <button name="value" value="yes" class="primary">{{ icon('check') }} Yes, both are finished</button>
       <button name="value" value="no">Not yet</button>
     </form>
   {% elif step.key == 'documents' %}
-    <h2>Step 2 of 4: Give me two files</h2>
-    <ol class="steps">
+    <h2 class="mt-16">Step 2 of 4: Give me two files</h2>
+    <ol>
       <li><strong>Your CV</strong> (PDF or Word).</li>
       <li><strong>Your LinkedIn profile as PDF.</strong> Open your LinkedIn profile in the browser, click <strong>More</strong> under your name, then <strong>Save to PDF</strong>.</li>
     </ol>
@@ -24,8 +25,8 @@
       <label>Your LinkedIn PDF <input type="file" name="linkedin" accept=".pdf,.docx,.md,.txt"></label>
       <p><button class="primary">Upload</button></p>
     </form>
-    <p class="muted">Both files stay on this computer. Max 10 MB each.</p>
+    <p class="muted small">Both files stay on this computer. Max 10 MB each.</p>
   {% endif %}
-  <p class="muted">Prefer to talk? Open Claude Code in this folder and type <code>/jobhunter</code>.</p>
+  <p class="muted small">Prefer to talk? Open Claude Code in this folder and type <code>/jobhunter</code>.</p>
 </section>
 {% endblock %}

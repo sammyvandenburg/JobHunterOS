@@ -1,76 +1,131 @@
 {% extends "base.html" %}
-{% block title %}{{ job.title }}{% endblock %}
+{% from "_icons.html" import icon %}
+{% from "_job_card.html" import toggles %}
+{% block title %}{{ job.title }} at {{ job.employer }}{% endblock %}
 {% block content %}
-<article class="card job-detail group-{{ job.group or 'none' }}">
-  <div class="job-head"><h1>{{ job.title }}</h1><span class="group">{{ job.group_label }}</span></div>
-  <p class="employer">{{ job.employer }}{% if job.stage %} · Status: <strong>{{ job.stage }}</strong>{% endif %}</p>
-  <dl class="facts">
-    <dt>Where</dt><dd>{{ job.location }}{% if job.remote_restriction %}<br>{{ job.remote_restriction }}{% endif %}</dd>
-    <dt>Pay</dt><dd>{{ job.salary }}</dd>
-    <dt>Posted</dt><dd>{{ job.freshness_label }}<br><span class="muted">{{ job.verification }}</span></dd>
-    {% if job.sponsorship != 'unknown' %}<dt>Visa</dt><dd>{{ 'They say they can sponsor a visa.' if job.sponsorship == 'yes' else 'They say they do not sponsor visas.' }}</dd>{% endif %}
-    <dt>Links</dt><dd>
-      <a class="button primary" href="/go/{{ job.id }}" target="_blank" rel="noopener noreferrer">Open job</a>
-      {% if not job.links.direct %}<span class="muted"> I could not confirm the company's own listing.</span> <form method="post" action="/do/job/{{ job.id }}/lookup" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Try to find it</button></form>{% endif %}
-      {% if job.source_note %}<br><span class="muted">{{ job.source_note }}</span>{% endif %}
-    </dd>
-  </dl>
-  {% if job.explanation %}<section><h2>Why this job</h2><p>{{ job.explanation }}</p>
-    {% if job.reasons %}<ul>{% for r in job.reasons if r.text not in job.explanation %}<li>{{ r.text }}</li>{% endfor %}</ul>{% endif %}
-    {% if job.gaps %}<h3>Things to check</h3><ul>{% for g in job.gaps %}<li>{{ g }}</li>{% endfor %}</ul>{% endif %}
-    {% if job.exclusion_reason %}<p><strong>Left out:</strong> {{ job.exclusion_reason }}</p>{% endif %}
-    {% if job.next_step %}<p class="next"><strong>Next:</strong> {{ job.next_step }}</p>{% endif %}
-    <p class="muted">{{ job.explanation_label }}</p>
-  </section>{% endif %}
-  <div class="actions">
-    <form method="post" action="/do/job/{{ job.id }}/prepare"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Help me apply</button></form>
-    {% if job.saved %}<form method="post" action="/do/job/{{ job.id }}/unsave"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Unsave</button></form>{% else %}<form method="post" action="/do/job/{{ job.id }}/save"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Save</button></form>{% endif %}
-    {% if job.dismissed %}<form method="post" action="/do/job/{{ job.id }}/undismiss"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Show again</button></form>{% else %}<form method="post" action="/do/job/{{ job.id }}/dismiss"><input type="hidden" name="csrf" value="{{ csrf }}"><select name="reason" aria-label="Why not"><option value="">Why not? (optional)</option><option value="consultancy">Consultancy</option><option value="too_senior">Too senior</option><option value="too_junior">Too junior</option><option value="location">Location</option><option value="salary">Pay</option><option value="employer">Company</option><option value="other">Other</option></select><button>Not interested</button></form>{% endif %}
-    <form method="post" action="/do/job/{{ job.id }}/applied" data-confirm="Did you apply to this job yourself? I will record it."><input type="hidden" name="csrf" value="{{ csrf }}"><input type="date" name="when" aria-label="Date you applied"><button>I applied</button></form>
-  </div>
+<p class="small"><a href="/jobs/new">← New jobs</a></p>
+<div class="with-aside">
+<div>
+  <header class="detail-head g-{{ job.group }}">
+    <div class="row between">
+      <div><h1>{{ job.title }}</h1><div class="company">{{ job.employer }}</div></div>
+      <div class="left hstack">{{ toggles(job, csrf) }}</div>
+    </div>
+    <div class="chips"><span class="chip {{ job.group or '' }}">{{ job.group_label }}</span>{% if job.freshness == 'fresh' %}<span class="chip fresh">New</span>{% endif %}{% if job.stage %}<span class="chip stage">{{ job.stage }}</span>{% endif %}{% if job.availability == 'closed' %}<span class="chip">No longer listed</span>{% endif %}</div>
+    <div class="facts">
+      <div><div class="k">Location</div><div class="v">{{ job.location }}</div></div>
+      <div><div class="k">Work arrangement</div><div class="v">{{ job.remote_type_label or 'Not stated' }}{% if job.remote_restriction %}<br><span class="muted small">{{ job.remote_restriction }}</span>{% endif %}</div></div>
+      <div><div class="k">Salary</div><div class="v">{{ job.salary or 'Not listed' }}</div></div>
+      <div><div class="k">Posted</div><div class="v">{{ job.freshness_label }}<br><span class="muted small">{{ job.verification }}</span></div></div>
+      {% if job.employment_type %}<div><div class="k">Type</div><div class="v">{{ job.employment_type }}</div></div>{% endif %}
+      {% if job.sponsorship != 'unknown' %}<div><div class="k">Sponsorship</div><div class="v">{{ 'They say they can sponsor' if job.sponsorship == 'yes' else 'They say no sponsorship' }}</div></div>{% endif %}
+    </div>
+    <div class="detail-actions">
+      <a class="btn btn-primary" href="/go/{{ job.id }}" target="_blank" rel="noopener noreferrer">{{ icon('external') }} Open application</a>
+      {% if job.links.direct and job.links.direct != job.links.apply %}<a class="btn btn-sm" href="{{ job.links.direct }}" target="_blank" rel="noopener noreferrer">Employer listing (verified)</a>{% endif %}
+      {% if job.links.discovery and job.links.discovery != job.links.apply and job.links.discovery != job.links.direct %}<a class="btn btn-ghost btn-sm" href="{{ job.links.discovery }}" target="_blank" rel="noopener noreferrer">Where it was found</a>{% endif %}
+      {% if not job.links.direct %}<form method="post" action="/do/job/{{ job.id }}/lookup" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost btn-sm" title="Try to find the company's own listing">Find original listing</button></form>{% endif %}
+    </div>
+    {% if not job.links.direct %}<p class="muted small mt-8">I could not confirm the company's own listing for this job.</p>{% endif %}
+    {% if job.source_note %}<p class="muted small">{{ job.source_note }}</p>{% endif %}
+  </header>
+
+  <section class="section">
+    <h2>Why Hunter recommends it</h2>
+    {% if job.explanation %}<p class="lead">{{ job.explanation }}</p>{% endif %}
+    {% if job.exclusion_reason %}<p class="lead"><strong>Left out:</strong> {{ job.exclusion_reason }}</p>{% endif %}
+    <div class="two">
+      <div><h3>Why this fits you</h3><ul>
+        {% for r in job.reasons %}<li>{{ r.text }}</li>{% endfor %}
+        {% for e in job.evidence.experience %}<li>Experience: {{ e }}</li>{% endfor %}
+        {% if job.evidence.skills %}<li>Skills from your CV that this job names: {{ job.evidence.skills | join(', ') }}</li>{% endif %}
+        {% for pj in job.evidence.projects %}<li>Project you can point to: {{ pj }}</li>{% endfor %}
+        {% if not job.reasons and not job.evidence.skills %}<li class="muted">Not much overlap with your CV shows yet.</li>{% endif %}
+      </ul></div>
+      <div><h3>Things to consider</h3><ul>
+        {% for g in job.gaps %}<li>{{ g }}</li>{% else %}<li class="muted">Nothing stands out. Read the full description to be sure.</li>{% endfor %}
+      </ul>{% if job.next_step %}<p class="mt-10"><strong>Next:</strong> {{ job.next_step }}</p>{% endif %}</div>
+    </div>
+    <p class="muted small mt-8">{{ job.explanation_label }}</p>
+  </section>
 
   {% if job.package %}
-  <section id="apply">
+  <section class="section" id="apply">
     <h2>Help me apply</h2>
     <p class="fit-line">{{ job.package.fit.fit_line }}</p>
-    <div class="fit">
+    <div class="two">
       <div><h3>Who they are looking for</h3><ul>{% for w in job.package.fit.who_they_want %}<li>{{ w }}</li>{% endfor %}</ul></div>
-      <div><h3>How you fit</h3><ul>{% for m in job.package.fit.you_match %}<li>{{ m }}</li>{% else %}<li class="muted">Not much overlap shows in your CV yet.</li>{% endfor %}</ul>
-        {% if job.package.fit.you_miss %}<h3>What is missing</h3><ul>{% for m in job.package.fit.you_miss %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}</div>
+      <div><h3>How you fit</h3><ul>{% for m in job.package.fit.you_match %}<li>{{ m }}</li>{% else %}<li class="muted">Not much overlap shows in your CV yet.</li>{% endfor %}</ul>{% if job.package.fit.you_miss %}<h3 class="mt-10">What is missing</h3><ul>{% for m in job.package.fit.you_miss %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}</div>
       <div><h3>How to present yourself</h3><ul>{% for p in job.package.fit.how_to_present %}<li>{{ p }}</li>{% endfor %}</ul></div>
-      <div><h3>What to send</h3><ul>
-        {% if job.package.cv %}<li>Your CV, unchanged: {{ job.package.cv.filename or job.package.cv.path.split('/')[-1] }}{% if job.package.cv.version > 1 %} (version {{ job.package.cv.version }}){% endif %}.</li>{% endif %}
-        {% for l in job.package.project_links %}<li>Project link: <a href="{{ l }}" target="_blank" rel="noopener noreferrer">{{ l }}</a></li>{% endfor %}
-        {% if job.package.job.apply_url %}<li><a href="{{ job.package.job.apply_url }}" target="_blank" rel="noopener noreferrer">Their application page</a></li>{% endif %}
-      </ul></div>
+      <div><h3>What to send</h3><ul>{% if job.package.cv %}<li>Your CV, unchanged: {{ job.package.cv.filename or job.package.cv.path.split('/')[-1] }}{% if job.package.cv.version > 1 %} (version {{ job.package.cv.version }}){% endif %}</li>{% endif %}{% for l in job.package.project_links %}<li>Project link: <a href="{{ l }}" target="_blank" rel="noopener noreferrer">{{ l }}</a></li>{% endfor %}</ul></div>
     </div>
-    <h3>Draft answers (edit them so they sound like you)</h3>
+    <h3 class="mt-14">Draft answers (edit them so they sound like you)</h3>
     {% for a in job.package.draft.answers if a.answer %}<div class="answer"><p class="q">{{ a.question }}</p><p>{{ a.answer }}</p>{% if a.note %}<p class="note">{{ a.note }}</p>{% endif %}</div>{% endfor %}
-    <h3>Only you can answer these</h3>
-    <ul>{% for a in job.package.draft.answers if a.needs_user %}<li>{{ a.question }}</li>{% endfor %}{% for m in job.package.draft.missing %}<li>{{ m }}</li>{% endfor %}</ul>
-    <p class="muted">{{ job.package.reminder }}{% if job.package.validation_problems %} Some draft text was removed because it was not backed by your CV.{% endif %}</p>
+    <h3 class="mt-14">Only you can answer these</h3>
+    <ul class="plain">{% for a in job.package.draft.answers if a.needs_user %}<li>{{ a.question }}</li>{% endfor %}{% for m in job.package.draft.missing %}<li>{{ m }}</li>{% endfor %}</ul>
+    <p class="muted small">{{ job.package.reminder }}</p>
   </section>
   {% endif %}
 
-  {% if job.stage %}
-  <section><h2>Your application</h2>
-    <form method="post" action="/do/job/{{ job.id }}/stage" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
-      <label>Update to <select name="stage">{% for s in ['applied','replied','interview','offer','rejected','withdrawn'] %}<option value="{{ s }}" {% if s == job.stage %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
-      <input type="date" name="when" aria-label="When"><button>Save</button></form>
-    <form method="post" action="/do/job/{{ job.id }}/followup" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Remind me to follow up</button></form>
-    <form method="post" action="/do/job/{{ job.id }}/outreach" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Draft a message</button></form>
-    {% if job.stage == 'interview' %}<form method="post" action="/do/job/{{ job.id }}/handoff" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Export for InterviewOS</button></form>{% endif %}
+  <section class="section">
+    <h2>Full job description</h2>
+    {% if job.description %}<pre class="desc">{{ job.description }}</pre>{% else %}<p class="muted">No description text was available from the source. Open the job to read it there.</p>{% endif %}
+    <details class="more"><summary>Where this job was seen</summary><ul class="plain">{% for o in job.observations %}<li>{{ o.source_id }} · first {{ o.first_observed_at | dt }} · last {{ o.last_observed_at | dt }}{% if o.url %} · <a href="{{ o.url }}" rel="noopener noreferrer" target="_blank">link</a>{% endif %}</li>{% endfor %}</ul><p class="muted small">Posting date comes from the source field "{{ job.dates.posted_at_provenance }}". First seen by Hunter {{ job.dates.first_seen_at | dt }}.</p></details>
   </section>
+
+  <section class="section notes" id="notes">
+    <h2>My notes</h2>
+    <p class="muted small">Private, only on this computer. Notes stay with this job even when it is found again.</p>
+    <form method="post" action="/do/job/{{ job.id }}/notes" data-note-form="new">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <textarea name="body" placeholder="Write a note, for example: Really interesting company, especially the Kubernetes stack." aria-label="New note"></textarea>
+      <div class="tools mt-6 tools-row"><button class="primary btn-sm">{{ icon('note') }} Save note</button><span class="save-state" aria-live="polite"></span></div>
+    </form>
+    {% for n in job.notes %}
+    <div class="note">
+      <div class="when"><span>{{ n.created_at | dt }}{% if n.updated_at != n.created_at %} · edited {{ n.updated_at | dt }}{% endif %}</span>
+        <form method="post" action="/do/note/{{ n.id }}/delete" data-confirm="Delete this note?"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="job_id" value="{{ job.id }}"><button class="ghost btn-sm" aria-label="Delete note">{{ icon('x') }} Delete</button></form></div>
+      <form method="post" action="/do/note/{{ n.id }}/update" data-note-form="edit">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="job_id" value="{{ job.id }}">
+        <textarea name="body" aria-label="Edit note">{{ n.body }}</textarea>
+        <div class="tools mt-6 tools-row"><button class="btn-sm">Save changes</button><span class="save-state" aria-live="polite"></span></div>
+      </form>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="section">
+    <h2>History</h2>
+    <ul class="history">{% for ev in job.history %}<li><span class="when">{{ ev.occurred_at | dt }}</span><span>{{ ev.label }}{% if ev.reverted_by %} <span class="faint">(undone)</span>{% endif %}{% if ev.note %} · {{ ev.note }}{% endif %}</span>{% if not ev.reverted_by and ev.kind not in ['correction','opened','favorited','unfavorited','saved','unsaved'] %}<form method="post" action="/do/event/{{ ev.id }}/undo" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="job_id" value="{{ job.id }}"><button class="ghost btn-sm">Undo</button></form>{% endif %}</li>{% else %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
+  </section>
+</div>
+
+<aside class="aside">
+  <div class="panel">
+    <h3>Actions</h3>
+    <div class="stack">
+      <form method="post" action="/do/job/{{ job.id }}/prepare"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary full center">{{ icon('sparkle') }} Help me apply</button></form>
+      <form class="hstack" method="post" action="/do/job/{{ job.id }}/applied" data-confirm="Did you apply to this job yourself? I will record it."><input type="hidden" name="csrf" value="{{ csrf }}"><input class="grow" type="date" name="when" aria-label="Date you applied"><button>{{ icon('send') }} I applied</button></form>
+      {% if job.dismissed %}<form method="post" action="/do/job/{{ job.id }}/undismiss"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="full center">Show again</button></form>
+      {% else %}<form class="stack" method="post" action="/do/job/{{ job.id }}/dismiss"><input type="hidden" name="csrf" value="{{ csrf }}"><select class="grow" name="reason" aria-label="Why not"><option value="">Why not? (optional)</option><option value="consultancy">Consultancy</option><option value="too_senior">Too senior</option><option value="too_junior">Too junior</option><option value="location">Location</option><option value="salary">Pay</option><option value="employer">Company</option><option value="other">Other</option></select><button class="full center">{{ icon('x') }} Not interested</button></form>{% endif %}
+      <a class="btn center" href="#notes">{{ icon('note') }} Add note</a>
+    </div>
+  </div>
+  {% if job.stage %}
+  <div class="panel">
+    <h3>Your application</h3>
+    <div class="kv"><span>Status</span><span>{{ job.stage }}</span></div>
+    {% if job.applied_at %}<div class="kv"><span>Applied</span><span>{{ job.applied_at | dt }}</span></div>{% endif %}
+    {% if job.followup %}<div class="kv"><span>Follow up</span><span>{{ job.followup.due_at | dt }}</span></div>{% endif %}
+    <form method="post" action="/do/job/{{ job.id }}/stage" class="inline mt-8"><input type="hidden" name="csrf" value="{{ csrf }}"><select name="stage" aria-label="Status">{% for s in ['applied','replied','interview','offer','rejected','withdrawn'] %}<option value="{{ s }}" {% if s == job.stage %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><input type="date" name="when" aria-label="When"><button class="btn-sm">Update</button></form>
+    <form method="post" action="/do/job/{{ job.id }}/followup" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn-sm">Remind me to follow up</button></form>
+    <form method="post" action="/do/job/{{ job.id }}/outreach" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn-sm">Draft a message</button></form>
+    {% if job.stage == 'interview' %}<form method="post" action="/do/job/{{ job.id }}/handoff" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn-sm">Export for InterviewOS</button></form>{% endif %}
+  </div>
   {% endif %}
   {% if job.outreach %}
-  <section><h2>Your message drafts</h2>{% for d in job.outreach %}<div class="answer"><p class="q">{{ d.content.subject }} <span class="muted">({{ d.kind }}, {{ d.status }})</span></p><pre class="desc">{{ d.content.body }}</pre></div>{% endfor %}<p class="muted">Send these yourself. Then tell Hunter so it can note it.</p></section>
+  <div class="panel"><h3>Message drafts</h3>{% for d in job.outreach %}<details class="more"><summary>{{ d.content.subject }} ({{ d.status }})</summary><pre class="desc">{{ d.content.body }}</pre></details>{% endfor %}<p class="muted small">Send these yourself, then tell Hunter.</p></div>
   {% endif %}
-  <section><h2>Notes and history</h2>
-    <form method="post" action="/do/job/{{ job.id }}/note" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="text" name="note" placeholder="Add a note" aria-label="Note" required><button>Add note</button></form>
-    <ul class="history">{% for ev in job.history %}<li>{{ ev.occurred_at[:16]|replace('T',' ') }} · {{ ev.label }}{% if ev.reverted_by %} <span class="muted">(undone)</span>{% endif %}{% if ev.note %} · {{ ev.note }}{% endif %}
-      {% if not ev.reverted_by and ev.kind not in ['correction','opened'] %}<form method="post" action="/do/event/{{ ev.id }}/undo" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="job_id" value="{{ job.id }}"><button class="small">Undo</button></form>{% endif %}</li>{% else %}<li class="muted">Nothing yet.</li>{% endfor %}</ul>
-  </section>
-  <details class="more"><summary>Full job text (as Hunter saw it)</summary><pre class="desc">{{ job.description or 'No text stored. Open the job to read it.' }}</pre></details>
-  <details class="more"><summary>Where this job was seen</summary><ul>{% for o in job.observations %}<li>{{ o.source_id }} · first {{ o.first_observed_at[:10] }} · last {{ o.last_observed_at[:10] }}{% if o.url %} · <a href="{{ o.url }}" rel="noopener noreferrer" target="_blank">link</a>{% endif %}</li>{% endfor %}</ul></details>
-</article>
+</aside>
+</div>
 {% endblock %}

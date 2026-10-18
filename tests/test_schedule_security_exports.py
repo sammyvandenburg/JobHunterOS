@@ -145,7 +145,7 @@ def test_acc30_state_survives_restart_and_stays_out_of_git(ctx, db):
     db2 = connect(ctx.paths.db_path)
     assert db2.fetchone("SELECT COUNT(*) AS n FROM jobs")["n"] == 1
     assert views.list_jobs(db2, view="saved")["total"] == 1
-    assert db2.schema_version() == "0001_init"
+    assert db2.schema_version() == "0002_notes_favorites"
     db2.close()
     repo = Path(__file__).resolve().parents[1]
     gi = (repo / ".gitignore").read_text()
@@ -206,7 +206,9 @@ def test_acc33_empty_states_and_totals_are_honest(ctx, db):
     assert "Let's get you set up" in html and "jobs worth a look" not in html  # no fake numbers before setup
     approve_profile(db, ctx)
     html = c.get("/").text
-    assert "0</strong> jobs worth a look" in html and ("No search yet" in html or "Find jobs now" in html)
+    assert "Your job hunt, all in one place." in html and "No recommendations yet" in html and "Find jobs now" in html
+    # Every metric card shows a real zero, never a placeholder number.
+    assert len(re.findall(r'<span class="value"[^>]*>0</span>', html)) == 4
     t = stats.totals(db)
     assert t == {**t, "found": 0, "recommended": 0, "applied": 0, "interviews": 0}
     # Demo mode is labelled on every page.

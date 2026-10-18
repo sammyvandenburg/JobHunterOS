@@ -30,7 +30,7 @@ Rule-based explanations are labelled as such. To write better ones: `uv run jobh
 Say clearly that imports come from the text they gave, not from scraping.
 
 ## Actions
-`uv run jobhunter act open|save|unsave|dismiss|undismiss|applied|note|undo ...`. Dismiss with a reason when they give one (`--reason consultancy|too_senior|too_junior|location|salary|employer|other`). After three dismissals with the same reason, Hunter asks whether to adjust; apply with `uv run jobhunter feedback apply <key> yes|no` only when they answer.
+`uv run jobhunter act open|favorite|unfavorite|save|unsave|dismiss|undismiss|applied|note|notes|undo ...`. Favorites (star) and Saved (bookmark) are independent lists; `act note <id> your words here` keeps a private note that stays with the job even when it is found again, `act notes <id>` lists them. Dismiss with a reason when they give one (`--reason consultancy|too_senior|too_junior|location|salary|employer|other`). After three dismissals with the same reason, Hunter asks whether to adjust; apply with `uv run jobhunter feedback apply <key> yes|no` only when they answer.
 
 ## Sources and discovery
 `uv run jobhunter sources list` shows every source and its health; `sources add --kind greenhouse|lever|ashby --token <board> --name <employer>` adds an employer board the person knows; `sources check <id>` tests it. Feeds (Remotive, Arbeitnow) introduce employers outside the starter list automatically; Adzuna is optional and needs free keys. LinkedIn and Indeed only arrive through imports.

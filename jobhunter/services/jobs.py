@@ -230,8 +230,12 @@ def job_state(db: Database, job_id: int) -> dict:
     dismissed = db.fetchone(
         "SELECT kind, payload_json FROM events WHERE job_id = ? AND kind IN ('dismissed','undismissed') AND reverted_by IS NULL ORDER BY id DESC LIMIT 1", (job_id,)
     )
+    fav = db.fetchone(
+        "SELECT kind FROM events WHERE job_id = ? AND kind IN ('favorited','unfavorited') AND reverted_by IS NULL ORDER BY id DESC LIMIT 1", (job_id,)
+    )
     app = db.fetchone("SELECT * FROM applications WHERE job_id = ?", (job_id,))
     return {
+        "favorited": bool(fav and fav["kind"] == "favorited"),
         "saved": bool(saved and saved["kind"] == "saved"),
         "dismissed": bool(dismissed and dismissed["kind"] == "dismissed"),
         "application": app,

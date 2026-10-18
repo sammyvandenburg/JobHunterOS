@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_job_card.html" import card %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="with-aside">
+<div>
+  <div class="page-head">
+    <div>
+      <h1>Your job hunt, all in one place.</h1>
+      <p class="sub">Hunter finds opportunities that match your experience. You decide what happens next.</p>
+    </div>
+    <form method="post" action="/do/hunt"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary btn-lg">{{ icon('search') }} Find jobs now</button></form>
+  </div>
+  <div class="status-line">
+    <span>Status: <b>{{ d.status }}</b></span>
+    <span>Last successful search: <b>{{ (d.last_success.finished_at if d.last_success else none) | dt or 'none yet' }}</b></span>
+    <span>Next scheduled search: <b>{{ d.next_run_at | dt or 'not scheduled' }}</b></span>
+  </div>
+
+  <div class="metrics">
+    <a class="metric" href="/jobs/all"><span class="label">{{ icon('briefcase') }} Jobs found</span><span class="value">{{ d.totals.found }}</span><span class="hint">unique vacancies seen</span></a>
+    <a class="metric" href="/jobs/new"><span class="label">{{ icon('sparkle') }} Recommended</span><span class="value">{{ d.totals.recommended }}</span><span class="hint">shown to you so far</span></a>
+    <a class="metric" href="/jobs/favorites"><span class="label">{{ icon('star') }} Favorites</span><span class="value" data-count="favorites">{{ d.totals.favorites }}</span><span class="hint">starred by you</span></a>
+    <a class="metric" href="/jobs/applied"><span class="label">{{ icon('send') }} Applied</span><span class="value">{{ d.totals.applied }}</span><span class="hint">confirmed by you</span></a>
+  </div>
+
+  <section>
+    <div class="page-head mb-10"><h2>Recommended for you</h2>{% if d.recommended_total > 5 %}<a class="btn btn-ghost btn-sm" href="/jobs/new">See all {{ d.recommended_total }} new jobs</a>{% endif %}</div>
+    {% if d.recommended %}
+    <ul class="jobs">{% for j in d.recommended %}{{ card(j, csrf) }}{% endfor %}</ul>
+    {% else %}
+    <div class="empty">{{ icon('search') }}<h2>No recommendations yet</h2>
+      {% if not d.last_run %}<p>Press <strong>Find jobs now</strong>. The first search can take a few minutes.</p>
+      {% elif d.last_run.status == 'failed' %}<p>The last search failed, so this does not mean there are no jobs. See <a href="/health">Search health</a>.</p>
+      {% else %}<p>Nothing new right now. Check <a href="/jobs/old">older matches</a> or <a href="/jobs/excluded">what was left out and why</a>.</p>{% endif %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<aside class="aside">
+  <div class="panel">
+    <h3>Your hunt</h3>
+    <div class="kv"><span>Last search</span><span>{{ (d.last_run.finished_at or d.last_run.started_at) | dt if d.last_run else 'never' }}</span></div>
+    <div class="kv"><span>Next search</span><span>{{ d.next_run_at | dt or 'off' }}</span></div>
+    <div class="kv"><span>Sources checked</span><span>{{ d.sources_checked }} of {{ d.sources_total }}</span></div>
+    <div class="kv"><span>Needs attention</span><span>{% if d.problems %}<a href="/attention">{{ d.problems }}</a>{% else %}nothing{% endif %}</span></div>
+    <form class="mt-12" method="post" action="/do/hunt"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary full center">{{ icon('search') }} Find jobs now</button></form>
+  </div>
+  <div class="panel">
+    <h3>Your preferences</h3>
+    <div class="kv"><span>Location</span><span>{{ d.prefs.location or 'not set' }}</span></div>
+    <div class="kv"><span>Countries</span><span>{{ d.prefs.countries | countries }}</span></div>
+    <div class="kv"><span>Remote</span><span>{{ d.prefs.remote }}</span></div>
+    {% if d.prefs.salary %}<div class="kv"><span>Minimum salary</span><span>{{ d.prefs.salary }}</span></div>{% endif %}
+    <div class="kv"><span>Search frequency</span><span>{{ d.frequency_label }}</span></div>
+    <div class="kv"><span>Notifications</span><span>{{ d.notify_label }}</span></div>
+    <a class="btn btn-sm mt-10" href="/profile#preferences">{{ icon('settings') }} Edit settings</a>
+  </div>
+  <div class="panel">
+    <h3>Recent activity</h3>
+    <ul class="activity">
+    {% if d.hunts %}{% set h = d.hunts[0] %}<li><span class="when">{{ h.started_at | dt }}</span><span class="what">Search: {{ h.stats.jobs_new or 0 }} new job{{ '' if h.stats.jobs_new == 1 else 's' }}</span></li>{% endif %}
+    {% for a in d.activity %}<li><span class="when">{{ a.occurred_at | dt }}</span><span class="what">{{ a.label }}{% if a.title %} · <a href="/job/{{ a.job_id }}">{{ a.title | truncate(34) }}</a>{% endif %}</span></li>{% endfor %}
+    </ul>
+    {% if not d.activity and not d.hunts %}<p class="muted small">Nothing yet. Your favorites, saves, and applications will show here.</p>{% endif %}
+  </div>
+</aside>
+</div>
+{% endblock %}

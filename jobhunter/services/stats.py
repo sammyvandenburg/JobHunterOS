@@ -22,10 +22,15 @@ def totals(db: Database) -> dict:
         "SELECT COUNT(*) AS n FROM (SELECT job_id, kind FROM events e WHERE kind IN ('saved','unsaved') AND reverted_by IS NULL "
         "AND id = (SELECT MAX(id) FROM events WHERE job_id = e.job_id AND kind IN ('saved','unsaved') AND reverted_by IS NULL)) WHERE kind = 'saved'"
     )["n"]
+    favorites = q(
+        "SELECT COUNT(*) AS n FROM (SELECT job_id, kind FROM events e WHERE kind IN ('favorited','unfavorited') AND reverted_by IS NULL "
+        "AND id = (SELECT MAX(id) FROM events WHERE job_id = e.job_id AND kind IN ('favorited','unfavorited') AND reverted_by IS NULL)) WHERE kind = 'favorited'"
+    )["n"]
     return {
         "found": found,
         "relevant": relevant,
         "recommended": recommended,
+        "favorites": favorites,
         "saved": saved,
         "applied": applied,
         "contacted": contacted,

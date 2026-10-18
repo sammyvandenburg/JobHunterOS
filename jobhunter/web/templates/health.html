@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Search health{% endblock %}
 {% block content %}
-<h1>Search health</h1>
+{% from "_icons.html" import icon %}
+{% set tabs = [('profile','/profile','Profile & preferences'),('connections','/connections','Connections & schedule'),('health','/health','Search health')] %}
+<div class="page-head"><div><h1>Profile &amp; settings</h1><p class="sub">Your profile, what you told Hunter, connections, and search health.</p></div></div>
+<nav class="tabs" aria-label="Settings sections">{% for key, href, label in tabs %}<a href="{{ href }}" {% if settings_tab == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
 <section class="card"><p>Last successful hunt: {{ sched.last_run_at or 'never' }} · Next planned: {{ sched.next_run_at or 'not scheduled' }} · Worker: {{ sched.worker }} · Mailbox: {{ 'connected' if gmail.read.connected else 'not connected' }}{% if gmail.read.connected %} (last sync {{ gmail.read.last_sync_at or 'never' }}){% endif %}</p>
 <p class="muted">Employers known: {{ employers.n }} ({{ employers.discovered or 0 }} discovered automatically through feeds, the rest from the starter list or you).</p></section>
 <section class="card"><h2>Sources</h2>

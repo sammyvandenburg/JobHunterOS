@@ -21,6 +21,8 @@ EVENT_KINDS = {
     "opened": "Opened the job",
     "saved": "Saved",
     "unsaved": "Removed from saved",
+    "favorited": "Added to favorites",
+    "unfavorited": "Removed from favorites",
     "dismissed": "Not interested",
     "undismissed": "Interested again",
     "prepared": "Prepared application materials",
@@ -80,6 +82,14 @@ def save_job(db: Database, job_id: int, save: bool = True) -> dict:
     with db.tx():
         _event(db, "saved" if save else "unsaved", job_id, "user")
     return {"job_id": job_id, "saved": save}
+
+
+def favorite_job(db: Database, job_id: int, on: bool = True) -> dict:
+    """Favorites are independent of saved and of notes."""
+    _require_job(db, job_id)
+    with db.tx():
+        _event(db, "favorited" if on else "unfavorited", job_id, "user")
+    return {"job_id": job_id, "favorited": on}
 
 
 def dismiss_job(db: Database, job_id: int, reason_code: str | None = None, note: str | None = None, undo: bool = False) -> dict:

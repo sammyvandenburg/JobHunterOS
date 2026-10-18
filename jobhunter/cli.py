@@ -362,7 +362,7 @@ def cmd_jobs(args):
 
     ctx, db = _open(args)
     if args.jobs_cmd == "list":
-        res = views.list_jobs(db, view=args.view, group=args.group, query=args.query, page=args.page, per_page=args.limit, sort=args.sort)
+        res = views.list_jobs(db, view=args.view, group=args.group, query=args.query, page=args.page, per_page=args.limit, sort=args.sort, remote=args.remote, age=args.age, country=args.country, fav_only=args.favorites, saved_only=args.saved)
         emit(args, res, text=None if args.json else views.render_list_text(res))
     elif args.jobs_cmd == "show":
         job = views.job_detail(db, args.id)
@@ -449,6 +449,14 @@ def cmd_act(args):
             emit(args, actions.save_job(db, args.id, True))
         elif c == "unsave":
             emit(args, actions.save_job(db, args.id, False))
+        elif c == "favorite":
+            emit(args, actions.favorite_job(db, args.id, True))
+        elif c == "unfavorite":
+            emit(args, actions.favorite_job(db, args.id, False))
+        elif c == "notes":
+            from jobhunter.services import notes
+
+            emit(args, notes.list_for_job(db, args.id))
         elif c == "dismiss":
             emit(args, actions.dismiss_job(db, args.id, args.reason, args.note))
         elif c == "undismiss":
@@ -460,7 +468,9 @@ def cmd_act(args):
         elif c == "contacted":
             emit(args, actions.mark_contacted(db, args.id, args.who, args.channel, args.when))
         elif c == "note":
-            emit(args, actions.add_note(db, args.id, " ".join(args.text)))
+            from jobhunter.services import notes
+
+            emit(args, notes.add(db, args.id, " ".join(args.text)))
         elif c == "undo":
             emit(args, actions.correct(db, args.event_id, note=args.note))
         elif c == "history":
@@ -857,12 +867,17 @@ def build_parser() -> argparse.ArgumentParser:
     j = sub.add_parser("jobs", help="browse and import jobs")
     js = j.add_subparsers(dest="jobs_cmd", required=True)
     x = js.add_parser("list")
-    x.add_argument("--view", default="new", choices=["new", "saved", "applied", "interviews", "finished", "all", "dismissed", "excluded", "uncertain", "old"])
+    x.add_argument("--view", default="new", choices=["new", "favorites", "saved", "applied", "interviews", "finished", "all", "dismissed", "excluded", "uncertain", "old", "closed"])
     x.add_argument("--group", choices=["good", "worth_a_shot", "backup"])
-    x.add_argument("--query")
+    x.add_argument("--query", help="matches title, employer, location, or description")
+    x.add_argument("--remote", choices=["remote", "hybrid", "onsite"])
+    x.add_argument("--age", choices=["2", "7", "14"], help="posted within N days")
+    x.add_argument("--country", help="two-letter country code")
+    x.add_argument("--favorites", action="store_true", help="only starred jobs")
+    x.add_argument("--saved", action="store_true", help="only bookmarked jobs")
     x.add_argument("--page", type=int, default=1)
     x.add_argument("--limit", type=int, default=10)
-    x.add_argument("--sort", default="best", choices=["best", "newest", "employer"])
+    x.add_argument("--sort", default="best", choices=["best", "newest", "added", "employer"])
     x = js.add_parser("show")
     x.add_argument("id", type=int)
     x = js.add_parser("import")
@@ -890,7 +905,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     ac = sub.add_parser("act", help="save, dismiss, applied, notes, undo")
     acs = ac.add_subparsers(dest="act_cmd", required=True)
-    for name in ("open", "save", "unsave", "undismiss", "history"):
+    for name in ("open", "save", "unsave", "favorite", "unfavorite", "undismiss", "history", "notes"):
         x = acs.add_parser(name)
         x.add_argument("id", type=int)
     x = acs.add_parser("dismiss")

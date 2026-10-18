@@ -24,7 +24,7 @@ uv run jobhunter doctor      # checks your environment and explains any fix
 Then either:
 
 - **In Claude Code:** open this folder and run `/jobhunter`. Hunter asks one question at a time, builds your profile, and finds jobs.
-- **In a browser:** `uv run jobhunter dashboard` opens http://127.0.0.1:8765/ (local only).
+- **In a browser:** `uv run jobhunter dashboard` opens http://127.0.0.1:8765/ (local only). The left menu has Dashboard, New jobs, Favorites, Saved, Applied, Finished, Needs attention, and Profile & settings. Every job has its own page (`/job/<id>`) with why it fits, things to consider, the full text, Help me apply, and your private notes.
 - **Just to look around:** `uv run jobhunter --demo demo seed` then `uv run jobhunter --demo dashboard`. Demo data is synthetic and lives in a separate folder; every page says so.
 
 Your private data lives in `~/.jobhunteros` (change with `JOBHUNTER_HOME`). Nothing personal is ever written into this repository.
@@ -46,10 +46,11 @@ Your private data lives in `~/.jobhunteros` (change with `JOBHUNTER_HOME`). Noth
 ```bash
 uv run jobhunter next                 # next setup question or next useful actions
 uv run jobhunter hunt run             # find jobs now
-uv run jobhunter jobs list            # best new matches (views: new, saved, applied, interviews, finished, old, excluded)
+uv run jobhunter jobs list            # best new matches (views: new, favorites, saved, applied, finished, old, excluded)
 uv run jobhunter jobs show <id>
 uv run jobhunter apply prepare <id>   # application package (nothing is submitted)
 uv run jobhunter act applied <id>     # you applied; Hunter records it
+uv run jobhunter act favorite <id>    # star a job (act save <id> bookmarks it; act note <id> your words here keeps a private note)
 uv run jobhunter dashboard            # local dashboard
 uv run jobhunter schedule show        # how often, when to tell you, worker health
 uv run jobhunter worker run           # the background worker (keep it running, or install a service)

@@ -1,0 +1,32 @@
+{% from "_icons.html" import icon %}
+{% macro toggles(j, csrf) -%}
+<form method="post" action="/do/job/{{ j.id }}/{{ 'unfavorite' if j.favorited else 'favorite' }}" data-async data-job="{{ j.id }}" data-kind="favorite"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="icon-btn fav" aria-pressed="{{ 'true' if j.favorited else 'false' }}" aria-label="{{ 'Remove from favorites' if j.favorited else 'Add to favorites' }}" title="{{ 'Remove from favorites' if j.favorited else 'Add to favorites' }}">{{ icon('star') }}</button></form>
+<form method="post" action="/do/job/{{ j.id }}/{{ 'unsave' if j.saved else 'save' }}" data-async data-job="{{ j.id }}" data-kind="save"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="icon-btn bm" aria-pressed="{{ 'true' if j.saved else 'false' }}" aria-label="{{ 'Unsave' if j.saved else 'Save for later' }}" title="{{ 'Unsave' if j.saved else 'Save for later' }}">{{ icon('bookmark') }}</button></form>
+{%- endmacro %}
+{% macro card(j, csrf, compact=False) -%}
+<li class="job g-{{ j.group or 'none' }}{% if compact %} compact{% endif %}">
+  <div class="row">
+    <div>
+      <div class="title"><a href="/job/{{ j.id }}">{{ j.title }}</a></div>
+      <div class="company">{{ j.employer }}</div>
+    </div>
+    <div class="chips"><span class="chip {{ j.group or '' }}">{{ j.group_label }}</span>{% if j.freshness == 'fresh' %}<span class="chip fresh">New</span>{% endif %}{% if j.stage %}<span class="chip stage">{{ j.stage }}</span>{% endif %}</div>
+  </div>
+  <div class="meta">
+    <span>{{ icon('pin') }}{{ j.location }}{% if j.remote_label %} · {{ j.remote_label }}{% endif %}</span>
+    {% if j.salary %}<span>{{ icon('coins') }}{{ j.salary }}</span>{% endif %}
+    <span>{{ icon('clock') }}{{ j.freshness_label }}</span>
+    {% if j.notes_count %}<span>{{ icon('note') }}{{ j.notes_count }} note{{ '' if j.notes_count == 1 else 's' }}</span>{% endif %}
+  </div>
+  {% if j.reasons %}<div class="why"><ul>{% for r in j.reasons[:2] %}<li>{{ r.text }}</li>{% endfor %}</ul></div>
+  {% elif j.explanation %}<div class="why">{{ j.explanation }}</div>{% endif %}
+  {% if j.gaps %}<div class="consider">{{ icon('alert') }}<span>{{ j.gaps[0] }}</span></div>{% elif j.exclusion_reason %}<div class="consider">{{ icon('alert') }}<span>{{ j.exclusion_reason }}</span></div>{% endif %}
+  <div class="foot">
+    <div class="left">{{ toggles(j, csrf) }}</div>
+    <div class="right">
+      {% if j.remote_restriction %}<span class="muted small">{{ j.remote_restriction }}</span>{% endif %}
+      <a class="btn btn-primary btn-sm" href="/job/{{ j.id }}">View job</a>
+    </div>
+  </div>
+</li>
+{%- endmacro %}

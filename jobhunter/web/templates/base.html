@@ -1,32 +1,42 @@
+{% from "_icons.html" import icon %}
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf }}">
 <title>{% block title %}Hunter{% endblock %} · KubeCraft JobHunterOS</title>
 <link rel="stylesheet" href="/static/app.css">
 <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 </head>
 <body>
 {% if demo %}<div class="banner demo" role="status">Demo mode: all of this is made-up example data. Nothing here is real.</div>{% endif %}
-<header class="top">
-  <a class="brand" href="/"><img src="/static/logo.svg" alt=""> Hunter <small>by KubeCraft</small></a>
-  <nav aria-label="Main">
-    {% for key, label in nav %}<a href="/jobs/{{ key }}" {% if view is defined and view == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
-    <a href="/attention" {% if request.url.path == '/attention' %}aria-current="page"{% endif %}>Needs attention{% if attention_count %} <span class="pill">{{ attention_count }}</span>{% endif %}</a>
-  </nav>
-  <nav class="secondary" aria-label="Settings">
-    <a href="/profile">Profile &amp; settings</a>
-    <a href="/connections">Connections</a>
-    <a href="/health">Search health</a>
-  </nav>
-</header>
-{% if not hide_summary %}<p class="summary-line" title="Counted from what really happened"><strong>{{ totals.recommended }}</strong> jobs worth a look · <strong>{{ totals.applied }}</strong> applied{% if totals.recruiter_replies %} · <strong>{{ totals.recruiter_replies }}</strong> repl{{ 'y' if totals.recruiter_replies == 1 else 'ies' }}{% endif %}{% if totals.interviews %} · <strong>{{ totals.interviews }}</strong> interview{{ '' if totals.interviews == 1 else 's' }}{% endif %} <span class="muted">· {{ totals.found }} found in total</span></p>{% endif %}
-{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
-<main>
-{% block content %}{% endblock %}
-</main>
-<footer class="foot">KubeCraft JobHunterOS {{ version }} · Runs only on your computer · <a href="/profile#data">Export or delete my data</a></footer>
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="brand" href="/"><img src="/static/logo.svg" alt=""><span><span class="name">Hunter</span><span class="by">by KubeCraft</span></span></a>
+    <nav class="nav">
+      {% for key, label, ic, href, count in navitems %}
+      <a href="{{ href }}" {% if active == key %}aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span>{% if key in ('new','favorites','saved','applied','attention') %}<span class="count{% if key == 'attention' %} alert{% endif %}{% if not count %} zero{% endif %}" data-count="{{ key }}">{{ count or 0 }}</span>{% endif %}</a>
+      {% endfor %}
+    </nav>
+    <div class="status" aria-live="polite">
+      <span class="dot {{ 'busy' if hunter_status == 'Searching now' else ('on' if 'worker' in hunter_status else '') }}"></span>{{ hunter_status }}<br>
+      <span class="faint">Last search: {{ last_search or 'never' }}</span>
+    </div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <a class="brand" href="/"><img src="/static/logo.svg" alt=""><span class="name">Hunter</span></a>
+      <button class="ghost" data-toggle-sidebar aria-expanded="false" aria-controls="sidebar" aria-label="Open menu">{{ icon('menu') }}</button>
+    </div>
+    <main class="content">
+      {% if flash %}<div class="flash" role="status">{{ icon('check') }}<span>{{ flash }}</span></div>{% endif %}
+      {% block content %}{% endblock %}
+      <p class="foot">KubeCraft JobHunterOS {{ version }} · Runs only on your computer · <a href="/profile#data">Export or delete my data</a></p>
+    </main>
+  </div>
+</div>
+<div id="toast" class="toast" role="status"></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

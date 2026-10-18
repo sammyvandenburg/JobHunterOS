@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Profile &amp; settings{% endblock %}
 {% block content %}
-<h1>Profile &amp; settings</h1>
+{% from "_icons.html" import icon %}
+{% set tabs = [('profile','/profile','Profile & preferences'),('connections','/connections','Connections & schedule'),('health','/health','Search health')] %}
+<div class="page-head"><div><h1>Profile &amp; settings</h1><p class="sub">Your profile, what you told Hunter, connections, and search health.</p></div></div>
+<nav class="tabs" aria-label="Settings sections">{% for key, href, label in tabs %}<a href="{{ href }}" {% if settings_tab == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
 {% if next_step and next_step.key == 'basics' %}
 <section class="card"><h2>Last step: a few quick things</h2>
   <form method="post" action="/do/setup/basics" class="big-form"><input type="hidden" name="csrf" value="{{ csrf }}">
