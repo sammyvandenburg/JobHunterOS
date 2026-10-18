@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Connect Gmail{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Taking you to Google…</h1><p class="sub">Google asks you to sign in and to allow Hunter to {{ 'send email as you' if purpose == 'send' else 'read your mail (read-only)' }}. Nothing else.</p></div></div>
+<section class="card">
+  <p>If nothing happens in a moment, press the button.</p>
+  <a class="btn btn-primary btn-lg" data-go href="{{ go_url }}">Continue to Google</a>
+  <p class="muted small mt-8">This link works once, for the next 10 minutes. <a href="/connections">Back to Connections</a></p>
+</section>
+{% endblock %}

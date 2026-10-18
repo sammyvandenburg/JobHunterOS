@@ -9,16 +9,16 @@
 <div class="status-chips" aria-label="Email and automatic hunting status">
   <span class="chip {{ 'good' if status.connected else '' }}">{{ icon('check') if status.connected else icon('x') }} {{ 'Connected' if status.connected else 'Gmail not connected' }}{% if status.connected %}: {{ gmail.send.address }}{% endif %}</span>
   <span class="chip {{ 'good' if status.sending else '' }}">{{ icon('send') }} {{ 'Sending enabled' if status.sending else 'Sending not set up' }}</span>
-  <span class="chip {{ 'good' if status.automatic == 'running' else ('worth_a_shot' if auto.on else '') }}">{{ icon('refresh') }} Automatic hunting: {{ status.automatic }}</span>
+  <span class="chip {{ 'good' if status.automatic == 'running' else ('uncertain' if ('failed' in status.automatic or 'not responding' in status.automatic or 'nothing' in status.automatic) else ('worth_a_shot' if auto.on else '')) }}">{{ icon('refresh') }} Automatic hunting: {{ status.automatic }}</span>
   {% if status.problems %}<span class="chip uncertain">{{ icon('alert') }} Needs attention</span>{% endif %}
 </div>
-{% if status.problems %}<div class="notice warn"><div>{% for pr in status.problems %}<div>{{ pr }}</div>{% endfor %}</div>{% if gmail.send.last_error %}<a class="btn btn-sm primary" href="/connect/gmail/start?purpose=send&amp;csrf={{ csrf }}">Connect Gmail again</a>{% endif %}</div>{% endif %}
+{% if status.problems %}<div class="notice warn"><div>{% for pr in status.problems %}<div>{{ pr }}</div>{% endfor %}</div>{% if gmail.send.last_error %}<form method="post" action="/connect/gmail/start" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="purpose" value="send"><button class="btn-sm primary">Connect Gmail again</button></form>{% endif %}</div>{% endif %}
 
 <section class="card" id="email">
   <h2>Email me jobs</h2>
   {% if not gmail.send.connected %}
     <p>One click, then Google asks you to allow Hunter to <strong>send email as you</strong>. That is all it asks. Hunter does not read your inbox with this.</p>
-    <a class="btn btn-primary btn-lg" href="/connect/gmail/start?purpose=send&amp;csrf={{ csrf }}">{{ icon('send') }} Connect Gmail</a>
+    <form method="post" action="/connect/gmail/start" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="purpose" value="send"><button class="btn btn-primary btn-lg">{{ icon('send') }} Connect Gmail</button></form>
     <p class="muted small mt-8">Google will say "Hunter by KubeCraft wants to send email on your behalf". You can take the permission back any time, here or at myaccount.google.com.</p>
   {% else %}
     <p>Connected as <strong>{{ gmail.send.address }}</strong>{% if gmail.send.connected_at %} <span class="muted small">(since {{ gmail.send.connected_at | dt }})</span>{% endif %}.</p>
@@ -50,7 +50,7 @@
 
 <section class="card" id="automatic">
   <h2>How often should I look, and should I email you?</h2>
-  <p class="muted small">Now: {{ auto.frequency_label }} · {{ auto.notify_label }}{% if auto.next_run_at %} · next look {{ auto.next_run_at | dt }}{% endif %}</p>
+  <p class="muted small">Looks: {{ auto.frequency_label }} · Emails: {% if sched.notify_mode == 'daily_email' %}once a day at {{ sched.digest_time }}{% else %}none, new jobs show up here{% endif %}{% if auto.next_run_at %} · next look {{ auto.next_run_at | dt }}{% endif %}</p>
   <form method="post" action="/do/schedule" class="prefs-form"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="notify">
     <fieldset><legend>How often</legend>
       <label><input type="radio" name="plan" value="manual" {% if sched.frequency == 'manual' or not sched.enabled %}checked{% endif %}> Only when I press Find jobs now</label>
@@ -60,12 +60,14 @@
       <label><input type="radio" name="plan" value="every_6h" {% if sched.frequency == 'every_6h' and sched.enabled %}checked{% endif %}> Every 6 hours</label>
     </fieldset>
     <fieldset><legend>Tell me</legend>
-      <label><input type="checkbox" name="email" value="1" {% if sched.notify_mode == 'daily_email' %}checked{% endif %} {% if not status.sending %}disabled title="Connect Gmail and confirm your address first"{% endif %}> Email me what you find (once a day){% if not status.sending %} <span class="muted small">(connect Gmail first)</span>{% endif %}</label>
+      <label><input type="checkbox" name="email" value="1" {% if sched.notify_mode == 'daily_email' %}checked{% endif %} {% if not status.sending %}disabled title="Connect Gmail and confirm your address first"{% endif %}> Email me once a day at <input type="time" name="digest_time" value="{{ sched.digest_time or '08:30' }}" class="w-90" {% if not status.sending %}disabled{% endif %}> with what is new{% if not status.sending %} <span class="muted small">(connect Gmail first)</span>{% endif %}</label>
+      <p class="muted small">One email a day at most, however often Hunter looks. Nothing new, no email.</p>
     </fieldset>
     <div class="full-row"><button class="primary">Save</button></div>
   </form>
   <h3 class="mt-14">Automatic hunting: {{ auto.label }}</h3>
   <p class="muted small">{{ auto.detail }}</p>
+  {% if auto.on %}<p class="muted small">{% if auto.last_hunt %}Last automatic look: {{ auto.last_hunt.at | dt }}{% if auto.last_hunt.status in ('completed', 'partial') %}, {{ auto.last_hunt.jobs_new }} new job(s){% else %}, {{ auto.last_hunt.status }}{% if auto.last_hunt.error %}: {{ auto.last_hunt.error | truncate(90) }}{% endif %}{% endif %}.{% else %}No automatic look yet.{% endif %}{% if sched.notify_mode == 'daily_email' %} {% if auto.last_email %}Last email: {{ auto.last_email.at | dt }}, {{ auto.last_email.status }}{% if auto.last_email.error %}: {{ auto.last_email.error | truncate(90) }}{% endif %}.{% else %}No email sent yet.{% endif %}{% endif %}</p>{% endif %}
   {% if auto.on %}
     {% if auto.service.installed %}
       <p class="muted small">Background task: installed{% if auto.service.active %} and running{% elif auto.service.active is sameas false %}, not running right now{% endif %}{% if auto.service.path %} ({{ auto.service.path }}){% endif %}.</p>
@@ -94,8 +96,7 @@
     {% if gmail.read.last_error %}<p class="warn">{{ gmail.read.last_error }}</p>{% endif %}
   {% else %}
     <p>If you want, Hunter can read your job-search emails (application receipts, interview invitations, job alerts) and keep your applications up to date. This is a separate Google permission; sending emails never needs it.</p>
-    <a class="btn" href="/connect/gmail/start?purpose=read&amp;csrf={{ csrf }}">Connect Gmail (read-only)</a>
-    <p class="muted small">No Gmail? Paste or save a job-search email and import it: <code>uv run jobhunter email import --file message.txt</code>.</p>
+    <form method="post" action="/connect/gmail/start" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="purpose" value="read"><button>Connect Gmail (read-only)</button></form>
   {% endif %}
   {% if pending %}<h3>Emails waiting for your confirmation</h3><ul>{% for p in pending %}<li>{{ p.received_at[:10] if p.received_at else '' }} · {{ p.subject }} · looks like a <strong>{{ p.classification }}</strong>{% if p.suggested %} for {{ p.suggested.title }} at {{ p.suggested.employer_name }}{% endif %} — <a href="/attention">decide</a></li>{% endfor %}</ul>{% endif %}
   <p class="muted small">Messages stored: {{ gmail.messages_stored }} (short extracts only).</p>
@@ -111,8 +112,9 @@
   </div>
 </section>
 
-<details class="more card" id="advanced"><summary>Advanced: SMTP instead of Gmail, and where secrets are kept</summary>
+<details class="more card" id="advanced"><summary>Advanced: SMTP instead of Gmail, terminal commands, and where secrets are kept</summary>
   <p>If you do not use Gmail, Hunter can send through any mail server: <code>uv run jobhunter digest smtp --host smtp.example.com --port 587 --username you@example.com --from-address you@example.com</code> (it asks for the password and stores it in the secret store). Current transport: {{ digest.transport.detail }}.</p>
+  <p>Terminal equivalents: <code>uv run jobhunter schedule status</code>, <code>uv run jobhunter schedule automatic on|off</code>, <code>uv run jobhunter worker run</code> (the background worker by hand), <code>uv run jobhunter schedule install --print</code> (templates if you prefer to install the login task yourself), <code>uv run jobhunter digest test</code>. No Gmail at all? Import a saved job-search email: <code>uv run jobhunter email import --file message.txt</code>.</p>
   <p>{{ secrets.note }}{% if not secrets.encrypted %} Set <code>JOBHUNTER_SECRETS_PASSPHRASE</code> to encrypt the file, or install an OS keyring.{% endif %}</p>
   <p class="muted small">Google sign-in details: {% if client.available %}from {{ client.source }}{% if client.client_id_hint %} ({{ client.client_id_hint }}){% endif %}{% else %}fetched from KubeCraft when you press Connect Gmail{% endif %}.</p>
 </details>

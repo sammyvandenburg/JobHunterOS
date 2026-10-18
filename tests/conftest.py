@@ -309,3 +309,15 @@ def launch_browser(p):
     if exe:
         kwargs["executable_path"] = exe
     return p.chromium.launch(**kwargs)
+
+
+@pytest.fixture
+def google(monkeypatch):
+    """A fake Google (OAuth + Gmail API) on localhost; Hunter is pointed at it through the environment."""
+    from tests.fake_google import FakeGoogle
+
+    g = FakeGoogle()
+    for k, v in g.env().items():
+        monkeypatch.setenv(k, v)
+    yield g
+    g.close()

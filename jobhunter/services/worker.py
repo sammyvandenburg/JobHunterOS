@@ -66,6 +66,18 @@ def tick(ctx: AppContext, db: Database) -> dict:
             out["digest"] = {"status": "failed", "error": str(exc)}
         # Mark the attempt so a failing transport does not retry every minute all day.
         db.execute("UPDATE schedule SET last_digest_at = ? WHERE id = 1", (now_iso(),))
+    else:
+        failed = notifications.retry_due(db)
+        if failed:
+            # Today's email failed earlier: try again, a bounded number of times, never twice for the same content.
+            try:
+                res = notifications.send_digest(ctx, db)
+                if res.get("status") == "skipped":
+                    notifications.resolve(db, failed["id"], "not_arrived")  # nothing left to send: stop retrying
+                out["sent_digest"] = res.get("status") == "sent"
+                out["digest"] = {**res, "retry_of": failed["id"]}
+            except notifications.DigestError as exc:
+                out["digest"] = {"status": "failed", "error": str(exc), "retry_of": failed["id"]}
     return out
 
 

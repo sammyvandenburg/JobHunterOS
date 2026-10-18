@@ -47,6 +47,10 @@
   });
 
   // Live search progress: poll while a hunt runs, then reload once so the new jobs show.
+  // Connect Gmail: the page after the button continues to Google's sign-in by itself (the link stays for no-JS).
+  var go = document.querySelector('a[data-go]');
+  if (go) setTimeout(function () { window.location.assign(go.getAttribute('href')); }, 120);
+
   var live = document.querySelector('[data-hunt-poll]');
   if (live) {
     var runId = live.getAttribute('data-hunt-poll'), textEl = live.querySelector('[data-hunt-text]'), misses = 0;

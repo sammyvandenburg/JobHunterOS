@@ -95,7 +95,17 @@ LIST_PAGES = {
 
 
 def create_app(ctx: AppContext) -> FastAPI:
-    app = FastAPI(title="Hunter", docs_url=None, redoc_url=None, openapi_url=None)
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+        # Hunter is closing: stop the in-app scheduler and leave an honest "stopped" heartbeat.
+        auto = getattr(app.state, "autorun", None)
+        if auto is not None:
+            auto.stop()
+
+    app = FastAPI(title="Hunter", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     secret = dashboard_secret(ctx.paths)
     app.add_middleware(LocalOnlyMiddleware, secret=secret)
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
@@ -283,8 +293,11 @@ def create_app(ctx: AppContext) -> FastAPI:
             unresolved = notifications.unresolved(d)
             if unresolved:
                 problems.append(f"{len(unresolved)} email digest(s) may or may not have arrived. See Needs attention.")
-            if auto["on"] and auto["label"].startswith("on, but"):
-                problems.append("Automatic hunting is on, but nothing is running it.")
+            failed = notifications.failed_digest(d)
+            if failed:
+                problems.append("The last job email could not be sent. See Needs attention.")
+            if auto["on"] and (auto["label"].startswith("on, but") or "not responding" in auto["label"] or "failed" in auto["label"]):
+                problems.append("Automatic hunting: " + auto["label"] + ". " + auto["detail"])
             status = {
                 "connected": g["send"]["connected"],
                 "sending": bool(g["send"]["connected"] and rec and tr["configured"]),
@@ -296,8 +309,10 @@ def create_app(ctx: AppContext) -> FastAPI:
             d.close()
         return render(request, "connections.html", active="settings", settings_tab="connections", **kw)
 
-    @app.get("/connect/gmail/start")
-    def gmail_start(request: Request, purpose: str = "send", csrf: str = ""):
+    @app.post("/connect/gmail/start")
+    def gmail_start(request: Request, csrf: str = Form(...), purpose: str = Form("send")):
+        """Starts one sign-in: a POST (CSRF token in the body, never in a URL or log), then a small page that
+        continues to Google. The one-time state and the PKCE verifier live in the database for 10 minutes."""
         bad = guard(request, csrf)
         if bad:
             return bad
@@ -309,13 +324,17 @@ def create_app(ctx: AppContext) -> FastAPI:
                 redirect_uri = str(request.base_url).rstrip("/") + "/connect/gmail/callback"
                 res = gmail.begin_connect(ctx, d, purpose, redirect_uri)
             except (gmail.GmailError, google_client.ClientConfigError) as exc:
-                return RedirectResponse(f"/connections?msg={_q(str(exc))}", status_code=303)
+                return RedirectResponse(f"/connections?msg={_q(str(exc))}#email", status_code=303)
         finally:
             d.close()
-        return RedirectResponse(res["url"], status_code=303)
+        return render(request, "connect_gmail.html", active="settings", go_url=res["url"], purpose=res["purpose"])
 
     @app.get("/connect/gmail/callback")
     def gmail_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+        """Google sends the browser back here. There is no session cookie to rely on (the dashboard's cookie is
+        SameSite=Strict, and this arrives from another site), so the one-time state is the proof."""
+        if ctx.demo:
+            return RedirectResponse(f"/connections?msg={_q('Demo mode does not connect real accounts.')}", status_code=303)
         d = db()
         try:
             try:
@@ -772,7 +791,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         return RedirectResponse(f"/attention?msg={_q(msg)}", status_code=303)
 
     @app.post("/do/schedule")
-    def schedule_action(request: Request, csrf: str = Form(...), action: str = Form(...), frequency: str = Form(None), time_of_day: str = Form(None), notify_mode: str = Form(None), timezone: str = Form(None), plan: str = Form(None), email: str = Form(None), approve: str = Form(None), persist: str = Form(None)):
+    def schedule_action(request: Request, csrf: str = Form(...), action: str = Form(...), frequency: str = Form(None), time_of_day: str = Form(None), notify_mode: str = Form(None), timezone: str = Form(None), plan: str = Form(None), email: str = Form(None), digest_time: str = Form(None), approve: str = Form(None), persist: str = Form(None)):
         bad = guard(request, csrf)
         if bad:
             return bad
@@ -780,10 +799,10 @@ def create_app(ctx: AppContext) -> FastAPI:
         try:
             try:
                 if action == "notify":
-                    # One choice: how often Hunter looks, and whether it emails you.
+                    # Two separate things: how often Hunter looks, and whether it emails you (at most once a day).
                     plan = plan or "manual"
                     schedule.set_frequency(d, plan, time_of_day or None)
-                    schedule.set_notify_mode(d, "daily_email" if email else "dashboard", time_of_day or None)
+                    schedule.set_notify_mode(d, "daily_email" if email else "dashboard", digest_time or None)
                     if plan == "manual":
                         schedule.disable(d)
                         app.state.autorun.stop()
@@ -791,8 +810,9 @@ def create_app(ctx: AppContext) -> FastAPI:
                     else:
                         schedule.enable(d)
                         app.state.autorun.start()
-                        words = {"daily": f"every day at {time_of_day or schedule.get(d).get('time_of_day')}", "every_2h": "every 2 hours", "every_4h": "every 4 hours", "every_6h": "every 6 hours"}[plan]
-                        msg = f"Hunter will look {words}" + (" and email you what it finds." if email else " and show it here.") + " This runs while Hunter is open; turn on the background task to keep it running when Hunter is closed."
+                        cur = schedule.get(d)
+                        words = {"daily": f"every day at {cur.get('time_of_day')}", "every_2h": "every 2 hours", "every_4h": "every 4 hours", "every_6h": "every 6 hours"}[plan]
+                        msg = f"Hunter will look {words}. " + (f"You get one email a day at {cur.get('digest_time')} with what is new; looking more often never means more emails. " if email else "New jobs show up here; no emails. ") + "This runs while Hunter is open. Turn on 'Keep hunting when Hunter is closed' to keep it going."
                 elif action == "automatic_on":
                     if not approve:
                         msg = "Tick the box to allow automatic hunting first."
@@ -864,6 +884,9 @@ def create_app(ctx: AppContext) -> FastAPI:
                 elif action == "retry" and notification_id:
                     res = notifications.send_digest(ctx, d, force=True, notification_id=notification_id)
                     msg = f"Digest: {res['status']}. " + (res.get("note") or res.get("error") or "")
+                elif action == "dismiss" and notification_id:
+                    notifications.resolve(d, notification_id, "not_arrived")
+                    msg = "Okay. Those jobs go into the next email."
                 elif action == "arrived" and notification_id:
                     msg = notifications.resolve(d, notification_id, "arrived")["note"]
                 elif action == "not_arrived" and notification_id:

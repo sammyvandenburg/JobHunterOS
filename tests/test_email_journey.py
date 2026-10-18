@@ -14,19 +14,8 @@ from jobhunter.db import connect
 from jobhunter.services import worker
 from jobhunter.util import now
 from tests.conftest import approve_profile, launch_browser, serve_app, stop_app
-from tests.fake_google import FakeGoogle
 
 playwright = pytest.importorskip("playwright.sync_api")
-
-
-@pytest.fixture
-def google(monkeypatch):
-    g = FakeGoogle()
-    for k, v in g.env().items():
-        monkeypatch.setenv(k, v)
-    monkeypatch.setenv("JOBHUNTER_AUTORUN_TICK", "0.3")
-    yield g
-    g.close()
 
 
 def _wait(pred, timeout=20.0, what="condition"):
@@ -44,6 +33,7 @@ def test_email_setup_journey_in_a_browser(home, google, fake_sources, monkeypatc
 
     # The login task itself is faked (the real one would call launchctl/systemctl on this machine);
     # the dashboard runs in this process, so the fake is what it calls.
+    monkeypatch.setenv("JOBHUNTER_AUTORUN_TICK", "0.3")
     task = {"installed": False}
     monkeypatch.setattr(worker, "install_service", lambda c, runner=None: (task.update(installed=True), {"installed": True, "note": "Hunter now runs a background search service while you are logged in."})[-1])
     monkeypatch.setattr(worker, "uninstall_service", lambda c, runner=None: (task.update(installed=False), {"removed": True, "note": "The background task is gone."})[-1])
@@ -69,7 +59,7 @@ def test_email_setup_journey_in_a_browser(home, google, fake_sources, monkeypatc
         page.goto(base + "/connections")
         chips = page.locator(".status-chips")
         expect(chips).to_contain_text("Gmail not connected")
-        page.get_by_role("link", name="Connect Gmail", exact=False).first.click()
+        page.get_by_role("button", name="Connect Gmail", exact=True).click()
         page.wait_for_url(re.compile(r"/connections\?msg="))
         assert "Gmail connected as student@gmail.example" in page.content()
         expect(chips).to_contain_text("Connected: student@gmail.example")
@@ -89,7 +79,7 @@ def test_email_setup_journey_in_a_browser(home, google, fake_sources, monkeypatc
         page.locator("input[name=email]").check()
         page.locator("form.prefs-form button.primary").click()
         page.wait_for_url(re.compile(r"msg="))
-        assert "every day at 07:30 and email you" in page.content()
+        assert "look every day at 07:30" in page.content() and "one email a day at 08:30" in page.content()
         expect(chips).to_contain_text("Automatic hunting: running")
         # Keeping it running when Hunter is closed needs the explicit tick.
         page.locator("input[name=approve]").check()
@@ -126,7 +116,7 @@ def test_email_setup_journey_in_a_browser(home, google, fake_sources, monkeypatc
         page.wait_for_url(re.compile(r"msg="))
         assert len(google.revoked) == 1
         expect(page.locator(".status-chips")).to_contain_text("Gmail not connected")
-        assert page.get_by_role("link", name="Connect Gmail", exact=False).count() >= 1
+        assert page.get_by_role("button", name="Connect Gmail", exact=True).count() == 1
         page.get_by_role("button", name="Turn off automatic hunting").click()
         page.wait_for_url(re.compile(r"msg="))
         expect(page.locator(".status-chips")).to_contain_text("Automatic hunting: off")

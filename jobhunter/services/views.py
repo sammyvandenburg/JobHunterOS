@@ -333,9 +333,14 @@ def attention(db: Database) -> dict:
         from jobhunter.services.schedule import describe
 
         if not str(describe(db)["worker"]).startswith("running"):
-            items.append({"kind": "worker", "text": "Daily searching is on, but the worker is not running, so nothing happens by itself. Start it with one command.", "action": "jobhunter worker run   (or see jobhunter schedule install --print)"})
+            items.append({"kind": "worker", "text": "Automatic hunting is on, but nothing is running it right now. Open Hunter (the schedule runs inside it), or turn on 'Keep hunting when Hunter is closed' on the Connections page.", "action": "jobhunter schedule status   (or: jobhunter worker run)"})
     from jobhunter.services import notifications
 
+    failed = notifications.failed_digest(db)
+    if failed:
+        plan = notifications.retry_plan(db, failed)
+        when = (failed.get("created_at") or "")[:16].replace("T", " ")
+        items.append({"kind": "digest_failed", "text": f"The job email from {when} could not be sent ({truncate(failed.get('error') or 'unknown error', 90)}). {plan['reason']}. You can press Send again now, or Dismiss to put those jobs into the next email.", "action": f"jobhunter digest retry {failed['id']}  |  jobhunter digest resolve {failed['id']} not_arrived", "notification_id": failed["id"], "will_retry": plan["will_retry"]})
     for n in notifications.unresolved(db)[:3]:
         items.append({"kind": "digest_uncertain", "text": f"An email digest from {n['created_at'][:16].replace('T', ' ')} may or may not have arrived. Check your inbox. If you have it, press 'It arrived'. If not, press 'Send again'.", "action": f"jobhunter digest resolve {n['id']} arrived  |  jobhunter digest retry {n['id']} --force", "notification_id": n["id"]})
     g = gmail.describe(db)

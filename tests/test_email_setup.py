@@ -4,6 +4,7 @@ outbox, scheduler and transport all run for real. Also: scope checks, state chec
 
 from __future__ import annotations
 
+import html
 import json
 import re
 from datetime import timedelta
@@ -21,19 +22,10 @@ from jobhunter.services.secrets import SecretStore
 from jobhunter.util import now
 from jobhunter.web.app import create_app
 from tests.conftest import approve_profile
-from tests.fake_google import CLIENT_ID, FakeGoogle
+from tests.fake_google import CLIENT_ID
 
 H = {"origin": "http://127.0.0.1:8765"}
 CALLBACK = "http://127.0.0.1:8765/connect/gmail/callback"
-
-
-@pytest.fixture
-def google(monkeypatch):
-    g = FakeGoogle()
-    for k, v in g.env().items():
-        monkeypatch.setenv(k, v)
-    yield g
-    g.close()
 
 
 def _client(ctx):
@@ -48,11 +40,18 @@ def _flash(r) -> str:
     return parse_qs(urlparse(r.headers["location"]).query).get("msg", [""])[0]
 
 
+def start_connect(c, purpose="send"):
+    """Press Connect Gmail: a POST with the CSRF token, answered by the small page that continues to Google."""
+    r = c.post("/connect/gmail/start", data={"csrf": _csrf(c), "purpose": purpose}, headers=H, follow_redirects=False)
+    assert r.status_code == 200, (r.status_code, r.headers.get("location"), r.text[:200])
+    m = re.search(r'data-go href="([^"]+)"', r.text)
+    assert m, r.text[:500]
+    return html.unescape(m.group(1))
+
+
 def connect_gmail(c, google, purpose="send", state_override=None):
     """Press Connect Gmail, go through the (fake) Google screen, land back in Hunter. Returns the flash message."""
-    r = c.get(f"/connect/gmail/start?purpose={purpose}&csrf={_csrf(c)}", follow_redirects=False)
-    assert r.status_code == 303, r.text
-    at_google = httpx.get(r.headers["location"], follow_redirects=False)
+    at_google = httpx.get(start_connect(c, purpose), follow_redirects=False)
     assert at_google.status_code == 302, at_google.text
     back = at_google.headers["location"]
     assert back.startswith(CALLBACK)
@@ -81,19 +80,21 @@ def test_connect_gmail_to_test_digest_restart_and_scheduled_digest(ctx, db, goog
 
     # Before: Connect Gmail is the big button; SMTP is folded away under "advanced", never the default.
     page = c.get("/connections").text
-    assert "Gmail not connected" in page and 'class="btn btn-primary btn-lg"' in page and "Connect Gmail</a>" in page
+    assert "Gmail not connected" in page and 'class="btn btn-primary btn-lg"' in page and "Connect Gmail</button>" in page
     assert page.index("Connect Gmail") < page.index("SMTP")
     assert re.search(r'<details class="more card" id="advanced">.*SMTP', page, re.S)
 
     # 1. Connect Gmail: the standard Google screen asks for sending only, with PKCE and a loopback redirect.
-    r = c.get(f"/connect/gmail/start?purpose=send&csrf={_csrf(c)}", follow_redirects=False)
-    q = {k: v[0] for k, v in parse_qs(urlparse(r.headers["location"]).query).items()}
+    google_url = start_connect(c)
+    q = {k: v[0] for k, v in parse_qs(urlparse(google_url).query).items()}
     assert q["client_id"] == CLIENT_ID and q["redirect_uri"] == CALLBACK and q["response_type"] == "code"
     assert q["scope"] == gmail.SCOPE_SEND and q["code_challenge_method"] == "S256" and q["access_type"] == "offline" and q["prompt"] == "consent"
     assert "client_secret" not in q
-    at_google = httpx.get(r.headers["location"], follow_redirects=False)
+    at_google = httpx.get(google_url, follow_redirects=False)
     back = at_google.headers["location"].replace("http://127.0.0.1:8765", "")
-    r2 = c.get(back, follow_redirects=False)
+    # Google sends the browser back cross-site, so the dashboard's SameSite=Strict cookie is not there: a fresh
+    # client stands in for that. The one-time state is what proves this callback belongs to the sign-in we started.
+    r2 = _client(ctx).get(back, follow_redirects=False)
     assert _flash(r2).startswith("Gmail connected as student@gmail.example.") and "Say yes below" in _flash(r2)
     assert google.token_requests[-1]["pkce_ok"] is True
 
@@ -132,7 +133,7 @@ def test_connect_gmail_to_test_digest_restart_and_scheduled_digest(ctx, db, goog
 
     # 4. Choose daily + email. Automatic hunting runs inside Hunter straight away.
     r = c.post("/do/schedule", data={"csrf": _csrf(c), "action": "notify", "plan": "daily", "time_of_day": "07:15", "email": "1"}, headers=H, follow_redirects=False)
-    assert "every day at 07:15 and email you" in _flash(r)
+    assert "every day at 07:15" in _flash(r) and "one email a day at" in _flash(r)
     sched = schedule.get(db)
     assert sched["enabled"] == 1 and sched["frequency"] == "daily" and sched["notify_mode"] == "daily_email" and sched["time_of_day"] == "07:15"
     assert c.app.state.autorun.running
@@ -167,7 +168,11 @@ def test_connect_gmail_to_test_digest_restart_and_scheduled_digest(ctx, db, goog
     assert res2["sent_digest"] is False and len(google.sent) == 2
     hb = db.fetchone("SELECT status, message FROM worker_heartbeat WHERE id = 1")
     assert hb["status"] == "idle" and "inside Hunter" in hb["message"]
+    # The thread was stopped for these manual ticks, so the page must not claim it is running.
+    assert "Automatic hunting: on, but nothing is running it" in c2.get("/connections").text
+    c2.app.state.autorun.start()
     assert "Automatic hunting: running" in c2.get("/connections").text
+    c2.app.state.autorun.stop()
 
 
 # ---------------------------------------------------------------- safeguards
@@ -182,11 +187,11 @@ def test_send_connection_refuses_read_scope_and_wrong_or_old_state(ctx, db, goog
     msg = connect_gmail(c, google, state_override="forged")
     assert "not the one Hunter started" in msg and gmail.account(db, "send") is None
     # A sign-in that took longer than the pending window is refused, even with the right state.
-    r = c.get(f"/connect/gmail/start?purpose=send&csrf={_csrf(c)}", follow_redirects=False)
+    google_url = start_connect(c)
     pending = db.get_setting(gmail.PENDING_KEY)
     pending["created_at"] = (now() - timedelta(seconds=gmail.PENDING_MAX_AGE_S + 5)).isoformat()
     db.set_setting(gmail.PENDING_KEY, pending)
-    back = httpx.get(r.headers["location"], follow_redirects=False).headers["location"].replace("http://127.0.0.1:8765", "")
+    back = httpx.get(google_url, follow_redirects=False).headers["location"].replace("http://127.0.0.1:8765", "")
     assert "took too long" in _flash(c.get(back, follow_redirects=False))
     assert db.get_setting(gmail.PENDING_KEY) is None
     # Cancelling at Google is a plain message, not a stack trace.
@@ -257,7 +262,7 @@ def test_disconnect_from_dashboard_keeps_history_and_recipient(ctx, db, google):
     assert notifications.recipient(db) == "student@gmail.example"  # the address decision stays
     assert db.fetchone("SELECT COUNT(*) AS n FROM notifications")["n"] == 1  # history stays
     page = c.get("/connections").text
-    assert "Gmail not connected" in page and "Connect Gmail</a>" in page and "Sending not set up" in page
+    assert "Gmail not connected" in page and "Connect Gmail</button>" in page and "Sending not set up" in page
     assert "Hunter test: your job emails work" in page
     # Nothing can be sent until Gmail is connected again; the outbox records why.
     r = c.post("/do/digest", data={"csrf": _csrf(c), "action": "test"}, headers=H, follow_redirects=False)
@@ -298,8 +303,8 @@ def test_client_config_sources_and_unavailable_state(ctx, db, monkeypatch, googl
     assert google_client.describe(ctx.paths)["available"] is False and fetches == []
     c = _client(ctx)
     page = c.get("/connections").text
-    assert fetches == [] and "/connect/gmail/start?purpose=send" in page and "fetched from KubeCraft when you press Connect Gmail" in page
-    assert "Try again in a minute" in _flash(c.get(f"/connect/gmail/start?purpose=send&csrf={_csrf(c)}", follow_redirects=False))
+    assert fetches == [] and "Connect Gmail</button>" in page and "fetched from KubeCraft when you press Connect Gmail" in page
+    assert "Try again in a minute" in _flash(c.post("/connect/gmail/start", data={"csrf": _csrf(c), "purpose": "send"}, headers=H, follow_redirects=False))
     assert fetches == [google.base + "/google-oauth-client.json"]
     # The JSON Google lets you download, dropped in the private folder, is enough.
     f = google_client.client_file(ctx.paths)
@@ -322,5 +327,6 @@ def test_demo_mode_never_connects(home, google, monkeypatch):
     ctx = AppContext.from_env(demo=True, home=home)
     connect(ctx.paths.db_path).close()
     c = _client(ctx)
-    r = c.get(f"/connect/gmail/start?purpose=send&csrf={_csrf(c)}", follow_redirects=False)
+    r = c.post("/connect/gmail/start", data={"csrf": _csrf(c), "purpose": "send"}, headers=H, follow_redirects=False)
     assert "Demo mode" in _flash(r) and google.auth_requests == []
+    assert "Demo mode" in _flash(c.get("/connect/gmail/callback?code=x&state=y", follow_redirects=False))

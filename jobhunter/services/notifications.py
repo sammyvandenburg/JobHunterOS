@@ -114,6 +114,8 @@ def _esc(s: str | None) -> str:
 
 
 STALE_SENDING_MINUTES = 15
+AUTO_RETRY_AFTER_MINUTES = 30  # a failed scheduled digest is tried again after this
+AUTO_RETRY_MAX_ATTEMPTS = 3  # and at most this many times in total
 
 
 def delivery_key(recipient_addr: str, content_hash: str) -> str:
@@ -135,6 +137,38 @@ def unresolved(db: Database) -> list[dict]:
     """Digests whose delivery is unknown: the provider did not confirm, or Hunter stopped mid-send."""
     rows = db.fetchall("SELECT * FROM notifications WHERE channel = 'email' AND resolved_at IS NULL AND status IN ('uncertain','sending') ORDER BY id DESC")
     return [r for r in rows if r["status"] == "uncertain" or _is_stale_sending(r)]
+
+
+def failed_digest(db: Database) -> dict | None:
+    """The most recent digest that failed and nobody has dealt with yet (last 48 hours)."""
+    since = (now() - timedelta(hours=48)).isoformat()
+    return db.fetchone("SELECT * FROM notifications WHERE kind = 'digest' AND status = 'failed' AND resolved_at IS NULL AND created_at >= ? ORDER BY id DESC LIMIT 1", (since,))
+
+
+def retry_plan(db: Database, row: dict) -> dict:
+    """Will Hunter try this failed digest again by itself? Only when sending can work and the attempt budget is left."""
+    from jobhunter.services.email import gmail, transport
+
+    attempts = int(row.get("attempts") or 0)
+    if attempts >= AUTO_RETRY_MAX_ATTEMPTS:
+        return {"will_retry": False, "reason": f"Hunter already tried {attempts} times and will not try again by itself"}
+    if not transport.describe(db)["configured"]:
+        return {"will_retry": False, "reason": "Gmail is not connected, so Hunter cannot try again by itself"}
+    g = gmail.describe(db)["send"]
+    if g["connected"] and g.get("last_error"):
+        return {"will_retry": False, "reason": "The Gmail connection stopped working; connect Gmail again first"}
+    last_try = parse_iso(row.get("claimed_at") or row.get("created_at"))
+    wait = max(0, AUTO_RETRY_AFTER_MINUTES - int(((now() - last_try).total_seconds() // 60) if last_try else 0))
+    return {"will_retry": True, "reason": f"Hunter will try again by itself in about {wait} minutes" if wait else "Hunter will try again by itself within a minute", "due": wait == 0}
+
+
+def retry_due(db: Database) -> dict | None:
+    """A failed digest the scheduler may try again right now."""
+    row = failed_digest(db)
+    if not row:
+        return None
+    plan = retry_plan(db, row)
+    return row if plan["will_retry"] and plan.get("due") else None
 
 
 def resolve(db: Database, notification_id: int, outcome: str) -> dict:
@@ -247,7 +281,10 @@ def send_digest(ctx: AppContext, db: Database, jobs: list[dict] | None = None, d
         finish("uncertain", f"interrupted: {type(exc).__name__}")
         raise
     finish("sent", None, result.get("message_id"))
-    db.execute("UPDATE schedule SET last_digest_at = ? WHERE id = 1", (now_iso(),))
+    with db.tx():
+        # Earlier failed digests are covered now: their jobs were still pending and are in this one.
+        db.execute("UPDATE notifications SET resolved_at = ?, resolution = 'superseded' WHERE kind = 'digest' AND status = 'failed' AND resolved_at IS NULL AND id != ?", (now_iso(), nid))
+        db.execute("UPDATE schedule SET last_digest_at = ? WHERE id = 1", (now_iso(),))
     return {"status": "sent", "to": addr, "notification_id": nid, "jobs": digest.job_ids, "transport": result.get("transport")}
 
 

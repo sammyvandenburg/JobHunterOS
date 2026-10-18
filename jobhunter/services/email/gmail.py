@@ -125,6 +125,7 @@ def begin_connect(ctx: AppContext, db: Database, purpose: str, redirect_uri: str
     a one-time state that the callback must return. Sending and reading are always separate connections."""
     if purpose not in {"send", "read"}:
         raise GmailError("Unknown connection type.")
+    _check_redirect_uri(redirect_uri)
     client = google_client.resolve_client(ctx.paths)
     verifier, challenge = google_client.pkce_pair()
     state = _secrets.token_urlsafe(24)
@@ -146,15 +147,39 @@ def begin_connect(ctx: AppContext, db: Database, purpose: str, redirect_uri: str
     return {"url": f"{google_client.endpoints()['auth']}?{urlencode(params)}", "state": state, "purpose": purpose}
 
 
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+CALLBACK_PATH = "/connect/gmail/callback"
+
+
+def _check_redirect_uri(redirect_uri: str) -> None:
+    """Google may only send the person back to this computer, to Hunter's callback."""
+    from urllib.parse import urlsplit
+
+    u = urlsplit(redirect_uri)
+    if u.scheme != "http" or (u.hostname or "").lower() not in LOOPBACK_HOSTS or u.path != CALLBACK_PATH or u.query or u.fragment:
+        raise GmailError("Hunter only accepts a sign-in that comes back to this computer. Open the dashboard at http://127.0.0.1:8765 and try again.")
+
+
+def _plain(text: str | None, limit: int = 60) -> str:
+    return re.sub(r"[^A-Za-z0-9_ .:-]", "", text or "")[:limit]
+
+
 def finish_connect(ctx: AppContext, db: Database, state: str | None, code: str | None, error: str | None = None) -> dict:
     """Step 2: Google sent the person back. Check the state, trade the code for tokens, verify the granted
     scope is exactly the one asked for, find the account's address, store everything."""
+    import hmac
+
     pending = db.get_setting(PENDING_KEY) or {}
-    db.delete_setting(PENDING_KEY)
+    matches = bool(pending and state and hmac.compare_digest(str(state), str(pending.get("state") or "")))
     if error:
-        raise GmailError("Google sign-in was cancelled or refused." if error == "access_denied" else f"Google sign-in failed: {error}")
-    if not pending or not state or state != pending.get("state"):
+        # Google reports a cancel or refusal with the same state. Only that ends the pending sign-in;
+        # a stray or forged callback cannot cancel a sign-in that is still under way.
+        if matches:
+            db.delete_setting(PENDING_KEY)
+        raise GmailError("Google sign-in was cancelled or refused. Nothing changed; press Connect Gmail when you want to try again." if error == "access_denied" else f"Google sign-in failed ({_plain(error) or 'unknown error'}). Press Connect Gmail to try again.")
+    if not matches:
         raise GmailError("This sign-in link is not the one Hunter started. Press Connect Gmail again.")
+    db.delete_setting(PENDING_KEY)  # one-time: from here on this state can never be used again
     started = parse_iso(pending.get("created_at"))
     from jobhunter.util import now as _now
 
