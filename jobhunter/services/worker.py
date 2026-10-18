@@ -211,3 +211,116 @@ def _which(name: str) -> str | None:
     import shutil
 
     return shutil.which(name)
+
+
+# ---------------------------------------------------------------------------
+# Installing the login task for real (only after the person approved it in the dashboard)
+# ---------------------------------------------------------------------------
+SERVICE_LABEL = "com.kubecraft.jobhunter.worker"
+SYSTEMD_UNIT = "jobhunter-worker"
+WINDOWS_TASK = "JobHunterOS worker"
+
+
+def service_file(ctx: AppContext) -> Path | None:
+    system = platform.system()
+    if system == "Darwin":
+        return Path.home() / "Library" / "LaunchAgents" / f"{SERVICE_LABEL}.plist"
+    if system == "Linux":
+        return Path.home() / ".config" / "systemd" / "user" / f"{SYSTEMD_UNIT}.service"
+    return None
+
+
+def _run(runner, argv: list[str]) -> tuple[int, str]:
+    import subprocess
+
+    try:
+        res = runner(argv, capture_output=True, text=True, timeout=60)
+    except FileNotFoundError:
+        return 127, f"{argv[0]} is not installed"
+    except subprocess.TimeoutExpired:
+        return 124, "timed out"
+    return int(res.returncode), ((res.stdout or "") + (res.stderr or "")).strip()
+
+
+def install_service(ctx: AppContext, runner=None) -> dict:
+    """Write the login task for this operating system and enable it. Returns what happened in plain words.
+    Never called without the person's explicit approval in the dashboard or the CLI flag."""
+    import subprocess
+
+    runner = runner or subprocess.run
+    t = service_templates(ctx)
+    system = platform.system()
+    path = service_file(ctx)
+    if system == "Darwin":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(t["launchd"], encoding="utf-8")
+        uid = os.getuid()
+        code, out = _run(runner, ["launchctl", "bootstrap", f"gui/{uid}", str(path)])
+        if code != 0 and ("already" in out.lower() or code == 37):
+            code, out = _run(runner, ["launchctl", "kickstart", "-k", f"gui/{uid}/{SERVICE_LABEL}"])
+        ok = code == 0
+        return {"installed": ok, "platform": system, "path": str(path), "detail": out, "note": "Hunter now starts a background search task when you log in to this Mac." if ok else "macOS did not accept the task. " + out}
+    if system == "Linux":
+        if not _which("systemctl"):
+            return {"installed": False, "platform": system, "path": None, "detail": "systemctl not found", "note": "This Linux has no systemd user services. Keep Hunter open instead; automatic hunting runs inside it."}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        unit = "\n".join(ln for ln in t["systemd"].splitlines() if not ln.startswith("#"))
+        path.write_text(unit + "\n", encoding="utf-8")
+        code, out = _run(runner, ["systemctl", "--user", "daemon-reload"])
+        if code == 0:
+            code, out = _run(runner, ["systemctl", "--user", "enable", "--now", SYSTEMD_UNIT])
+        ok = code == 0
+        return {"installed": ok, "platform": system, "path": str(path), "detail": out, "note": "Hunter now runs a background search service while you are logged in." if ok else "Linux did not accept the service. " + out}
+    if system == "Windows":
+        argv = t["command_argv"]
+        tr = " ".join(_win_arg(a) for a in argv)
+        code, out = _run(runner, ["schtasks", "/Create", "/TN", WINDOWS_TASK, "/TR", tr, "/SC", "ONLOGON", "/RL", "LIMITED", "/F"])
+        ok = code == 0
+        if ok:
+            _run(runner, ["schtasks", "/Run", "/TN", WINDOWS_TASK])
+        return {"installed": ok, "platform": system, "path": None, "detail": out, "note": "Windows now starts Hunter's background search when you log in." if ok else "Windows did not accept the task. " + out}
+    return {"installed": False, "platform": system, "path": None, "detail": "", "note": "Hunter cannot install a login task on this system. Keep Hunter open instead; automatic hunting runs inside it."}
+
+
+def uninstall_service(ctx: AppContext, runner=None) -> dict:
+    import subprocess
+
+    runner = runner or subprocess.run
+    system = platform.system()
+    path = service_file(ctx)
+    out = ""
+    if system == "Darwin":
+        _, out = _run(runner, ["launchctl", "bootout", f"gui/{os.getuid()}/{SERVICE_LABEL}"])
+    elif system == "Linux" and _which("systemctl"):
+        _, out = _run(runner, ["systemctl", "--user", "disable", "--now", SYSTEMD_UNIT])
+    elif system == "Windows":
+        _, out = _run(runner, ["schtasks", "/Delete", "/TN", WINDOWS_TASK, "/F"])
+    removed = False
+    if path and path.exists():
+        path.unlink()
+        removed = True
+    if system == "Linux" and _which("systemctl"):
+        _run(runner, ["systemctl", "--user", "daemon-reload"])
+    return {"removed": True, "file_removed": removed, "platform": system, "detail": out, "note": "The background task is gone. Hunter only looks when you press Find jobs now, or while Hunter is open with automatic hunting on."}
+
+
+def service_status(ctx: AppContext, runner=None) -> dict:
+    """Installed? Active? Cheap and never raises."""
+    import subprocess
+
+    runner = runner or subprocess.run
+    system = platform.system()
+    path = service_file(ctx)
+    installed = bool(path and path.exists())
+    active = None
+    if system == "Darwin" and installed:
+        code, _ = _run(runner, ["launchctl", "print", f"gui/{os.getuid()}/{SERVICE_LABEL}"])
+        active = code == 0
+    elif system == "Linux" and installed and _which("systemctl"):
+        code, out = _run(runner, ["systemctl", "--user", "is-active", SYSTEMD_UNIT])
+        active = out.strip() == "active"
+    elif system == "Windows":
+        code, out = _run(runner, ["schtasks", "/Query", "/TN", WINDOWS_TASK])
+        installed = code == 0
+        active = None if not installed else ("Running" in out)
+    return {"platform": system, "installed": installed, "active": active, "path": str(path) if path else None, "supported": system in {"Darwin", "Linux", "Windows"} and not (system == "Linux" and not _which("systemctl"))}

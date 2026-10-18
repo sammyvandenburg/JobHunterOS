@@ -205,3 +205,107 @@ def seeded_sources(db, transport):
 
 def has_env(name: str) -> bool:
     return os.environ.get(name, "").strip() not in {"", "0", "false"}
+
+
+# ---------------------------------------------------------------------------
+# Synthetic sources and a real local server for journey tests
+# ---------------------------------------------------------------------------
+JOURNEY_DESC = "About the role\nYou join a small platform team that builds and runs the internal developer platform.\nWhat you bring\nKubernetes in production, Terraform and AWS, CI/CD, Linux.\nWhat you'll do\nOwn the platform. Be on call."
+JOURNEY_POSTINGS = [
+    dict(external_id="nl1", title="Platform Engineer", employer_name="Northwind Cloud", url="https://job-boards.greenhouse.io/northwind/jobs/1", location_text="Amsterdam, Netherlands", country_codes=["NL"]),
+    dict(external_id="nl2", title="DevOps Engineer", employer_name="Contoso Payments", url="https://job-boards.greenhouse.io/contoso/jobs/2", location_text="Utrecht, Netherlands", country_codes=["NL"], remote_type="hybrid"),
+    dict(external_id="de1", title="Site Reliability Engineer", employer_name="Berlin Robotics", url="https://job-boards.greenhouse.io/berlin/jobs/3", location_text="Berlin, Germany", country_codes=["DE"]),
+    dict(external_id="us1", title="Platform Engineer", employer_name="Austin Labs", url="https://job-boards.greenhouse.io/austin/jobs/4", location_text="Remote worldwide", country_codes=[], remote_type="remote", description_text=JOURNEY_DESC + "\nApplicants must be based in the US."),
+    dict(external_id="x1", title="Passenger Services Platform Agent", employer_name="Airport BV", url="https://job-boards.greenhouse.io/airport/jobs/5", location_text="Amsterdam, Netherlands", country_codes=["NL"], description_text="Help passengers at the platform. Customer service."),
+]
+
+
+def _record_without_watch_source_update(db, run_id, source, res, stats):
+    """The fake source has no watch_sources row; record its jobs and counts without touching that table."""
+    from jobhunter.services import jobs as jobs_svc
+
+    new = relevant_new = 0
+    with db.tx():
+        for p in res.postings:
+            job_id, is_new, _changed = jobs_svc.upsert_from_posting(db, p, run_id, True)
+            if is_new:
+                new += 1
+                row = db.fetchone("SELECT relevance FROM jobs WHERE id = ?", (job_id,))
+                if row and row["relevance"] in {"relevant", "uncertain"}:
+                    relevant_new += 1
+    stats["postings_fetched"] += len(res.postings)
+    stats["jobs_new"] += new
+    stats["jobs_relevant_new"] += relevant_new
+    stats["sources_ok"] += 1
+
+
+@pytest.fixture
+def fake_sources(monkeypatch):
+    """One synthetic source with five postings; the hunt pipeline runs for real on top of it, nothing leaves the machine."""
+    import time
+
+    from jobhunter.models import FetchResult, RawPosting
+    from jobhunter.services import hunt
+
+    def fake_fetch(client, s):
+        posts = []
+        for p in JOURNEY_POSTINGS:
+            base = dict(source_id=s["id"], remote_type="onsite", description_text=JOURNEY_DESC, posted_at="2026-10-17T09:00:00+00:00", posted_at_provenance="t", is_employer_hosted=True)
+            base.update(p)
+            posts.append(RawPosting(**base))
+        time.sleep(0.2)
+        return FetchResult(source_id=s["id"], status="ok", postings=posts, complete=True)
+
+    monkeypatch.setattr(hunt, "_fetch_one", fake_fetch)
+    monkeypatch.setattr(hunt, "_promote_discovered_employers", lambda *a, **k: 0)
+    monkeypatch.setattr(hunt, "_lookup_originals", lambda *a, **k: None)
+    monkeypatch.setattr(hunt, "sources_state", lambda db, ids=None: ([{"id": "greenhouse:fake", "kind": "greenhouse", "config_json": "{}", "enabled": 1}], None, None))
+    monkeypatch.setattr(hunt, "ensure_sources_initialized", lambda db: {"initialized": False})
+    monkeypatch.setattr(hunt, "_record_source_run", _record_without_watch_source_update)
+
+
+def free_port() -> int:
+    import socket
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def serve_app(ctx):
+    """Run the real dashboard (uvicorn) in a thread. Returns (server, thread, base_url)."""
+    import socket
+    import threading
+    import time
+
+    import uvicorn
+
+    from jobhunter.web.app import create_app
+
+    port = free_port()
+    srv = uvicorn.Server(uvicorn.Config(create_app(ctx), host="127.0.0.1", port=port, log_level="error"))
+    t = threading.Thread(target=srv.run, daemon=True)
+    t.start()
+    for _ in range(50):
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+            break
+        except OSError:
+            time.sleep(0.1)
+    return srv, t, f"http://127.0.0.1:{port}"
+
+
+def stop_app(srv, t):
+    srv.should_exit = True
+    t.join(timeout=5)
+
+
+def launch_browser(p):
+    """Chromium for journey tests; JOBHUNTER_CHROMIUM points at a binary when Playwright's own download is absent."""
+    kwargs = {}
+    exe = os.environ.get("JOBHUNTER_CHROMIUM")
+    if exe:
+        kwargs["executable_path"] = exe
+    return p.chromium.launch(**kwargs)

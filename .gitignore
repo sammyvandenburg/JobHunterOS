@@ -29,6 +29,7 @@ digests/
 config.local.toml
 secrets.json
 client_secret*.json
+google_client.json
 token*.json
 credentials*.json
 

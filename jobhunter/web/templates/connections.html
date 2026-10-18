@@ -5,45 +5,105 @@
 {% set tabs = [('profile','/profile','Profile & preferences'),('connections','/connections','Connections & schedule'),('health','/health','Search health')] %}
 <div class="page-head"><div><h1>Profile &amp; settings</h1><p class="sub">Your profile, what you told Hunter, connections, and search health.</p></div></div>
 <nav class="tabs" aria-label="Settings sections">{% for key, href, label in tabs %}<a href="{{ href }}" {% if settings_tab == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
-<section class="card"><h2>How often should I look? When should I tell you?</h2>
-  <p>Now: looking <strong>{{ sched.frequency_label }}</strong>{% if sched.frequency == 'daily' %} at {{ sched.time_of_day }}{% endif %} ({{ sched.timezone }}) · telling you via <strong>{{ sched.notify_label }}</strong> · schedule {{ 'on' if sched.enabled and not sched.paused else ('paused' if sched.paused else 'off') }} · next planned run: {{ sched.next_run_at or 'none' }} · last run: {{ sched.last_run_at or 'never' }}</p>
-  <p>Worker: <strong>{{ sched.worker }}</strong>. {{ sched.note }}</p>
-  <form method="post" action="/do/schedule" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="set">
-    <label>Look <select name="frequency"><option value="">(keep)</option><option value="daily">daily (suggested)</option><option value="every_2h">every 2 hours</option><option value="every_4h">every 4 hours</option><option value="every_6h">every 6 hours</option><option value="manual">only when asked</option></select></label>
-    <label>at <input type="time" name="time_of_day" value="{{ sched.time_of_day }}"></label>
-    <label>Tell me <select name="notify_mode"><option value="">(keep)</option><option value="dashboard">dashboard only (default)</option><option value="daily_email">daily email</option><option value="on_request">email when asked</option></select></label>
-    <label>Timezone <input type="text" name="timezone" value="{{ sched.timezone }}"></label>
-    <button>Save</button></form>
-  <div class="actions">
-    <form method="post" action="/do/schedule"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="enable"><button class="primary">Turn schedule on</button></form>
-    <form method="post" action="/do/schedule"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pause"><button>Pause</button></form>
-    <form method="post" action="/do/schedule"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="resume"><button>Resume</button></form>
-    <form method="post" action="/do/schedule"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="disable"><button>Turn off</button></form>
-  </div>
-  <p class="muted">To start the worker: <code>uv run jobhunter worker run</code> in a terminal, or see <code>uv run jobhunter schedule install --print</code> for a service you can install yourself. Closing this browser does not stop a running worker; turning off the computer does.</p>
+
+<div class="status-chips" aria-label="Email and automatic hunting status">
+  <span class="chip {{ 'good' if status.connected else '' }}">{{ icon('check') if status.connected else icon('x') }} {{ 'Connected' if status.connected else 'Gmail not connected' }}{% if status.connected %}: {{ gmail.send.address }}{% endif %}</span>
+  <span class="chip {{ 'good' if status.sending else '' }}">{{ icon('send') }} {{ 'Sending enabled' if status.sending else 'Sending not set up' }}</span>
+  <span class="chip {{ 'good' if status.automatic == 'running' else ('worth_a_shot' if auto.on else '') }}">{{ icon('refresh') }} Automatic hunting: {{ status.automatic }}</span>
+  {% if status.problems %}<span class="chip uncertain">{{ icon('alert') }} Needs attention</span>{% endif %}
+</div>
+{% if status.problems %}<div class="notice warn"><div>{% for pr in status.problems %}<div>{{ pr }}</div>{% endfor %}</div>{% if gmail.send.last_error %}<a class="btn btn-sm primary" href="/connect/gmail/start?purpose=send&amp;csrf={{ csrf }}">Connect Gmail again</a>{% endif %}</div>{% endif %}
+
+<section class="card" id="email">
+  <h2>Email me jobs</h2>
+  {% if not client.available %}
+    <p class="warn">Email setup is not available yet: KubeCraft has not published the Google sign-in details Hunter needs. Nothing is wrong on your side.</p>
+    <p class="muted small">You can still use Hunter in the dashboard and in Claude Code. Advanced: SMTP below.</p>
+  {% elif not gmail.send.connected %}
+    <p>One click, then Google asks you to allow Hunter to <strong>send email as you</strong>. That is all it asks. Hunter does not read your inbox with this.</p>
+    <a class="btn btn-primary btn-lg" href="/connect/gmail/start?purpose=send&amp;csrf={{ csrf }}">{{ icon('send') }} Connect Gmail</a>
+    <p class="muted small mt-8">Google will say "Hunter by KubeCraft wants to send email on your behalf". You can take the permission back any time, here or at myaccount.google.com.</p>
+  {% else %}
+    <p>Connected as <strong>{{ gmail.send.address }}</strong>{% if gmail.send.connected_at %} <span class="muted small">(since {{ gmail.send.connected_at | dt }})</span>{% endif %}.</p>
+    {% if not digest.recipient %}
+      {% if suggested %}
+      <div class="notice"><span>Send my job emails to <strong>{{ suggested }}</strong>?</span>
+        <form method="post" action="/do/digest" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="use_suggested"><button class="primary">Yes, send them there</button></form>
+      </div>
+      <p class="muted small">Or another address:</p>
+      {% else %}
+      <p>Where should the job emails go?</p>
+      {% endif %}
+      <form method="post" action="/do/digest" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="address"><input type="email" name="address" placeholder="you@example.com" required><button>Use this address</button></form>
+    {% else %}
+      <p>Job emails go to <strong>{{ digest.recipient }}</strong>. <span class="muted small">Only this one address, ever.</span></p>
+      <div class="actions">
+        <form method="post" action="/do/digest"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="test"><button class="primary">{{ icon('send') }} Send test email</button></form>
+        <a class="btn" href="/digest/preview">Preview the next digest</a>
+        <form method="post" action="/do/digest"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="send"><button>Send digest now</button></form>
+      </div>
+      <details class="more"><summary>Change the address</summary>
+        <form method="post" action="/do/digest" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="address"><input type="email" name="address" placeholder="you@example.com" required><button>Use this address</button></form>
+      </details>
+    {% endif %}
+    <form method="post" action="/do/digest" class="inline mt-10" data-confirm="Disconnect Gmail? Hunter deletes its permission to send as you. Your history stays."><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="disconnect_send"><button class="ghost btn-sm">Disconnect Gmail</button></form>
+  {% endif %}
+  {% if notifications %}<details class="more"><summary>Email history</summary><ul class="plain">{% for n in notifications %}<li>{{ n.created_at | dt }} · {{ n.kind }} · {{ n.status }} · {{ n.subject }}{% if n.error %} · {{ n.error }}{% endif %}</li>{% endfor %}</ul></details>{% endif %}
 </section>
-<section class="card"><h2>Email me jobs</h2>
-  <p>Digest address: <strong>{{ digest.recipient or 'not set' }}</strong> · Transport: {{ digest.transport.detail }}</p>
-  <form method="post" action="/do/digest" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="address"><input type="email" name="address" placeholder="you@example.com" required><button>Confirm this address</button></form>
-  <div class="actions"><a class="button" href="/digest/preview">Preview the next digest</a>
-    <form method="post" action="/do/digest"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="send"><button {% if not digest.recipient or not digest.transport.configured %}disabled{% endif %}>Send digest now</button></form></div>
-  <p class="muted">Sending needs either SMTP settings (<code>uv run jobhunter digest smtp ...</code>) or a separate Gmail send connection. Reading your mailbox is a different permission and is never required for digests.</p>
-  {% if notifications %}<details class="more"><summary>Digest history</summary><ul>{% for n in notifications %}<li>{{ n.created_at[:16] }} · {{ n.status }} · {{ n.subject }}{% if n.error %} · {{ n.error }}{% endif %}</li>{% endfor %}</ul></details>{% endif %}
+
+<section class="card" id="automatic">
+  <h2>How often should I look, and should I email you?</h2>
+  <p class="muted small">Now: {{ auto.frequency_label }} · {{ auto.notify_label }}{% if auto.next_run_at %} · next look {{ auto.next_run_at | dt }}{% endif %}</p>
+  <form method="post" action="/do/schedule" class="prefs-form"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="notify">
+    <fieldset><legend>How often</legend>
+      <label><input type="radio" name="plan" value="manual" {% if sched.frequency == 'manual' or not sched.enabled %}checked{% endif %}> Only when I press Find jobs now</label>
+      <label><input type="radio" name="plan" value="daily" {% if sched.frequency == 'daily' and sched.enabled %}checked{% endif %}> Every day at <input type="time" name="time_of_day" value="{{ sched.time_of_day }}" class="w-90"></label>
+      <label><input type="radio" name="plan" value="every_2h" {% if sched.frequency == 'every_2h' and sched.enabled %}checked{% endif %}> Every 2 hours</label>
+      <label><input type="radio" name="plan" value="every_4h" {% if sched.frequency == 'every_4h' and sched.enabled %}checked{% endif %}> Every 4 hours</label>
+      <label><input type="radio" name="plan" value="every_6h" {% if sched.frequency == 'every_6h' and sched.enabled %}checked{% endif %}> Every 6 hours</label>
+    </fieldset>
+    <fieldset><legend>Tell me</legend>
+      <label><input type="checkbox" name="email" value="1" {% if sched.notify_mode == 'daily_email' %}checked{% endif %} {% if not status.sending %}disabled title="Connect Gmail and confirm your address first"{% endif %}> Email me what you find (once a day){% if not status.sending %} <span class="muted small">(connect Gmail first)</span>{% endif %}</label>
+    </fieldset>
+    <div class="full-row"><button class="primary">Save</button></div>
+  </form>
+  <h3 class="mt-14">Automatic hunting: {{ auto.label }}</h3>
+  <p class="muted small">{{ auto.detail }}</p>
+  {% if auto.on %}
+    {% if auto.service.installed %}
+      <p class="muted small">Background task: installed{% if auto.service.active %} and running{% elif auto.service.active is sameas false %}, not running right now{% endif %}{% if auto.service.path %} ({{ auto.service.path }}){% endif %}.</p>
+    {% elif auto.service.supported %}
+      <form method="post" action="/do/schedule" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="service_install">
+        <label><input type="checkbox" name="approve" value="1" required> I allow Hunter to add a small task that starts when I log in to this computer, so it keeps hunting when Hunter is closed</label>
+        <div><button class="primary">{{ icon('refresh') }} Keep hunting when Hunter is closed</button></div>
+      </form>
+    {% endif %}
+    <div class="actions mt-10">
+      <form method="post" action="/do/schedule" data-confirm="Turn automatic hunting off?{% if auto.service.installed %} This also removes the background task.{% endif %}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="automatic_off"><button>Turn off automatic hunting</button></form>
+      {% if auto.service.installed %}<form method="post" action="/do/schedule"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="service_remove"><button class="ghost btn-sm">Remove only the background task</button></form>{% endif %}
+    </div>
+  {% else %}
+    <p class="muted small">Choose how often above and press Save to turn it on. Hunter only ever reads job sources, updates your lists here, and emails you if you asked for that.</p>
+  {% endif %}
 </section>
-<section class="card"><h2>Read my job-search emails</h2>
+
+<section class="card" id="inbox">
+  <h2>Read my job-search emails <span class="muted small">(optional, separate permission)</span></h2>
   {% if gmail.read.connected %}
-    <p>Connected: {{ gmail.read.address }} · last sync {{ gmail.read.last_sync_at or 'never' }} · looking back {{ gmail.read.since_days }} days{% if gmail.read.label %} · label {{ gmail.read.label }}{% endif %}</p>
-    <p class="muted">{{ gmail.read.scope_note }}</p>
+    <p>Connected: {{ gmail.read.address }} · last sync {{ gmail.read.last_sync_at | dt if gmail.read.last_sync_at else 'never' }} · looking back {{ gmail.read.since_days }} days{% if gmail.read.label %} · label {{ gmail.read.label }}{% endif %}</p>
+    <p class="muted small">{{ gmail.read.scope_note }}</p>
     <div class="actions"><form method="post" action="/do/digest"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="sync"><button class="primary">Sync now</button></form>
     <form method="post" action="/do/digest" data-confirm="Disconnect Gmail reading? History is kept; future access stops."><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="disconnect_read"><button>Disconnect</button></form></div>
     {% if gmail.read.last_error %}<p class="warn">{{ gmail.read.last_error }}</p>{% endif %}
   {% else %}
-    <p>Not connected. Connect from a terminal: <code>uv run jobhunter email connect gmail-read --client-secret /path/to/client_secret.json</code>. Hunter asks Google for read-only access; it never asks for your password and never sends, labels, or deletes mail.</p>
-    <p class="muted">No Gmail? Paste or save a job-search email and import it: <code>uv run jobhunter email import --file message.txt</code>.</p>
+    <p>If you want, Hunter can read your job-search emails (application receipts, interview invitations, job alerts) and keep your applications up to date. This is a separate Google permission; sending emails never needs it.</p>
+    {% if client.available %}<a class="btn" href="/connect/gmail/start?purpose=read&amp;csrf={{ csrf }}">Connect Gmail (read-only)</a>{% else %}<p class="muted small">Not available until KubeCraft publishes the Google sign-in details.</p>{% endif %}
+    <p class="muted small">No Gmail? Paste or save a job-search email and import it: <code>uv run jobhunter email import --file message.txt</code>.</p>
   {% endif %}
   {% if pending %}<h3>Emails waiting for your confirmation</h3><ul>{% for p in pending %}<li>{{ p.received_at[:10] if p.received_at else '' }} · {{ p.subject }} · looks like a <strong>{{ p.classification }}</strong>{% if p.suggested %} for {{ p.suggested.title }} at {{ p.suggested.employer_name }}{% endif %} — <a href="/attention">decide</a></li>{% endfor %}</ul>{% endif %}
-  <p class="muted">Messages stored: {{ gmail.messages_stored }} (short extracts only).</p>
+  <p class="muted small">Messages stored: {{ gmail.messages_stored }} (short extracts only).</p>
 </section>
+
 <section class="card"><h2>Claude, when I am not around</h2>
   <p>Inside Claude Code, Hunter uses your own session. For scheduled hunts and the dashboard, explanations are rule-based unless you turn this on.</p>
   <p>Status: <strong>{{ 'on' if model.unattended_enabled else 'off' }}</strong>{% for p in model.providers %} · {{ p.name }}: {{ 'available' if p.available else 'not available' }} ({{ p.detail }}){% endfor %}</p>
@@ -53,5 +113,10 @@
     <form method="post" action="/do/digest"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="model_disable"><button>Turn off</button></form>
   </div>
 </section>
-<section class="card"><h2>Where secrets are kept</h2><p>{{ secrets.note }}{% if not secrets.encrypted %} Set <code>JOBHUNTER_SECRETS_PASSPHRASE</code> to encrypt the file, or install an OS keyring.{% endif %}</p></section>
+
+<details class="more card" id="advanced"><summary>Advanced: SMTP instead of Gmail, and where secrets are kept</summary>
+  <p>If you do not use Gmail, Hunter can send through any mail server: <code>uv run jobhunter digest smtp --host smtp.example.com --port 587 --username you@example.com --from-address you@example.com</code> (it asks for the password and stores it in the secret store). Current transport: {{ digest.transport.detail }}.</p>
+  <p>{{ secrets.note }}{% if not secrets.encrypted %} Set <code>JOBHUNTER_SECRETS_PASSPHRASE</code> to encrypt the file, or install an OS keyring.{% endif %}</p>
+  <p class="muted small">Sign-in details come from: {{ client.source or 'not available' }}{% if client.client_id_hint %} ({{ client.client_id_hint }}){% endif %}.</p>
+</details>
 {% endblock %}

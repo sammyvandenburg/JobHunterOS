@@ -21,7 +21,8 @@
     {% elif it.kind == 'profile_review' %}<a class="btn btn-sm" href="/profile">Check profile</a>
     {% elif it.kind == 'source_failure' %}<a class="btn btn-sm" href="/health">Search health</a>
     {% elif it.kind == 'digest_uncertain' %}<form method="post" action="/do/digest" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="notification_id" value="{{ it.notification_id }}"><button class="btn-sm" name="action" value="arrived">It arrived</button><button class="btn-sm" name="action" value="retry" data-confirm="Send this digest again? If the first one did arrive, you will get it twice.">Send again</button></form>
-    {% elif it.kind == 'worker' %}<a class="btn btn-sm" href="/connections">How to start it</a>
+    {% elif it.kind == 'gmail_expired' %}<a class="btn btn-sm primary" href="/connect/gmail/start?purpose=send&amp;csrf={{ csrf }}">Connect Gmail again</a>
+    {% elif it.kind == 'worker' %}<a class="btn btn-sm" href="/connections#automatic">Turn on automatic hunting</a>
     {% elif it.job_id %}<a class="btn btn-sm" href="/job/{{ it.job_id }}">Open the job</a>
     {% else %}<code>{{ it.action }}</code>{% endif %}
   </li>

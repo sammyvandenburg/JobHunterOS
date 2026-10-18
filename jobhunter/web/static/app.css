@@ -282,3 +282,9 @@ select, input, textarea { max-width:100%; }
 .prefs-form fieldset label { flex-direction:row; align-items:center; gap:6px; }
 .prefs-form .full-row { grid-column:1 / -1; }
 @media (max-width: 560px) { .section-nav { gap:3px; } .section-nav a { padding:5px 8px; font-size:.82rem; } }
+
+/* Connections: status chips and cards */
+.status-chips { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
+.status-chips .chip { font-size:.88rem; padding:6px 10px; display:inline-flex; align-items:center; gap:6px; }
+details.card > summary { cursor:pointer; font-weight:600; }
+.stack label { display:flex; gap:8px; align-items:flex-start; }

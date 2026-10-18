@@ -9,11 +9,12 @@ Hunter's label/query filter is applied on Hunter's side; it does not narrow
 the token. Hunter never archives, deletes, labels, or marks messages read,
 and never asks for a mailbox password.
 
-OAuth client: the user supplies a Google Cloud "Desktop app" OAuth client
-secret file. In a project whose consent screen is in Testing status, Google
-expires refresh tokens after 7 days and limits test users; restricted scopes
-need verification (and a security assessment) for a published app. See
-docs/email.md for what that means for KubeCraft.
+OAuth client: one KubeCraft-managed "Desktop app" OAuth client (see
+google_client.py); students never create a Google Cloud project. The dashboard
+runs the standard Google sign-in with PKCE and a loopback redirect back to
+Hunter. In a project whose consent screen is in Testing status, Google expires
+refresh tokens after 7 days and limits test users; a published app with the
+gmail.send scope needs Google's brand verification. See docs/email.md.
 """
 
 from __future__ import annotations
@@ -21,21 +22,40 @@ from __future__ import annotations
 import base64
 import json
 import re
+import secrets as _secrets
+from datetime import timedelta
 from email.message import EmailMessage
 from email.utils import make_msgid
 
 from jobhunter.config import AppContext
 from jobhunter.db import Database
 from jobhunter.services import consent
-from jobhunter.services.email import classify, linking
+from jobhunter.services.email import classify, google_client, linking
 from jobhunter.services.secrets import SecretStore
 from jobhunter.util import now_iso, parse_iso
 
 SCOPE_READ = "https://www.googleapis.com/auth/gmail.readonly"
 SCOPE_SEND = "https://www.googleapis.com/auth/gmail.send"
-API = "https://gmail.googleapis.com/gmail/v1/users/me"
-TOKEN_URL = "https://oauth2.googleapis.com/token"
-REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+PENDING_KEY = "gmail.oauth_pending"
+PENDING_MAX_AGE_S = 600
+
+
+def _api() -> str:
+    return google_client.endpoints()["api"]
+
+
+def _token_url() -> str:
+    return google_client.endpoints()["token"]
+
+
+def _revoke_url() -> str:
+    return google_client.endpoints()["revoke"]
+
+
+# Backwards-compatible names (tests and older code read them).
+API = google_client.DEFAULTS["api"]
+TOKEN_URL = google_client.DEFAULTS["token"]
+REVOKE_URL = google_client.DEFAULTS["revoke"]
 DEFAULT_QUERY = (
     'newer_than:{days}d (subject:(application OR applied OR interview OR "thank you for applying" OR "your application" OR recruiter OR "job alert" OR opportunity) '
     "OR from:(linkedin.com OR indeed.com OR greenhouse.io OR lever.co OR ashbyhq.com OR workable.com OR smartrecruiters.com OR myworkday.com OR icims.com))"
@@ -52,24 +72,26 @@ class GmailError(Exception):
 # ---------------------------------------------------------------------------
 # OAuth
 # ---------------------------------------------------------------------------
-def connect(ctx: AppContext, db: Database, purpose: str, client_secret_path: str, open_browser: bool = True) -> dict:
-    """Run the installed-app OAuth flow for one purpose (read or send)."""
-    try:
-        from google_auth_oauthlib.flow import InstalledAppFlow
-    except ImportError as exc:
-        raise GmailError("google-auth-oauthlib is not installed") from exc
-    scopes = [SCOPE_READ] if purpose == "read" else [SCOPE_SEND]
-    flow = InstalledAppFlow.from_client_secrets_file(client_secret_path, scopes=scopes)
-    creds = flow.run_local_server(port=0, open_browser=open_browser, prompt="consent", access_type="offline")
-    granted = set(creds.scopes or scopes)
+def _scopes_for(purpose: str) -> list[str]:
+    return [SCOPE_READ] if purpose == "read" else [SCOPE_SEND]
+
+
+def _check_granted(purpose: str, granted: set[str]) -> None:
     if purpose == "read" and SCOPE_SEND in granted:
         raise GmailError("The read connection must not include send permission.")
     if purpose == "send" and SCOPE_READ in granted:
         raise GmailError("The send connection must not include read permission.")
+    if purpose == "send" and SCOPE_SEND not in granted:
+        raise GmailError("Google did not grant permission to send email. Try again and tick the box that allows sending.")
+    if purpose == "read" and SCOPE_READ not in granted:
+        raise GmailError("Google did not grant read-only access. Try again and tick the box for reading mail.")
+
+
+def _store_connection(ctx: AppContext, db: Database, purpose: str, address: str, granted: set[str], token_json: str) -> dict:
+    """One place that records a connection: token in the secret store, account row, the right consent."""
     store = SecretStore(ctx.paths)
     secret_ref = f"gmail.{purpose}.token"
-    store.set(secret_ref, creds.to_json())
-    address = _profile_address(creds) or "unknown"
+    store.set(secret_ref, token_json)
     with db.tx():
         db.execute("UPDATE email_accounts SET status = 'disconnected', disconnected_at = ? WHERE provider = 'gmail' AND purpose = ? AND status = 'connected'", (now_iso(), purpose))
         acct_id = db.insert(
@@ -89,9 +111,114 @@ def connect(ctx: AppContext, db: Database, purpose: str, client_secret_path: str
         # Reading the mailbox and sending through an account are separate permissions. Neither one is the
         # recipient decision ("digest_email"), which only `notifications.set_recipient` may change.
         consent.grant(db, "mailbox_read" if purpose == "read" else "digest_sender", {"provider": "gmail", "address": address, "scopes": sorted(granted)})
-    if purpose == "send":
-        db.set_setting("digest.transport", "gmail")
+        if purpose == "send":
+            db.set_setting("digest.transport", "gmail")
+            from jobhunter.services import notifications
+
+            if not notifications.recipient(db) and address and address != "unknown":
+                db.set_setting("digest.suggested_recipient", address)
     return {"account_id": acct_id, "address": address, "scopes": sorted(granted), "note": _scope_note(purpose)}
+
+
+def begin_connect(ctx: AppContext, db: Database, purpose: str, redirect_uri: str) -> dict:
+    """Step 1 of the dashboard flow: the Google sign-in URL for one purpose (send or read), with PKCE and
+    a one-time state that the callback must return. Sending and reading are always separate connections."""
+    if purpose not in {"send", "read"}:
+        raise GmailError("Unknown connection type.")
+    client = google_client.resolve_client(ctx.paths)
+    verifier, challenge = google_client.pkce_pair()
+    state = _secrets.token_urlsafe(24)
+    db.set_setting(PENDING_KEY, {"state": state, "verifier": verifier, "purpose": purpose, "redirect_uri": redirect_uri, "created_at": now_iso()})
+    from urllib.parse import urlencode
+
+    params = {
+        "client_id": client["client_id"],
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": " ".join(_scopes_for(purpose)),
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "false",
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    }
+    return {"url": f"{google_client.endpoints()['auth']}?{urlencode(params)}", "state": state, "purpose": purpose}
+
+
+def finish_connect(ctx: AppContext, db: Database, state: str | None, code: str | None, error: str | None = None) -> dict:
+    """Step 2: Google sent the person back. Check the state, trade the code for tokens, verify the granted
+    scope is exactly the one asked for, find the account's address, store everything."""
+    pending = db.get_setting(PENDING_KEY) or {}
+    db.delete_setting(PENDING_KEY)
+    if error:
+        raise GmailError("Google sign-in was cancelled or refused." if error == "access_denied" else f"Google sign-in failed: {error}")
+    if not pending or not state or state != pending.get("state"):
+        raise GmailError("This sign-in link is not the one Hunter started. Press Connect Gmail again.")
+    started = parse_iso(pending.get("created_at"))
+    from jobhunter.util import now as _now
+
+    if not started or (_now() - started) > timedelta(seconds=PENDING_MAX_AGE_S):
+        raise GmailError("That sign-in took too long. Press Connect Gmail again.")
+    if not code:
+        raise GmailError("Google did not send a sign-in code. Press Connect Gmail again.")
+    purpose = pending["purpose"]
+    client = google_client.resolve_client(ctx.paths)
+    import httpx
+
+    try:
+        r = httpx.post(
+            _token_url(),
+            data={"code": code, "client_id": client["client_id"], "client_secret": client["client_secret"], "redirect_uri": pending["redirect_uri"], "grant_type": "authorization_code", "code_verifier": pending["verifier"]},
+            timeout=30,
+        )
+    except httpx.HTTPError as exc:
+        raise GmailError(f"Could not reach Google to finish the sign-in ({type(exc).__name__}). Check your internet connection and try again.") from exc
+    if r.status_code != 200:
+        raise GmailError("Google refused the sign-in code. Press Connect Gmail again.")
+    tok = r.json()
+    if not tok.get("refresh_token"):
+        raise GmailError("Google did not give Hunter a long-lived permission. Remove Hunter at https://myaccount.google.com/permissions and connect again.")
+    granted = set((tok.get("scope") or " ".join(_scopes_for(purpose))).split())
+    _check_granted(purpose, granted)
+    token_json = json.dumps(_token_record(tok, client, granted))
+    address = _profile_address(_Creds(tok["access_token"])) or "unknown"
+    return {**_store_connection(ctx, db, purpose, address, granted, token_json), "purpose": purpose, "suggested_recipient": db.get_setting("digest.suggested_recipient")}
+
+
+def _token_record(tok: dict, client: dict, granted: set[str]) -> dict:
+    from jobhunter.util import now as _now
+
+    expiry = (_now() + timedelta(seconds=int(tok.get("expires_in") or 3600))).isoformat()
+    return {"token": tok.get("access_token"), "refresh_token": tok.get("refresh_token"), "token_uri": _token_url(), "client_id": client["client_id"], "client_secret": client["client_secret"], "scopes": sorted(granted), "expiry": expiry}
+
+
+class _Creds:
+    """The one thing the API wrapper needs from a credential: a bearer token."""
+
+    def __init__(self, token: str):
+        self.token = token
+
+
+def connect(ctx: AppContext, db: Database, purpose: str, client_secret_path: str | None = None, open_browser: bool = True) -> dict:
+    """Terminal flow (`jobhunter email connect ...`): Google's installed-app sign-in with a local redirect.
+    Uses KubeCraft's client unless a client secret file is given."""
+    try:
+        from google_auth_oauthlib.flow import InstalledAppFlow
+    except ImportError as exc:
+        raise GmailError("google-auth-oauthlib is not installed") from exc
+    scopes = _scopes_for(purpose)
+    if client_secret_path:
+        flow = InstalledAppFlow.from_client_secrets_file(client_secret_path, scopes=scopes)
+        client = None
+    else:
+        client = google_client.resolve_client(ctx.paths)
+        flow = InstalledAppFlow.from_client_config({"installed": {"client_id": client["client_id"], "client_secret": client["client_secret"], "auth_uri": google_client.endpoints()["auth"], "token_uri": _token_url(), "redirect_uris": ["http://127.0.0.1"]}}, scopes=scopes)
+    creds = flow.run_local_server(port=0, open_browser=open_browser, prompt="consent", access_type="offline")
+    granted = set(creds.scopes or scopes)
+    _check_granted(purpose, granted)
+    address = _profile_address(creds) or "unknown"
+    return {**_store_connection(ctx, db, purpose, address, granted, creds.to_json()), "purpose": purpose}
 
 
 def _scope_note(purpose: str) -> str:
@@ -104,7 +231,7 @@ def _profile_address(creds) -> str | None:
     try:
         import httpx
 
-        r = httpx.get(f"{API}/profile", headers={"Authorization": f"Bearer {creds.token}"}, timeout=20)
+        r = httpx.get(f"{_api()}/profile", headers={"Authorization": f"Bearer {creds.token}"}, timeout=20)
         if r.status_code == 200:
             return r.json().get("emailAddress")
     except Exception:
@@ -112,27 +239,49 @@ def _profile_address(creds) -> str | None:
     return None
 
 
-def _credentials(ctx: AppContext, acct: dict):
-    try:
-        from google.auth.transport.requests import Request
-        from google.oauth2.credentials import Credentials
-    except ImportError as exc:
-        raise GmailError("google-auth is not installed") from exc
+EXPIRED_MESSAGE = "Your Gmail connection stopped working (Google sign-in expired). Press Connect Gmail again."
+
+
+def _credentials(ctx: AppContext, acct: dict, db: Database | None = None) -> _Creds:
+    """A valid bearer token for this account, refreshed with Google when needed. A refresh that Google
+    refuses (expired or revoked) is recorded on the account so the dashboard can say "connect again"."""
     store = SecretStore(ctx.paths)
     raw = store.get(acct["secret_ref"])
     if not raw:
         raise GmailError("The Gmail token is missing. Connect again.")
-    creds = Credentials.from_authorized_user_info(json.loads(raw))
-    if not creds.valid:
-        if creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception as exc:
-                raise GmailError(f"Could not refresh the Gmail token ({type(exc).__name__}). If your Google project is in Testing mode, tokens expire after 7 days; connect again.") from exc
-            store.set(acct["secret_ref"], creds.to_json())
-        else:
-            raise GmailError("The Gmail token is no longer valid. Connect again.")
-    return creds
+    data = json.loads(raw)
+    from jobhunter.util import now as _now
+
+    expiry = parse_iso(data.get("expiry"))
+    if data.get("token") and expiry and (expiry - _now()) > timedelta(seconds=60):
+        return _Creds(data["token"])
+    if not data.get("refresh_token"):
+        _note_error(db, acct, EXPIRED_MESSAGE)
+        raise GmailError(EXPIRED_MESSAGE)
+    import httpx
+
+    try:
+        r = httpx.post(data.get("token_uri") or _token_url(), data={"client_id": data.get("client_id"), "client_secret": data.get("client_secret"), "refresh_token": data["refresh_token"], "grant_type": "refresh_token"}, timeout=30)
+    except httpx.HTTPError as exc:
+        raise GmailError(f"Could not reach Google to refresh the sign-in ({type(exc).__name__}). Try again later.") from exc
+    if r.status_code != 200:
+        _note_error(db, acct, EXPIRED_MESSAGE)
+        raise GmailError(EXPIRED_MESSAGE + " (If KubeCraft's Google app is still in testing, sign-ins expire after 7 days.)")
+    tok = r.json()
+    data["token"] = tok.get("access_token")
+    data["expiry"] = (_now() + timedelta(seconds=int(tok.get("expires_in") or 3600))).isoformat()
+    store.set(acct["secret_ref"], json.dumps(data))
+    _note_error(db, acct, None)
+    return _Creds(data["token"])
+
+
+def _note_error(db: Database | None, acct: dict, message: str | None) -> None:
+    if db is None or not acct.get("id"):
+        return
+    try:
+        db.update("email_accounts", {"last_error": message}, "id = ?", (acct["id"],))
+    except Exception:
+        pass
 
 
 def disconnect(ctx: AppContext, db: Database, purpose: str) -> dict:
@@ -148,7 +297,7 @@ def disconnect(ctx: AppContext, db: Database, purpose: str) -> dict:
 
             token = json.loads(raw).get("refresh_token") or json.loads(raw).get("token")
             if token:
-                r = httpx.post(REVOKE_URL, params={"token": token}, timeout=20)
+                r = httpx.post(_revoke_url(), params={"token": token}, timeout=20)
                 revoked = r.status_code == 200
         except Exception:
             revoked = False
@@ -191,7 +340,7 @@ class _Api:
         self.client = httpx.Client(timeout=30, headers={"Authorization": f"Bearer {creds.token}"})
 
     def get(self, path: str, params: dict | None = None) -> dict:
-        r = self.client.get(f"{API}/{path}", params=params)
+        r = self.client.get(f"{_api()}/{path}", params=params)
         if r.status_code == 401:
             raise GmailError("Gmail rejected the token (401). Connect again.")
         if r.status_code == 403:
@@ -201,7 +350,7 @@ class _Api:
         return r.json()
 
     def post(self, path: str, body: dict) -> dict:
-        r = self.client.post(f"{API}/{path}", json=body)
+        r = self.client.post(f"{_api()}/{path}", json=body)
         if r.status_code >= 400:
             raise GmailError(f"Gmail API error {r.status_code}: {r.text[:200]}")
         return r.json()
@@ -342,7 +491,7 @@ def send_message(ctx: AppContext, db: Database, to_address: str, subject: str, t
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     if api is None:
         try:
-            api = _Api(_credentials(ctx, acct))
+            api = _Api(_credentials(ctx, acct, db))
         except GmailError as exc:
             raise TransportError(str(exc)) from exc
     try:
@@ -350,7 +499,10 @@ def send_message(ctx: AppContext, db: Database, to_address: str, subject: str, t
     except GmailError as exc:
         if "error 5" in str(exc) or "timeout" in str(exc).lower():
             raise TransportUncertain(str(exc)) from exc
+        if "401" in str(exc):
+            _note_error(db, acct, EXPIRED_MESSAGE)
         raise TransportError(str(exc)) from exc
+    _note_error(db, acct, None)
     return {"transport": "gmail", "message_id": resp.get("id")}
 
 
@@ -359,7 +511,7 @@ def describe(db: Database) -> dict:
     s = account(db, "send")
     return {
         "read": {"connected": r is not None, "address": r["address"] if r else None, "query": r["query"] if r else None, "label": r["label"] if r else None, "since_days": r["since_days"] if r else None, "last_sync_at": r["last_sync_at"] if r else None, "last_error": r["last_error"] if r else None, "scope": SCOPE_READ, "scope_note": _scope_note("read")},
-        "send": {"connected": s is not None, "address": s["address"] if s else None, "scope": SCOPE_SEND, "scope_note": _scope_note("send")},
+        "send": {"connected": s is not None, "address": s["address"] if s else None, "last_error": s["last_error"] if s else None, "connected_at": s["connected_at"] if s else None, "scope": SCOPE_SEND, "scope_note": _scope_note("send")},
         "messages_stored": db.fetchone("SELECT COUNT(*) AS n FROM email_messages")["n"],
         "needs_confirmation": db.fetchone("SELECT COUNT(*) AS n FROM email_messages WHERE link_status = 'needs_confirmation'")["n"],
     }

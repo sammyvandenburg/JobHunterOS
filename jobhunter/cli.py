@@ -560,6 +560,25 @@ def cmd_schedule(args):
             emit(args, schedule.resume(db))
         elif c == "disable":
             emit(args, schedule.disable(db))
+        elif c == "automatic":
+            from jobhunter.services import autorun
+
+            if args.state == "on":
+                res = schedule.enable(db)
+                out = {"schedule": "on", "next_run_at": res.get("next_run_at"), "note": "Automatic hunting is on. It runs while Hunter's dashboard is open."}
+                if args.keep_running_when_closed:
+                    out["login_task"] = worker.install_service(ctx)
+                emit(args, out)
+            else:
+                schedule.disable(db)
+                out = {"schedule": "off"}
+                if worker.service_status(ctx).get("installed"):
+                    out["login_task"] = worker.uninstall_service(ctx)
+                emit(args, out)
+        elif c == "status":
+            from jobhunter.services import autorun
+
+            emit(args, autorun.status(ctx, db))
         elif c == "install":
             t = worker.service_templates(ctx)
             if args.json:
@@ -593,7 +612,11 @@ def cmd_digest(args):
     ctx, db = _open(args)
     try:
         c = args.digest_cmd
-        if c == "retry":
+        if c == "test":
+            emit(args, notifications.send_test(ctx, db))
+        elif c == "use-connected-address":
+            emit(args, notifications.confirm_suggested_recipient(db))
+        elif c == "retry":
             emit(args, notifications.send_digest(ctx, db, force=args.force, notification_id=args.id))
         elif c == "resolve":
             emit(args, notifications.resolve(db, args.id, args.outcome.replace("-", "_")))
@@ -1006,6 +1029,10 @@ def build_parser() -> argparse.ArgumentParser:
         scs.add_parser(name)
     x = scs.add_parser("install")
     x.add_argument("--print", action="store_true", default=True)
+    x = scs.add_parser("automatic", help="turn automatic hunting on or off")
+    x.add_argument("state", choices=["on", "off"])
+    x.add_argument("--keep-running-when-closed", action="store_true", help="also install a login task (you approve this explicitly)")
+    scs.add_parser("status")
     sc.set_defaults(fn=cmd_schedule)
 
     w = sub.add_parser("worker", help="the background worker process")
@@ -1029,6 +1056,8 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--tls", default="starttls", choices=["starttls", "ssl", "none"])
     dgs.add_parser("history")
     dgs.add_parser("status")
+    dgs.add_parser("test", help="send a short test email to the confirmed address")
+    dgs.add_parser("use-connected-address", help="send digests to the Gmail address you connected")
     x = dgs.add_parser("retry", help="send a failed or uncertain digest again (asks for --force when it may already have arrived)")
     x.add_argument("id", type=int)
     x.add_argument("--force", action="store_true")
@@ -1042,7 +1071,7 @@ def build_parser() -> argparse.ArgumentParser:
     els.add_parser("status")
     x = els.add_parser("connect")
     x.add_argument("what", choices=["gmail-read", "gmail-send"])
-    x.add_argument("--client-secret", required=True, help="path to your Google OAuth desktop-app client secret JSON")
+    x.add_argument("--client-secret", help="advanced: your own Google OAuth desktop-app client secret JSON (normally not needed)")
     x.add_argument("--no-browser", action="store_true")
     x = els.add_parser("disconnect")
     x.add_argument("what", choices=["gmail-read", "gmail-send"])

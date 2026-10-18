@@ -339,6 +339,8 @@ def attention(db: Database) -> dict:
     for n in notifications.unresolved(db)[:3]:
         items.append({"kind": "digest_uncertain", "text": f"An email digest from {n['created_at'][:16].replace('T', ' ')} may or may not have arrived. Check your inbox. If you have it, press 'It arrived'. If not, press 'Send again'.", "action": f"jobhunter digest resolve {n['id']} arrived  |  jobhunter digest retry {n['id']} --force", "notification_id": n["id"]})
     g = gmail.describe(db)
+    if g["send"]["connected"] and g["send"].get("last_error"):
+        items.append({"kind": "gmail_expired", "text": g["send"]["last_error"], "action": "jobhunter email connect gmail-send"})
     if g["read"]["connected"] and g["read"].get("last_error"):
         items.append({"kind": "mailbox", "text": f"Mailbox sync problem: {g['read']['last_error']}", "action": "jobhunter email sync"})
     nxt = onboarding.next_step(db)

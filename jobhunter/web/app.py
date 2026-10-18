@@ -21,6 +21,7 @@ from jobhunter.config import MAX_DOCUMENT_BYTES, AppContext, dashboard_secret
 from jobhunter.db import connect
 from jobhunter.services import (
     actions,
+    autorun,
     consent,
     drafts,
     feedback,
@@ -32,11 +33,12 @@ from jobhunter.services import (
     schedule,
     stats,
     views,
+    worker,
 )
 from jobhunter.services import documents as docs
 from jobhunter.services import preferences as prefs_svc
 from jobhunter.services import profile as profile_svc
-from jobhunter.services.email import gmail, linking, transport
+from jobhunter.services.email import gmail, google_client, linking, transport
 from jobhunter.services.matching import engine
 from jobhunter.services.model import provider as model_provider
 from jobhunter.services.normalize import country_names
@@ -138,6 +140,18 @@ def create_app(ctx: AppContext) -> FastAPI:
             d.close()
         base.update(kw)
         return templates.TemplateResponse(request, name, base)
+
+    app.state.autorun = autorun.Autorun(ctx)
+    if not ctx.demo:
+        try:
+            _d = db()
+            try:
+                if (schedule.get(_d) or {}).get("enabled"):
+                    app.state.autorun.start()
+            finally:
+                _d.close()
+        except Exception:
+            pass
 
     def guard(request: Request, token: str | None):
         if not check_csrf(request, token):
@@ -257,10 +271,64 @@ def create_app(ctx: AppContext) -> FastAPI:
             if not secrets_info.get("readable", True):
                 # A locked store (wrong passphrase, damaged file) must be visible, not a silent "not set".
                 secrets_info["note"] = f"{secrets_info['note']} {secrets_info['problem']}"
-            kw = dict(gmail=gmail.describe(d), digest={"recipient": notifications.recipient(d), "transport": transport.describe(d)}, model=model_provider.describe(ctx, d), secrets=secrets_info, sched=schedule.describe(d), pending=linking.pending_confirmations(d), notifications=notifications.history(d, 10))
+            g = gmail.describe(d)
+            rec = notifications.recipient(d)
+            tr = transport.describe(d)
+            auto = autorun.status(ctx, d, app.state.autorun)
+            problems = []
+            if g["send"]["connected"] and g["send"].get("last_error"):
+                problems.append(g["send"]["last_error"])
+            if g["read"]["connected"] and g["read"].get("last_error"):
+                problems.append("Mailbox reading: " + g["read"]["last_error"])
+            unresolved = notifications.unresolved(d)
+            if unresolved:
+                problems.append(f"{len(unresolved)} email digest(s) may or may not have arrived. See Needs attention.")
+            if auto["on"] and auto["label"].startswith("on, but"):
+                problems.append("Automatic hunting is on, but nothing is running it.")
+            status = {
+                "connected": g["send"]["connected"],
+                "sending": bool(g["send"]["connected"] and rec and tr["configured"]),
+                "automatic": auto["label"],
+                "problems": problems,
+            }
+            kw = dict(gmail=g, client=google_client.describe(ctx.paths), suggested=d.get_setting("digest.suggested_recipient"), digest={"recipient": rec, "transport": tr}, model=model_provider.describe(ctx, d), secrets=secrets_info, sched=schedule.describe(d), auto=auto, status=status, pending=linking.pending_confirmations(d), notifications=notifications.history(d, 10))
         finally:
             d.close()
         return render(request, "connections.html", active="settings", settings_tab="connections", **kw)
+
+    @app.get("/connect/gmail/start")
+    def gmail_start(request: Request, purpose: str = "send", csrf: str = ""):
+        bad = guard(request, csrf)
+        if bad:
+            return bad
+        if ctx.demo:
+            return RedirectResponse(f"/connections?msg={_q('Demo mode does not connect real accounts.')}", status_code=303)
+        d = db()
+        try:
+            try:
+                redirect_uri = str(request.base_url).rstrip("/") + "/connect/gmail/callback"
+                res = gmail.begin_connect(ctx, d, purpose, redirect_uri)
+            except (gmail.GmailError, google_client.ClientConfigError) as exc:
+                return RedirectResponse(f"/connections?msg={_q(str(exc))}", status_code=303)
+        finally:
+            d.close()
+        return RedirectResponse(res["url"], status_code=303)
+
+    @app.get("/connect/gmail/callback")
+    def gmail_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+        d = db()
+        try:
+            try:
+                res = gmail.finish_connect(ctx, d, state or None, code or None, error or None)
+                if res["purpose"] == "send":
+                    msg = f"Gmail connected as {res['address']}." + (" Should I send your job emails there? Say yes below." if res.get("suggested_recipient") else "")
+                else:
+                    msg = f"Gmail reading connected as {res['address']}."
+            except (gmail.GmailError, google_client.ClientConfigError) as exc:
+                msg = str(exc)
+        finally:
+            d.close()
+        return RedirectResponse(f"/connections?msg={_q(msg)}#email", status_code=303)
 
     @app.get("/health", response_class=HTMLResponse)
     def health_page(request: Request):
@@ -704,14 +772,57 @@ def create_app(ctx: AppContext) -> FastAPI:
         return RedirectResponse(f"/attention?msg={_q(msg)}", status_code=303)
 
     @app.post("/do/schedule")
-    def schedule_action(request: Request, csrf: str = Form(...), action: str = Form(...), frequency: str = Form(None), time_of_day: str = Form(None), notify_mode: str = Form(None), timezone: str = Form(None)):
+    def schedule_action(request: Request, csrf: str = Form(...), action: str = Form(...), frequency: str = Form(None), time_of_day: str = Form(None), notify_mode: str = Form(None), timezone: str = Form(None), plan: str = Form(None), email: str = Form(None), approve: str = Form(None), persist: str = Form(None)):
         bad = guard(request, csrf)
         if bad:
             return bad
         d = db()
         try:
             try:
-                if action == "set":
+                if action == "notify":
+                    # One choice: how often Hunter looks, and whether it emails you.
+                    plan = plan or "manual"
+                    schedule.set_frequency(d, plan, time_of_day or None)
+                    schedule.set_notify_mode(d, "daily_email" if email else "dashboard", time_of_day or None)
+                    if plan == "manual":
+                        schedule.disable(d)
+                        app.state.autorun.stop()
+                        msg = "Okay. Hunter only looks when you press Find jobs now."
+                    else:
+                        schedule.enable(d)
+                        app.state.autorun.start()
+                        words = {"daily": f"every day at {time_of_day or schedule.get(d).get('time_of_day')}", "every_2h": "every 2 hours", "every_4h": "every 4 hours", "every_6h": "every 6 hours"}[plan]
+                        msg = f"Hunter will look {words}" + (" and email you what it finds." if email else " and show it here.") + " This runs while Hunter is open; turn on the background task to keep it running when Hunter is closed."
+                elif action == "automatic_on":
+                    if not approve:
+                        msg = "Tick the box to allow automatic hunting first."
+                    else:
+                        if schedule.get(d).get("frequency") == "manual":
+                            schedule.set_frequency(d, "daily")
+                        schedule.enable(d)
+                        app.state.autorun.start()
+                        msg = "Automatic hunting is on. It runs while Hunter is open."
+                        if persist:
+                            res = worker.install_service(ctx)
+                            msg += " " + res["note"]
+                elif action == "automatic_off":
+                    schedule.disable(d)
+                    app.state.autorun.stop()
+                    msg = "Automatic hunting is off."
+                    if worker.service_status(ctx).get("installed"):
+                        msg += " " + worker.uninstall_service(ctx)["note"]
+                elif action == "service_install":
+                    if not approve:
+                        msg = "Tick the box to allow the background task first."
+                    else:
+                        if not schedule.get(d).get("enabled"):
+                            if schedule.get(d).get("frequency") == "manual":
+                                schedule.set_frequency(d, "daily")
+                            schedule.enable(d)
+                        msg = worker.install_service(ctx)["note"]
+                elif action == "service_remove":
+                    msg = worker.uninstall_service(ctx)["note"]
+                elif action == "set":
                     if frequency:
                         schedule.set_frequency(d, frequency, time_of_day or None)
                     if notify_mode:
@@ -728,8 +839,7 @@ def create_app(ctx: AppContext) -> FastAPI:
                 msg = str(exc)
         finally:
             d.close()
-        back = "/attention" if action in {"retry", "arrived", "not_arrived"} else "/connections"
-        return RedirectResponse(f"{back}?msg={_q(msg)}", status_code=303)
+        return RedirectResponse(f"/connections?msg={_q(msg)}#automatic", status_code=303)
 
     @app.post("/do/digest")
     def digest_action(request: Request, csrf: str = Form(...), action: str = Form(...), address: str = Form(None), notification_id: int = Form(None)):
@@ -741,7 +851,13 @@ def create_app(ctx: AppContext) -> FastAPI:
             try:
                 if action == "address" and address:
                     notifications.set_recipient(d, address)
-                    msg = "Digest address confirmed."
+                    msg = f"Okay, job emails go to {address.strip()}. Send a test email to be sure."
+                elif action == "use_suggested":
+                    res = notifications.confirm_suggested_recipient(d)
+                    msg = f"Okay, job emails go to {res['address']}. Send a test email to be sure."
+                elif action == "test":
+                    res = notifications.send_test(ctx, d)
+                    msg = res.get("note") or res.get("error") or f"Test: {res['status']}."
                 elif action == "send":
                     res = notifications.send_digest(ctx, d)
                     msg = f"Digest: {res['status']}. " + (res.get("note") or res.get("error") or "")

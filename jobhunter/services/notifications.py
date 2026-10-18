@@ -32,6 +32,7 @@ def set_recipient(db: Database, address: str) -> dict:
     if not EMAIL_RE.match(address):
         raise DigestError("That does not look like an email address.")
     consent.grant(db, "digest_email", {"address": address, "confirmed": True})
+    db.delete_setting("digest.suggested_recipient")
     return {"address": address}
 
 
@@ -262,3 +263,49 @@ def _jobs_by_ids(db: Database, ids: list[int]) -> list[dict]:
 
 def history(db: Database, limit: int = 30) -> list[dict]:
     return db.fetchall("SELECT * FROM notifications ORDER BY id DESC LIMIT ?", (limit,))
+
+
+def send_test(ctx: AppContext, db: Database) -> dict:
+    """A short email to the confirmed address so the person can see that sending works.
+    Goes through the same transport, allowlist and outbox as real digests."""
+    addr = recipient(db)
+    if not addr:
+        raise DigestError("Confirm the address first.")
+    stamp = now_iso()
+    text = (
+        "Hi,\n\nThis is a test from Hunter, your KubeCraft job-hunt companion.\n"
+        "If you can read this, your job emails will arrive here.\n\n"
+        f"Sent {stamp[:16].replace('T', ' ')} UTC. Nothing else was sent and no job was applied to.\n"
+    )
+    html = "<p>Hi,</p><p>This is a test from <strong>Hunter</strong>, your KubeCraft job-hunt companion.<br>If you can read this, your job emails will arrive here.</p><p style=\"color:#666\">Nothing else was sent and no job was applied to.</p>"
+    digest = Digest(subject="Hunter test: your job emails work", text=text, html=html, job_ids=[], content_hash=sha256_text(f"test|{stamp}"))
+    nid, why_not = _claim(db, digest, addr, "", False)
+    if why_not:
+        return why_not
+    db.update("notifications", {"kind": "test"}, "id = ?", (nid,))
+    from jobhunter.services.email import transport
+
+    def finish(status: str, error: str | None = None, message_id: str | None = None) -> None:
+        with db.tx():
+            db.update("notifications", {"status": status, "error": error, "provider_message_id": message_id, "sent_at": now_iso() if status == "sent" else None}, "id = ?", (nid,))
+
+    try:
+        result = transport.send(ctx, db, to_address=addr, subject=digest.subject, text=digest.text, html=digest.html)
+    except transport.TransportUncertain as exc:
+        finish("uncertain", str(exc))
+        return {"status": "uncertain", "error": str(exc), "notification_id": nid, "note": "Google did not confirm the test email. Check your inbox in a minute."}
+    except transport.TransportError as exc:
+        finish("failed", str(exc))
+        return {"status": "failed", "error": str(exc), "notification_id": nid}
+    finish("sent", None, result.get("message_id"))
+    return {"status": "sent", "to": addr, "notification_id": nid, "note": f"Test email sent to {addr}. Check your inbox (and spam) in a minute."}
+
+
+def confirm_suggested_recipient(db: Database) -> dict:
+    """The person agrees to receive digests at the Gmail address they just connected."""
+    addr = db.get_setting("digest.suggested_recipient")
+    if not addr:
+        raise DigestError("There is no suggested address. Type the address instead.")
+    res = set_recipient(db, addr)
+    db.delete_setting("digest.suggested_recipient")
+    return res
