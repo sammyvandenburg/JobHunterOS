@@ -1,8 +1,9 @@
 # Automatic hunting: "How often should I look?" and "Should I email you?"
 
 One place to set it: **Settings → Connections → How often should I look**. Pick *only when I press Find
-jobs now*, *every day at …*, or every 2 / 4 / 6 hours; tick *Email me what you find (once a day)* if you
-want a digest (needs Gmail connected and your address confirmed, see docs/email.md). Press **Save**.
+jobs now*, *every day at …*, or every 2 / 4 / 6 hours; tick *Email me once a day at …* if you want a
+digest (needs Gmail connected and your address confirmed, see docs/email.md). Press **Save**. The page
+keeps the two apart on purpose: "Looks: every 2 hours · Emails: once a day at 08:30".
 
 From a terminal: `uv run jobhunter schedule set daily --time 08:00`, `schedule timezone Europe/Amsterdam`,
 `schedule notify dashboard|daily_email|on_request`, `schedule automatic on|off`, `schedule status`.
@@ -30,9 +31,20 @@ Two things can run the schedule. They share one lock, so only one acts at a time
    install --print` still prints the templates (plus a cron line) if you prefer to review and install
    by hand.
 
-The status line says which one is active: **Automatic hunting: running** (inside Hunter, or the login
-task), **installed, waiting** (the task exists but is not running right now, for example before the
-next login), **on, but nothing is running it** (open Hunter or install the task), or **off**.
+The status line says what is really happening, from evidence rather than from the setting:
+- **running**: a heartbeat from the last three minutes. "Running inside Hunter" when the dashboard's
+  own scheduler wrote it; "Running in the background" when a separate worker (the login task or
+  `worker run`) did.
+- **running, last check failed**: the in-app scheduler is alive but its last check raised an error;
+  the error is shown and it tries again every minute.
+- **installed, waiting**: the login task exists but is not running right now (before the next login).
+- **installed, but not responding**: the operating system says the task is active, but no heartbeat
+  has arrived; the page says how long ago the last one was and where the log is.
+- **on, but nothing is running it**: the schedule is on, Hunter is closed and no task is installed.
+- **off**.
+Next to it: the last automatic look (time, new jobs, or the failure) and the last email (time and
+outcome). "Last successful" is read from the hunt runs and the email history, never assumed. When
+Hunter closes, its scheduler writes a "stopped" heartbeat so the page does not keep saying running.
 
 ## The worker, in detail
 `uv run jobhunter worker run` is the long-running process (Ctrl+C stops it); `--once` does one due-check
@@ -60,6 +72,10 @@ need all of those solved and is documented here as **not enabled**.
 ## What was tested here
 The in-Hunter scheduler (start on boot, step aside for a separate worker, hunt and digest once, skip the
 same day), the status words, and the login-task install/remove for all three systems run in the test
-suite with a recorded command runner (`tests/test_autorun_service.py`); the full browser journey
-including a restart and a scheduled digest is in `tests/test_email_journey.py`. The real `launchctl`,
-`systemctl --user` and `schtasks` calls were not run on a real machine in this environment.
+suite with a recorded command runner (`tests/test_autorun_service.py`, `tests/test_email_reliability.py`);
+the in-app scheduler next to a **real worker process**, a second worker refusing to start, one hunt
+when both are due at once, shutdown and restart, one catch-up for a missed run, old misses skipped, and
+a hunt that died mid-way being reaped are in `tests/test_autorun_concurrency.py`; the full browser
+journey including a restart and a scheduled digest is in `tests/test_email_journey.py`. The real
+`launchctl`, `systemctl --user` and `schtasks` calls were not run on a real machine in this
+environment: see docs/release-checklist.md.

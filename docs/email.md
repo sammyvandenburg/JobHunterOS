@@ -13,15 +13,19 @@ On the dashboard, open **Settings → Connections**.
    the only place Hunter will ever send to.
 3. Press **Send test email**. A short email arrives from your own address. If it does, you are done.
 4. Choose how often Hunter looks (every day at a time you pick, or every 2 / 4 / 6 hours) and tick
-   **Email me what you find (once a day)**. Press **Save**. Automatic hunting now runs while Hunter is
-   open. If you also want it to run when Hunter is closed, tick the approval box and press
-   **Keep hunting when Hunter is closed**: Hunter adds a small login task on your computer
-   (launchd on macOS, a systemd user service on Linux, Task Scheduler on Windows) and removes it again
-   from the same page.
+   **Email me once a day at …**. Press **Save**. How often Hunter *looks* and how often it *emails* are
+   two different things: looking every 2 hours still means at most one email a day, at the time you
+   chose, and only when there is something new. Automatic hunting now runs while Hunter is open. If
+   you also want it to run when Hunter is closed, tick the approval box and press **Keep hunting when
+   Hunter is closed**: Hunter adds a small login task on your computer (launchd on macOS, a systemd
+   user service on Linux, Task Scheduler on Windows) and removes it again from the same page.
 
-The status line at the top says what is true right now: **Connected**, **Sending enabled**,
-**Automatic hunting: running / off / installed, waiting**, and **Needs attention** when something
-stopped working (for example, Google ended the sign-in; press **Connect Gmail again**).
+The status line at the top says what is true right now, from evidence (a heartbeat written in the
+last three minutes, the login task's real state, the last scheduled run): **Connected**, **Sending
+enabled**, **Automatic hunting: running / off / installed, waiting / installed, but not responding /
+on, but nothing is running it / running, last check failed**, and **Needs attention** when something
+stopped working (for example, Google ended the sign-in; press **Connect Gmail again**). Under the
+plan you also see the last automatic look and the last email, with their outcome.
 
 **Disconnect Gmail** deletes Hunter's permission locally and asks Google to revoke it. Your email
 history and your address choice stay. **Turn off automatic hunting** stops the schedule and removes
@@ -43,6 +47,12 @@ The same steps from a terminal: `uv run jobhunter email connect gmail-send`, `di
 - With "daily email", the scheduler sends at most one digest per local day, after your digest time,
   and only when there is something new. Everything attempted is in **Email history** on the
   Connections page and in `uv run jobhunter digest history`.
+- When a scheduled email **fails** (Gmail refused, no connection), it shows under **Needs attention**
+  with what went wrong and what happens next. Hunter tries the same digest again by itself after
+  about 30 minutes, at most three times in total, and only while sending can work (Gmail connected,
+  sign-in not expired); the retry reuses the same outbox entry, so one digest can never arrive twice.
+  You can also press **Send again** right away, or **Dismiss** to fold those jobs into the next email.
+  An **uncertain** send (Google did not answer) is never retried by itself; you say whether it arrived.
 - Digests contain job and application links. Your CV is never attached. Nothing is ever sent to an
   employer; Hunter prepares applications and drafts, it does not submit or send them.
 
@@ -81,6 +91,15 @@ one command). The recipient rule, the outbox and the history are the same as wit
 - Hunter is a desktop app. It runs Google's standard authorization-code flow with PKCE (S256) and a
   loopback redirect back to the dashboard (`http://127.0.0.1:8765/connect/gmail/callback`), from the
   Connections page. The terminal command uses the same client through `google-auth-oauthlib`.
+- Safety of the sign-in: Connect Gmail is a POST (CSRF token in the body, never in a URL, history or
+  log) answered by a small page that continues to Google. The unguessable one-time `state` and the
+  PKCE verifier live in the local database for 10 minutes; the callback is accepted exactly once, only
+  with that state, and only a cancel carrying that state ends the pending sign-in (a stray or forged
+  callback cannot cancel or hijack it). Hunter only ever asks Google to return to a loopback address
+  on Hunter's own callback path, and the token exchange uses exactly that address. The dashboard's
+  session cookie is SameSite=Strict, so Google's redirect arrives without it; the state is the proof,
+  which is why the flow does not depend on the cookie. Google's error text is reduced to plain
+  characters before it is shown.
 - Tokens go to the secret store (OS keychain, or the encrypted file; see docs/privacy.md), never into
   the database, logs, exports, or model prompts. Access tokens are refreshed with Google when needed;
   when Google refuses the refresh (sign-in expired or revoked), the account is marked and the dashboard
@@ -154,6 +173,8 @@ a separate permission with a separate audit trail.
 The full journey (Connect Gmail → confirm address → test email → choose daily email → restart Hunter
 → scheduled hunt and digest → disconnect) runs in the test suite against a fake Google served on
 localhost, both through the HTTP layer and in a real browser (`tests/test_email_setup.py`,
-`tests/test_email_journey.py`). The fake implements Google's redirects, PKCE check, token exchange,
+`tests/test_email_journey.py`); the failure recovery, the status words and the sign-in checks are in
+`tests/test_email_reliability.py`. The fake implements Google's redirects, PKCE check, token exchange,
 refresh, revocation, profile lookup and `messages/send`. No live Google account or OAuth client was
-available in this environment, so the last step, a real Google consent screen, is still a manual check.
+available in this environment, so the real Google consent screen is still a manual check:
+docs/release-checklist.md lists exactly what to verify on real machines.

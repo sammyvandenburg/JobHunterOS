@@ -22,7 +22,10 @@
 | Fresh-install journey in a real browser (upload -> approve -> preferences -> background search -> favorite/save/notes -> Help me apply twice -> applied -> restart -> profile and country change move dashboard and digest together) | yes | yes (Playwright, synthetic sources) | yes, headless Chromium here | `tests/test_journey.py`; on macOS the same walk is a manual check. |
 | Actions, pipeline, undo, honest counts | yes | yes | n/a | |
 | Scheduler logic (DST, catch-up, pause/resume) and worker | yes | yes | worker loop run locally in tests (`tick`), not as an installed service | |
-| Automatic hunting inside Hunter (starts with the dashboard, one lock with the worker) | yes | yes (unit + browser, incl. restart and a scheduled digest) | yes, in tests | `jobhunter/services/autorun.py` |
+| Automatic hunting inside Hunter (starts with the dashboard, one lock with the worker) | yes | yes (unit + browser, incl. restart and a scheduled digest; next to a real worker process; shutdown, missed runs, stale runs) | yes, in tests | `jobhunter/services/autorun.py`, `tests/test_autorun_concurrency.py` |
+| Automatic-hunting status from evidence (heartbeat age and author, task state, last scheduled run and email) | yes | yes | n/a | Six status words; see docs/scheduling.md. |
+| Failed scheduled digest: Needs attention item, bounded automatic retry, Send again, Dismiss, superseding | yes | yes (fake Gmail) | no | Uncertain sends are never retried automatically. |
+| Release checklist for live Google and real macOS/Windows/Linux machines | n/a | n/a | not yet run | docs/release-checklist.md |
 | Login task install/remove from the dashboard after explicit approval (launchd, systemd user, schtasks) | yes | yes (recorded command runner, all three systems) | no real `launchctl`/`systemctl`/`schtasks` run here | Needs a check on a real Mac/Windows machine. |
 | Digest composition, allowlist, history, test email | yes | yes | no real email sent | |
 | SMTP transport (advanced fallback) | yes | mocked | no | |
