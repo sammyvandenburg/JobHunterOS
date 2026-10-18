@@ -63,7 +63,7 @@ class LocalOnlyMiddleware(BaseHTTPMiddleware):
             response.set_cookie(SESSION_COOKIE, sid, httponly=True, samesite="strict", secure=False, path="/")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Referrer-Policy", "same-origin")  # no-referrer would make browsers send Origin: null on same-origin POSTs
         response.headers.setdefault("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
         response.headers.setdefault("Cache-Control", "no-store")
         return response
