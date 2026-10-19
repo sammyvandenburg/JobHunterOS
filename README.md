@@ -70,6 +70,7 @@ uv run jobhunter --help               # everything else; add --json to any comma
 - [docs/model.md](docs/model.md): how Claude is used in-session and (optionally) unattended; authentication and cost.
 - [docs/privacy.md](docs/privacy.md): what leaves your machine, storage, backups, deletion, security model.
 - [docs/troubleshooting.md](docs/troubleshooting.md).
+- [docs/cloud-routine.md](docs/cloud-routine.md): nightly hunting in the student's own Claude account (Drive state file, digest through Claude's Gmail connector), what was proven live and what remains.
 - [docs/release-checklist.md](docs/release-checklist.md): what to verify on a real Mac, Windows and Linux machine and with a live Google account before students get Hunter; what the tests cover versus what was live-verified.
 - [docs/architecture.md](docs/architecture.md), [docs/status.md](docs/status.md) (implemented / fixture-tested / live-tested / not available), [docs/assumptions.md](docs/assumptions.md).
 

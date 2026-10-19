@@ -26,6 +26,7 @@
 | Automatic-hunting status from evidence (heartbeat age and author, task state, last scheduled run and email) | yes | yes | n/a | Six status words; see docs/scheduling.md. |
 | Failed scheduled digest: Needs attention item, bounded automatic retry, Send again, Dismiss, superseding | yes | yes (fake Gmail) | no | Uncertain sends are never retried automatically. |
 | Release checklist for live Google and real macOS/Windows/Linux machines | n/a | n/a | not yet run | docs/release-checklist.md |
+| Claude-operated cloud run: state file in the student's Drive, digest through Claude's Gmail connector, results merged back without losing notes/favorites/applications | yes | yes (`tests/test_cloud_agent.py`) | yes, in the owner's account with a synthetic profile: two independent cloud runs, one real digest sent and recorded, no repeat, dashboard action survived (2026-10-19) | A scheduled run with connectors still needs a Routine created on the claude.ai routines page; see docs/cloud-routine.md. |
 | Login task install/remove from the dashboard after explicit approval (launchd, systemd user, schtasks) | yes | yes (recorded command runner, all three systems) | no real `launchctl`/`systemctl`/`schtasks` run here | Needs a check on a real Mac/Windows machine. |
 | Digest composition, allowlist, history, test email | yes | yes | no real email sent | |
 | SMTP transport (advanced fallback) | yes | mocked | no | |

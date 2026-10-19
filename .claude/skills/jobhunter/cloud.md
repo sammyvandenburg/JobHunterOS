@@ -7,7 +7,8 @@ your own connectors. You never copy tokens anywhere and never pretend Python can
 
 ## What you need
 - A session with the **Google Drive** and **Gmail** connectors (check with `/mcp` or by looking at your
-  tools: `mcp__Google_Drive__*`, `mcp__Gmail__send_message`). Without them, stop and say so.
+  tools: `mcp__Google_Drive__*`, `mcp__Gmail__send_message`). Without them, stop and say so. A routine
+  gets them only when it is created on the claude.ai routines page with those connectors ticked.
 - This repository checked out, `uv` available, and an empty or Hunter-owned data folder. In a cloud
   session the data folder is `~/.jobhunteros` of that fresh machine; nothing of the person's is there
   until you restore the state file.
