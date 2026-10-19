@@ -312,6 +312,8 @@ def prepare_handoff(ctx: AppContext, db: Database) -> dict:
     addr = recipient(db)
     if not addr:
         raise DigestError("No confirmed digest address. Confirm one first (`jobhunter digest address you@example.com`).")
+    if sent_today(db):
+        return {"status": "skipped", "note": "Already emailed today. One digest a day; the rest waits for tomorrow."}
     jobs = pending_jobs(db)
     if not jobs:
         return {"status": "skipped", "note": "Nothing new worth emailing."}
@@ -323,6 +325,23 @@ def prepare_handoff(ctx: AppContext, db: Database) -> dict:
         return why_not
     db.update("notifications", {"channel": "email", "error": None}, "id = ?", (nid,))
     return {"status": "ready", "notification_id": nid, "to": addr, "subject": digest.subject, "text": digest.text, "html": digest.html, "content_hash": digest.content_hash, "jobs": digest.job_ids, "rules": ["Send to exactly this address, nothing else, nobody in cc or bcc.", "Send the subject, text and html as given.", "Then run `jobhunter digest record <notification_id> sent --message-id <id>`; on an error `failed --error \"...\"`; if you do not know whether it went out, `uncertain`."]}
+
+
+def sent_today(db: Database) -> bool:
+    """At most one digest per local day, judged from the email history itself (it travels with the cloud state)."""
+    from zoneinfo import ZoneInfo
+
+    row = db.fetchone("SELECT MAX(sent_at) AS t FROM notifications WHERE kind = 'digest' AND status = 'sent'")
+    last = parse_iso(row["t"]) if row and row["t"] else None
+    if not last:
+        return False
+    sched = db.fetchone("SELECT timezone FROM schedule WHERE id = 1") or {}
+    prefs = db.get_setting("preferences") or {}
+    try:
+        tz = ZoneInfo(sched.get("timezone") or prefs.get("timezone") or "UTC")
+    except Exception:
+        tz = ZoneInfo("UTC")
+    return last.astimezone(tz).date() == now().astimezone(tz).date()
 
 
 def record_handoff(db: Database, notification_id: int, outcome: str, message_id: str | None = None, error: str | None = None) -> dict:

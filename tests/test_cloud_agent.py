@@ -95,7 +95,7 @@ def test_two_cloud_runs_and_a_dashboard_action_survive_the_round_trip(ctx, db, t
     # Run two: another fresh folder restores run one's state, hunts the same sources, and sends nothing again.
     c2, d2 = _fresh(tmp_path, "cloud2")
     handoff2, out2 = _cloud_run(c2, d2, out1)
-    assert handoff2["status"] == "skipped" and "Nothing new" in handoff2["note"]
+    assert handoff2["status"] == "skipped" and ("Already emailed today" in handoff2["note"] or "Nothing new" in handoff2["note"])
     assert d2.fetchone("SELECT COUNT(*) AS n FROM notifications WHERE status = 'sent'")["n"] == 1  # the history came along
     assert d2.fetchone("SELECT COUNT(*) AS n FROM hunt_runs WHERE trigger = 'cloud'")["n"] == 2
     d2.close()
@@ -103,7 +103,7 @@ def test_two_cloud_runs_and_a_dashboard_action_survive_the_round_trip(ctx, db, t
     # Back on the laptop: results merge in; notes, favorites and applications are untouched.
     before_notes = notes.list_for_job(db, kept)
     res = cloudstate.import_bundle(ctx, db, out2, inputs=False, results=True)
-    assert res["results"]["jobs_added"] >= 2 and res["results"]["notifications_added"] == 1
+    assert res["results"]["jobs_added"] >= 1 and res["results"]["notifications_added"] == 1
     assert views.job_detail(db, kept)["favorited"] is True and notes.list_for_job(db, kept) == before_notes
     assert views.job_detail(db, applied)["stage"] == "applied" and views.job_detail(db, dismissed)["dismissed"] is True
     local_note = db.fetchone("SELECT status, job_ids_json FROM notifications WHERE status = 'sent'")
@@ -111,6 +111,12 @@ def test_two_cloud_runs_and_a_dashboard_action_survive_the_round_trip(ctx, db, t
     assert digested_ids and all(db.fetchone("SELECT id FROM jobs WHERE id = ?", (i,)) for i in digested_ids)
     berlin = db.fetchone("SELECT id FROM jobs WHERE employer_name = 'Berlin Robotics'")
     assert berlin and berlin["id"] in digested_ids
+    # The cloud's match came along and is what the dashboard shows; the snippet was not rescored into a thin match.
+    detail = views.job_detail(db, berlin["id"])
+    assert detail["group"] in {"good", "worth_a_shot", "backup"} and res["results"]["matches_added"] >= 1
+    cloud_group = next(j["match"]["match_group"] for j in out2["results"]["jobs"] if j["employer_name"] == "Berlin Robotics")
+    assert detail["group"] == cloud_group
+    assert len(detail["description"]) <= cloudstate.DESCRIPTION_CAP + 2
     # The laptop will not email those jobs again either, and the cloud runs show up in history.
     assert berlin["id"] not in {j["id"] for j in notifications.pending_jobs(db, limit=50)}
     assert db.fetchone("SELECT COUNT(*) AS n FROM hunt_runs WHERE trigger = 'cloud'")["n"] == 2
@@ -155,11 +161,16 @@ def test_handoff_records_outcomes_honestly(ctx, db):
         notifications.record_handoff(db, h["notification_id"], "sent")  # not claimed any more
     notifications.resolve(db, h["notification_id"], "arrived")
     assert notifications.prepare_handoff(ctx, db)["status"] == "skipped"
-    # Sent: schedule and supersede bookkeeping, as for any other transport.
+    db.execute("UPDATE notifications SET sent_at = '2026-01-01T08:00:00+00:00' WHERE id = ?", (h["notification_id"],))
+    # Sent: schedule and supersede bookkeeping, as for any other transport; and one digest per local day after that.
     _seed(ctx, db, "h2")
     h3 = notifications.prepare_handoff(ctx, db)
     notifications.record_handoff(db, h3["notification_id"], "sent", message_id="m-1")
     assert schedule.get(db)["last_digest_at"] and db.fetchone("SELECT provider_message_id FROM notifications WHERE id = ?", (h3["notification_id"],))["provider_message_id"] == "m-1"
+    _seed(ctx, db, "h2b")
+    assert notifications.prepare_handoff(ctx, db)["note"].startswith("Already emailed today")
+    db.execute("UPDATE notifications SET sent_at = '2026-01-01T08:00:00+00:00' WHERE id = ?", (h3["notification_id"],))
+    assert notifications.prepare_handoff(ctx, db)["status"] == "ready"
     # The scheduler never tries to send in this mode.
     schedule.set_frequency(db, "daily")
     schedule.set_notify_mode(db, "daily_email", "00:00")

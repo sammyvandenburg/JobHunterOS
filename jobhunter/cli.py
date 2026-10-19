@@ -548,12 +548,11 @@ def cmd_cloud(args):
             leaks = cloudstate.check_bundle_privacy(bundle)
             if leaks:
                 raise cloudstate.BundleError(f"Refusing to export: forbidden content {leaks}")
-            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.out).write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+            size = cloudstate.write_bundle(args.out, bundle)
             db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(args.out)})
-            emit(args, {"written": str(args.out), "bytes": Path(args.out).stat().st_size, "jobs": len((bundle.get("results") or {}).get("jobs") or []), "notifications": len((bundle.get("results") or {}).get("notifications") or []), "inputs": "inputs" in bundle})
+            emit(args, {"written": str(args.out), "bytes": size, "jobs": len((bundle.get("results") or {}).get("jobs") or []), "notifications": len((bundle.get("results") or {}).get("notifications") or []), "inputs": "inputs" in bundle})
         elif c in {"restore", "import"}:
-            bundle = json.loads(Path(args.path).read_text(encoding="utf-8"))
+            bundle = cloudstate.read_bundle(args.path)
             res = cloudstate.import_bundle(ctx, db, bundle, inputs=(c == "restore"), results=True)
             emit(args, res)
         elif c == "tag-run":
@@ -1054,7 +1053,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     cl = sub.add_parser("cloud", help="state file for a Claude-operated cloud run (restore, hunt, export)")
     cls = cl.add_subparsers(dest="cloud_cmd", required=True)
-    x = cls.add_parser("export", help="write the state file (inputs + results)")
+    x = cls.add_parser("export", help="write the state file (inputs + results); a .gz name gzips it")
     x.add_argument("--out", required=True)
     x.add_argument("--inputs-only", action="store_true")
     x.add_argument("--results-only", action="store_true")

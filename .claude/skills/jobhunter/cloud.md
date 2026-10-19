@@ -16,20 +16,24 @@ your own connectors. You never copy tokens anywhere and never pretend Python can
   Keep its id; it is also in the state file as `drive_folder_id` after the first export.
 
 ## State file rules
-- One file per run, named `hunter-state-<UTC timestamp>.json`, in that folder, uploaded with
-  `create_file(parentId=<folder>, title=..., contentMimeType="application/json", textContent=<file>,
-  disableConversionToGoogleType=true)`. The Drive connector cannot update file content, so a new
-  file is the update; after a successful upload, trash state files older than the newest three.
+- One file per run, named `hunter-state-<UTC timestamp>.json.gz`, in that folder. Produce it with
+  `uv run jobhunter cloud export --out ~/hunter-state-out.json.gz`, then `base64 -w0 ~/hunter-state-out.json.gz`
+  and upload with `create_file(parentId=<folder>, title=..., contentMimeType="application/gzip",
+  base64Content=<that string>, disableConversionToGoogleType=true)`. Gzip keeps a full night's results
+  around 50 to 150 KB. The Drive connector cannot update file content, so a new file is the update.
+  Never trash the previous file until the new one is uploaded and `download_file_content` returns it
+  with the same size; then keep the newest three and trash older ones (only if the person agreed).
 - Find the newest with `search_files(query="parentId = '<folder>' and title contains 'hunter-state-'")`
   and pick the latest timestamp in the title. Download with `download_file_content(fileId=...)`
-  (base64), decode it to `~/hunter-state.json`, and let Python read it. Never edit the file yourself.
+  (base64), write it with `base64 -d` to `~/hunter-state.json.gz`, and let Python read it
+  (`cloud restore` and `cloud import` accept .json and .json.gz). Never edit the file yourself.
 - The file is produced by `uv run jobhunter cloud export` and contains only: the approved profile,
   preferences, three consents, the keys of dismissed and applied jobs, public job data, run summaries
   and the email history. No CV, no notes, no favorites, no drafts, no tokens. Do not add anything.
 
 ## Nightly run (cloud session or routine)
 1. `uv sync` in the repository.
-2. Newest state file from Drive → `~/hunter-state.json` → `uv run jobhunter cloud restore ~/hunter-state.json --json`.
+2. Newest state file from Drive → `~/hunter-state.json.gz` → `uv run jobhunter cloud restore ~/hunter-state.json.gz --json`.
    If there is no state file, stop: say the person has to run "cloud sync" from their computer first.
 3. `uv run jobhunter hunt run --trigger cloud --json`, then `uv run jobhunter cloud tag-run cloud:<short id>`.
    One failing source is not a failed hunt; report it in one line.
@@ -41,7 +45,7 @@ your own connectors. You never copy tokens anywhere and never pretend Python can
      If you cannot tell whether it went out (timeout, no answer): `... record <id> uncertain --error "<reason>"`,
      and never send it again yourself.
    - `status: skipped` → nothing new; send nothing. `blocked` or `in_progress` → send nothing, say so.
-5. `uv run jobhunter cloud export --out ~/hunter-state-out.json --json` → upload as the new state file.
+5. `uv run jobhunter cloud export --out ~/hunter-state-out.json.gz --json` → base64 → upload as the new state file.
    If the upload fails, say so plainly: the email may have gone out but the history did not reach Drive;
    the next run will be told by the person.
 6. Report in two or three lines: jobs found, email sent or not and why, state saved or not.

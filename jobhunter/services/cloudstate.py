@@ -32,13 +32,14 @@ from jobhunter.services import profile as profile_svc
 from jobhunter.util import now, now_iso, parse_iso
 
 FORMAT = "jobhunter-state/1"
-JOB_WINDOW_DAYS = 45
+JOB_WINDOW_DAYS = 21
 JOB_COLUMNS = (
     "canonical_key", "title", "employer_name", "employer_confidential", "location_text", "country_codes_json", "remote_type", "remote_restriction",
     "employment_type", "salary_text", "salary_min", "salary_max", "salary_currency", "salary_period", "salary_basis", "sponsorship", "description_text",
     "description_hash", "requisition_id", "posted_at", "posted_at_provenance", "source_updated_at", "first_seen_at", "last_seen_at", "last_checked_at",
-    "availability", "availability_note", "discovery_url", "direct_url", "direct_url_status", "apply_url", "relevance", "relevance_reason",
+    "availability", "availability_note", "discovery_url", "direct_url", "direct_url_status", "apply_url", "relevance", "relevance_reason", "location_confidence",
 )
+MATCH_COLUMNS = ("score", "match_group", "reasons_json", "gaps_json", "eligibility_json", "exclusion_reason", "explanation_text", "explanation_source", "next_step")
 JOB_REFRESH_COLUMNS = ("title", "location_text", "country_codes_json", "remote_type", "remote_restriction", "salary_text", "salary_min", "salary_max", "salary_currency", "salary_period", "description_text", "description_hash", "posted_at", "posted_at_provenance", "source_updated_at", "last_seen_at", "last_checked_at", "availability", "availability_note", "direct_url", "direct_url_status", "apply_url", "relevance", "relevance_reason")
 EMPLOYER_COLUMNS = ("name", "canonical_name", "website", "careers_url", "ats_kind", "ats_token", "ats_region", "regions_json", "country_codes_json", "origin", "discovered_via", "first_seen_at")
 CONSENTS = ("readiness", "profile_approved", "digest_email")
@@ -92,23 +93,64 @@ def _export_results(db: Database) -> dict:
         referenced.update(keys)
         notes.append({k: n.get(k) for k in ("kind", "channel", "recipient", "subject", "content_hash", "status", "attempts", "provider_message_id", "error", "created_at", "sent_at", "delivery_key", "claimed_at", "resolved_at", "resolution")} | {"job_keys": keys})
     excl_keys = set(_export_inputs_exclusion_keys(db))
-    jobs = db.fetchall("SELECT * FROM jobs WHERE first_seen_at >= ? OR last_seen_at >= ? ORDER BY id", (since, since))
-    seen = {j["canonical_key"] for j in jobs}
-    extra = (referenced | excl_keys) - seen
-    if extra:
-        jobs += db.fetchall(f"SELECT * FROM jobs WHERE canonical_key IN ({','.join('?' for _ in extra)})", tuple(extra))
+    # Only what the other side cannot re-derive travels: the jobs an email or an exclusion refers to, with their
+    # match outcome. Everything else a hunt finds again deterministically. Claude carries this file through its own
+    # context, so small is not a nicety; it is what makes the round trip possible at all.
+    keys = referenced | excl_keys
+    jobs = db.fetchall(f"SELECT * FROM jobs WHERE canonical_key IN ({','.join('?' for _ in keys)}) AND (first_seen_at >= ? OR last_seen_at >= ?) ORDER BY id", (*keys, since, since)) if keys else []
+    seen = referenced
     emp_ids = {j["employer_id"] for j in jobs if j.get("employer_id")}
     employers = db.fetchall(f"SELECT * FROM employers WHERE id IN ({','.join('?' for _ in emp_ids)})", tuple(emp_ids)) if emp_ids else []
     emp_by_id = {e["id"]: e["canonical_name"] for e in employers}
+    prof = profile_svc.approved(db)
+    matches = {m["job_id"]: m for m in db.fetchall("SELECT * FROM matches WHERE profile_version_id = ? AND policy_version = ?", (prof["id"], _policy_version()))} if prof else {}
     runs = []
     for r in db.fetchall("SELECT * FROM hunt_runs WHERE trigger IN ('scheduled','cloud') AND status != 'running' ORDER BY id DESC LIMIT 20"):
         runs.append({"tag": r.get("owner") if str(r.get("owner") or "").startswith("cloud:") else f"run:{r['started_at']}", "trigger": r["trigger"], "status": r["status"], "started_at": r["started_at"], "finished_at": r.get("finished_at"), "stats": json.loads(r.get("stats_json") or "{}"), "error": r.get("error")})
     return {
         "employers": [{k: e.get(k) for k in EMPLOYER_COLUMNS} for e in employers],
-        "jobs": [{k: j.get(k) for k in JOB_COLUMNS} | {"employer_canonical_name": emp_by_id.get(j.get("employer_id"))} for j in jobs],
+        "jobs": [_job_row(j, emp_by_id, matches.get(j["id"]), snippet=j["canonical_key"] in seen) for j in jobs],
         "hunt_runs": runs,
         "notifications": notes,
     }
+
+
+DESCRIPTION_CAP = 300  # a snippet; the match travels with the job, and the cache key uses the untouched description_hash
+
+
+def _job_row(j: dict, emp_by_id: dict, match: dict | None, snippet: bool) -> dict:
+    row = {k: j.get(k) for k in JOB_COLUMNS}
+    text = row.get("description_text") or ""
+    row["description_text"] = (text[:DESCRIPTION_CAP] + (" …" if len(text) > DESCRIPTION_CAP else "")) if snippet else None
+    row["employer_canonical_name"] = emp_by_id.get(j.get("employer_id"))
+    row["match"] = {k: match.get(k) for k in MATCH_COLUMNS} if match else None
+    return row
+
+
+def write_bundle(path, bundle: dict) -> int:
+    """JSON, gzipped when the name ends in .gz (the Drive round trip carries base64, so small matters)."""
+    import gzip
+    from pathlib import Path as _P
+
+    data = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    path = _P(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix == ".gz":
+        with gzip.open(path, "wb", compresslevel=9) as fh:
+            fh.write(data)
+    else:
+        path.write_bytes(data)
+    return path.stat().st_size
+
+
+def read_bundle(path) -> dict:
+    import gzip
+    from pathlib import Path as _P
+
+    raw = _P(path).read_bytes()
+    if raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    return json.loads(raw.decode("utf-8"))
 
 
 def _export_inputs_exclusion_keys(db: Database) -> list[str]:
@@ -197,6 +239,7 @@ def _import_results(db: Database, results: dict) -> dict:
                 continue
             db.insert("hunt_runs", {"trigger": "cloud", "status": r["status"], "started_at": r["started_at"], "finished_at": r.get("finished_at"), "owner": r["tag"], "stats_json": json.dumps(r.get("stats") or {}), "error": r.get("error")})
             runs_added += 1
+        matches_added = _import_matches(db, results.get("jobs") or [], key_to_id)
         notes_added = 0
         for n in results.get("notifications") or []:
             if not n.get("delivery_key") or db.fetchone("SELECT id FROM notifications WHERE delivery_key = ?", (n["delivery_key"],)):
@@ -204,7 +247,34 @@ def _import_results(db: Database, results: dict) -> dict:
             ids = [key_to_id[k] for k in n.get("job_keys") or [] if k in key_to_id]
             db.insert("notifications", {k: n.get(k) for k in ("kind", "channel", "recipient", "subject", "content_hash", "status", "attempts", "provider_message_id", "error", "created_at", "sent_at", "delivery_key", "claimed_at", "resolved_at", "resolution")} | {"job_ids_json": json.dumps(ids), "body_path": None})
             notes_added += 1
-    return {"jobs_added": added, "jobs_refreshed": refreshed, "hunt_runs_added": runs_added, "notifications_added": notes_added}
+    return {"jobs_added": added, "jobs_refreshed": refreshed, "matches_added": matches_added, "hunt_runs_added": runs_added, "notifications_added": notes_added}
+
+
+def _import_matches(db: Database, jobs: list[dict], key_to_id: dict[str, int]) -> int:
+    """The cloud's match outcome for the same profile and policy, stored under the key the local engine would compute,
+    so the laptop shows the cloud's groups without rescoring from a snippet. A later profile change rescores as usual."""
+    from jobhunter.services.matching import engine
+
+    prof = profile_svc.approved(db)
+    if not prof:
+        return 0
+    pkey, phash = engine.profile_fingerprint(prof), engine._prefs_hash(db)
+    n = 0
+    for j in jobs:
+        m = j.get("match")
+        jid = key_to_id.get(j["canonical_key"])
+        if not m or not jid or not m.get("match_group"):
+            continue
+        row = db.fetchone("SELECT * FROM jobs WHERE id = ?", (jid,))
+        values = {k: m.get(k) for k in MATCH_COLUMNS} | {"job_id": jid, "profile_version_id": prof["id"], "policy_version": engine.POLICY_VERSION, "cache_key": engine.cache_key(row, pkey, phash), "computed_at": now_iso()}
+        values["explanation_source"] = values.get("explanation_source") or "rules"
+        existing = db.fetchone("SELECT id FROM matches WHERE job_id = ? AND profile_version_id = ? AND policy_version = ?", (jid, prof["id"], engine.POLICY_VERSION))
+        if existing:
+            db.update("matches", values, "id = ?", (existing["id"],))
+        else:
+            db.insert("matches", values)
+        n += 1
+    return n
 
 
 def _apply_exclusions(db: Database, excl: dict) -> int:
