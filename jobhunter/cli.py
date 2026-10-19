@@ -563,9 +563,9 @@ def cmd_cloud(args):
         elif c == "update":
             emit(args, cloudstate.update_from_upstream(args.repo, upstream_url=args.upstream or cloudstate.UPSTREAM_URL, branch=args.branch))
         elif c == "save":
-            emit(args, cloudstate.save_to_repo(ctx, db, args.repo))
+            emit(args, cloudstate.save_to_repo(ctx, db, args.repo, branch=args.branch))
         elif c == "load":
-            emit(args, cloudstate.load_from_repo(ctx, db, args.repo, restore=args.restore))
+            emit(args, cloudstate.load_from_repo(ctx, db, args.repo, restore=args.restore, branch=args.branch))
         elif c == "status":
             emit(args, cloudstate.status(db))
     except cloudstate.BundleError as exc:
@@ -1077,10 +1077,12 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--repo")
     x.add_argument("--upstream")
     x.add_argument("--branch", default="main")
-    x = cls.add_parser("save", help="write the state into the state repository, commit and push")
+    x = cls.add_parser("save", help="write state/ in your own private copy, commit and push to the state branch")
     x.add_argument("--repo")
-    x = cls.add_parser("load", help="pull the state repository and merge it (--restore on a fresh cloud machine)")
+    x.add_argument("--branch", help="the persistent branch (default: the current one, then main)")
+    x = cls.add_parser("load", help="pull the state branch and merge it (--restore on a fresh cloud machine)")
     x.add_argument("--repo")
+    x.add_argument("--branch")
     x.add_argument("--restore", action="store_true")
     cls.add_parser("status")
     cl.set_defaults(fn=cmd_cloud)

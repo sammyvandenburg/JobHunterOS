@@ -38,12 +38,12 @@ At most one digest per local day; the history travels in the state file, so a se
 
 ## Nightly run (the Routine, a fresh cloud session every time, in their own copy)
 1. `uv sync`, then `export JOBHUNTER_SECRETS_BACKEND=file`.
-2. `uv run jobhunter cloud load --restore --json` (pulls their copy and restores the state). If it says
+2. `uv run jobhunter cloud load --restore --branch main --json` (pulls the state branch of their copy and restores it; a cloud session may sit on a session branch, the state still comes from and goes to `main`). If it says
    there is no state file yet, stop: the person has to run `/jobhunter email` on their computer first.
 3. `uv run jobhunter hunt run --trigger cloud --json`, then `uv run jobhunter cloud tag-run cloud:$(date -u +%Y%m%dT%H%M%SZ)`.
    One failing source is not a failed hunt; report it in one line.
 4. Send the digest as above (the Gmail connector must be attached to the routine).
-5. `uv run jobhunter cloud save --json` (commits `state/` and pushes to their copy's main branch; pulls
+5. `uv run jobhunter cloud save --branch main --json` (commits `state/` and pushes it to their copy's `main`; pulls
    and rebases first if they saved meanwhile). If the push fails, say so plainly: the email may have gone
    out but the history did not reach the repository.
 6. Report in three lines: jobs found (and sources that failed), email sent or not and why, state saved

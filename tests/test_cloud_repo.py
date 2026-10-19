@@ -181,3 +181,36 @@ def test_single_private_copy_keeps_code_and_state_and_updates_cleanly(ctx, db, t
     assert up["updated"] is False and "does not merge cleanly" in up["note"] and _git(student, "status", "--porcelain") == ""
     # The default location is the checkout itself: no link, no second repository.
     assert cloudstate.software_repo() is not None and cloudstate.repo_dir(db) == cloudstate.software_repo()
+
+
+def test_state_never_goes_to_a_public_or_shared_repository(ctx, db, tmp_path, github, monkeypatch):
+    approve_profile(db, ctx)
+    a = _clone(github, tmp_path / "a")
+    # Origin that is KubeCraft's shared repository: refused before anything is written.
+    _git(a, "remote", "set-url", "origin", "https://github.com/sammyvandenburg/JobHunterOS.git")
+    with pytest.raises(cloudstate.RepoError, match="KubeCraft's shared repository"):
+        cloudstate.save_to_repo(ctx, db, a)
+    assert not (a / "state" / "hunter-state.json").exists()
+    # A public repository on GitHub: refused.
+    _git(a, "remote", "set-url", "origin", "git@github.com:someone/my-hunter.git")
+    monkeypatch.setattr(cloudstate, "_github_visibility", lambda slug: "public")
+    with pytest.raises(cloudstate.RepoError, match="public repository"):
+        cloudstate.save_to_repo(ctx, db, a)
+    # A private one (anonymous GitHub answers 404): allowed, and the state goes to the named branch even
+    # when the checkout sits on a session branch.
+    monkeypatch.setattr(cloudstate, "_github_visibility", lambda slug: "private_or_missing")
+    _git(a, "remote", "set-url", "origin", str(github))
+    monkeypatch.setattr(cloudstate, "_origin_slug", lambda d: "someone/my-hunter")
+    _git(a, "checkout", "-q", "-b", "claude/session-xyz")
+    res = cloudstate.save_to_repo(ctx, db, a, branch="main")
+    assert res["pushed"] and res["branch"] == "main" and res["destination"]["visibility"] == "private_or_missing"
+    peek = _clone(github, tmp_path / "peek")
+    assert (peek / "state" / "hunter-state.json").exists() and _git(peek, "rev-parse", "--abbrev-ref", "HEAD") == "main"
+    # The next load on another machine reads that branch regardless of its own checkout branch.
+    c, d = _fresh(tmp_path, "cloud")
+    other = _clone(github, tmp_path / "other")
+    _git(other, "checkout", "-q", "-b", "claude/another-session")
+    monkeypatch.setattr(cloudstate, "_origin_slug", lambda d: "someone/my-hunter")
+    loaded = cloudstate.load_from_repo(c, d, other, restore=True, branch="main")
+    assert loaded["loaded"] and loaded["branch"] == "main" and loaded["inputs"]["profile"]
+    d.close()

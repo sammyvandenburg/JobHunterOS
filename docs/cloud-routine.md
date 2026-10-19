@@ -72,16 +72,22 @@ settings instead of creating it:
 
 ```
 You are Hunter (JobHunterOS). Do the "Nightly run" in .claude/skills/jobhunter/cloud.md, step by step,
-in this repository. Use only the Gmail connector. Send email only to the address
-`uv run jobhunter digest prepare --json` prints, and only when its status is "ready". Commit and push
-nothing except what `uv run jobhunter cloud save` does. Finish with the three-line report the file
-asks for.
+in this repository, with `--branch main` on `cloud load` and `cloud save`. Use only the Gmail connector.
+Send email only to the address `uv run jobhunter digest prepare --json` prints, and only when its
+status is "ready". Commit and push nothing except what `uv run jobhunter cloud save` does. Finish with
+the three-line report the file asks for: which commit and branch you started on, state restored (commit),
+hunt numbers, email sent (Gmail message id) or why not, state saved (commit, branch).
 ```
 
-Open point to verify on the first real run: a cloud session normally pushes to a session branch, not
-to main. `cloud save` pushes the current branch; if the routine's checkout is on a session branch, the
-state would land there and the next run would not see it. The first "Run now" shows which branch
-received the commit; if it is not main, the routine needs its outcome branch set to main.
+`cloud save` and `cloud load` take `--branch`; the routine uses `main` explicitly, so it does not
+matter whether the cloud session's checkout sits on `main` or on a session branch: the state always
+comes from and returns to the persistent branch (pushed as `HEAD:refs/heads/main`). If the account's
+push policy refuses that branch on the first real run, the simplest fix is to set the routine's outcome
+branch to `main` on the routines page; no second repository is needed.
+
+Two guards protect the state: `cloud save` refuses when the checkout's origin is KubeCraft's shared
+repository, and refuses when the origin is a public GitHub repository (an anonymous request to the
+GitHub API tells a public repository from a private one without any token).
 
 ## Why JobSpy is not a default source
 The earlier tiny Hunter searched LinkedIn with python-jobspy. JobSpy scrapes LinkedIn, Indeed, Glassdoor

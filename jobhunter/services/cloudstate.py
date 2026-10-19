@@ -20,6 +20,7 @@ or refreshes jobs and never touches them.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import timedelta
 
@@ -305,7 +306,7 @@ def tag_latest_run(db: Database, tag: str) -> None:
 def status(db: Database) -> dict:
     last = db.get_setting("cloud.last_import") or {}
     exported = db.get_setting("cloud.last_export") or {}
-    return {"role": db.get_setting("cloud.role") or "laptop", "state_repo": db.get_setting(REPO_SETTING), "last_import": last, "last_export": exported, "digest_transport": db.get_setting("digest.transport")}
+    return {"role": db.get_setting("cloud.role") or "laptop", "state_repo": db.get_setting(REPO_SETTING), "state_branch": db.get_setting(BRANCH_SETTING), "last_import": last, "last_export": exported, "digest_transport": db.get_setting("digest.transport")}
 
 
 def check_bundle_privacy(bundle: dict) -> list[str]:
@@ -327,7 +328,9 @@ STATE_DIR = "state"  # inside the student's own private copy of Hunter; upstream
 STATE_FILE = "hunter-state.json"
 SEEN_FILE = "seen_jobs.json"
 REPO_SETTING = "cloud.state_repo"
+BRANCH_SETTING = "cloud.state_branch"
 UPSTREAM_URL = "https://github.com/sammyvandenburg/JobHunterOS.git"
+UPSTREAM_SLUG = "sammyvandenburg/jobhunteros"
 
 
 class RepoError(BundleError):
@@ -384,18 +387,79 @@ def state_dir(repo):
     return d
 
 
-def save_to_repo(ctx: AppContext, db: Database, repo=None) -> dict:
+def _origin_slug(repo_dir) -> str | None:
+    url = _git(repo_dir, "remote", "get-url", "origin", check=False)
+    m = re.search(r"github\.com[:/]+([^/]+)/([^/\s]+?)(?:\.git)?/?$", url or "")
+    return f"{m.group(1)}/{m.group(2)}".lower() if m else None
+
+
+def _github_visibility(slug: str) -> str:
+    """'public', 'private_or_missing', or 'unknown' (no network). No token: a public repository answers an
+    anonymous request, a private one looks like it does not exist. That is exactly the distinction needed."""
+    try:
+        import httpx
+
+        r = httpx.get(f"https://api.github.com/repos/{slug}", timeout=8, headers={"Accept": "application/vnd.github+json", "User-Agent": "jobhunteros"})
+    except Exception:
+        return "unknown"
+    if r.status_code == 200:
+        try:
+            return "public" if not r.json().get("private") else "private_or_missing"
+        except ValueError:
+            return "public"
+    return "private_or_missing" if r.status_code in {404, 403} else "unknown"
+
+
+def check_destination(repo_dir) -> dict:
+    """Personal state only ever goes to the student's own private copy: never to a public repository and never
+    to KubeCraft's shared one. Raises RepoError otherwise."""
+    slug = _origin_slug(repo_dir)
+    if slug == UPSTREAM_SLUG:
+        raise RepoError("This checkout's origin is KubeCraft's shared repository. Personal state never goes there: use your own private copy of Hunter (see docs/cloud-routine.md).")
+    if slug:
+        vis = _github_visibility(slug)
+        if vis == "public":
+            raise RepoError(f"{slug} is a public repository. Personal state only goes to a private one; make it private on GitHub, then save again.")
+        return {"origin": slug, "visibility": vis}
+    return {"origin": None, "visibility": "local"}
+
+
+def state_branch(db: Database, override: str | None = None, repo_dir=None) -> str:
+    """The branch that keeps the state. A cloud session may sit on a session branch; the state still goes to this one."""
+    b = override or db.get_setting(BRANCH_SETTING)
+    if b:
+        return b
+    cur = _git(repo_dir, "rev-parse", "--abbrev-ref", "HEAD", check=False) if repo_dir else ""
+    return cur if cur and cur != "HEAD" else "main"
+
+
+def _same_state(old: dict, new: dict) -> bool:
+    """Equal apart from the export stamp, so a save with nothing new makes no commit."""
+    volatile = {"exported_at", "exported_by"}
+    return {k: v for k, v in old.items() if k not in volatile} == {k: v for k, v in new.items() if k not in volatile}
+
+
+def save_to_repo(ctx: AppContext, db: Database, repo=None, branch: str | None = None) -> dict:
     """Export the bundle into the state repository, commit, push (pull --rebase first when a remote exists).
     The file is pretty JSON so a diff on GitHub stays readable; `seen_jobs.json` is the human-readable
     list of emailed jobs, the one thing the original tiny Hunter kept."""
     d = repo_dir(db, repo)
+    br = state_branch(db, branch, d)
+    dest = check_destination(d) if _has_remote(d) else {"origin": None, "visibility": "local"}
     if _has_remote(d):
-        _git(d, "pull", "--rebase", "--quiet", check=False)
+        _git(d, "pull", "--rebase", "--quiet", "origin", br, check=False)
     bundle = export_bundle(ctx, db)
     leaks = check_bundle_privacy(bundle)
     if leaks:
         raise BundleError(f"Refusing to save: forbidden content {leaks}")
     sd = state_dir(d)
+    previous = sd / STATE_FILE
+    if previous.exists():
+        try:
+            if _same_state(json.loads(previous.read_text(encoding="utf-8")), bundle) and not _git(d, "status", "--porcelain", "--", STATE_DIR):
+                return {"saved": False, "note": "Nothing changed since the last save.", "path": str(previous), "branch": br}
+        except (ValueError, OSError):
+            pass
     (sd / STATE_FILE).write_text(json.dumps(bundle, ensure_ascii=False, indent=1), encoding="utf-8")
     seen = {}
     for n in bundle.get("results", {}).get("notifications", []):
@@ -415,30 +479,33 @@ def save_to_repo(ctx: AppContext, db: Database, repo=None) -> dict:
         last = ""
         for _ in range(3):
             try:
-                _git(d, "push", "--quiet")
+                _git(d, "push", "--quiet", "origin", f"HEAD:refs/heads/{br}")
                 pushed = True
                 break
             except RepoError as exc:
                 last = str(exc)
-                _git(d, "pull", "--rebase", "--quiet", check=False)
+                _git(d, "pull", "--rebase", "--quiet", "origin", br, check=False)
         if not pushed:
-            raise RepoError(f"Could not push the state: {last}")
-    db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(sd / STATE_FILE), "pushed": pushed})
-    return {"saved": True, "pushed": pushed, "commit": _git(d, "rev-parse", "--short", "HEAD"), "path": str(sd / STATE_FILE), "jobs": len(bundle["results"]["jobs"]), "notifications": len(bundle["results"]["notifications"])}
+            raise RepoError(f"Could not push the state to {br}: {last}")
+    db.set_setting(BRANCH_SETTING, br)
+    db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(sd / STATE_FILE), "pushed": pushed, "branch": br})
+    return {"saved": True, "pushed": pushed, "branch": br, "destination": dest, "commit": _git(d, "rev-parse", "--short", "HEAD"), "path": str(sd / STATE_FILE), "jobs": len(bundle["results"]["jobs"]), "notifications": len(bundle["results"]["notifications"])}
 
 
-def load_from_repo(ctx: AppContext, db: Database, repo=None, restore: bool = False) -> dict:
-    """Pull the state repository and merge its file: `restore=True` on a fresh cloud machine (inputs too),
+def load_from_repo(ctx: AppContext, db: Database, repo=None, restore: bool = False, branch: str | None = None) -> dict:
+    """Pull the state branch and merge its file: `restore=True` on a fresh cloud machine (inputs too),
     `restore=False` on the laptop (results only; notes, favorites, applications are never touched)."""
     d = repo_dir(db, repo)
+    br = state_branch(db, branch, d)
     if _has_remote(d):
-        _git(d, "pull", "--rebase", "--quiet", check=False)
+        _git(d, "pull", "--rebase", "--quiet", "origin", br, check=False)
+    db.set_setting(BRANCH_SETTING, br)
     f = d / STATE_DIR / STATE_FILE
     if not f.exists():
         return {"loaded": False, "note": "There is no state/hunter-state.json yet. Save from the computer that has the profile first (`jobhunter cloud save`)."}
     bundle = json.loads(f.read_text(encoding="utf-8"))
     res = import_bundle(ctx, db, bundle, inputs=restore, results=True)
-    return {"loaded": True, "commit": _git(d, "rev-parse", "--short", "HEAD", check=False), "exported_at": bundle.get("exported_at"), "exported_by": bundle.get("exported_by"), **res}
+    return {"loaded": True, "branch": br, "commit": _git(d, "rev-parse", "--short", "HEAD", check=False), "exported_at": bundle.get("exported_at"), "exported_by": bundle.get("exported_by"), **res}
 
 
 def update_from_upstream(repo=None, upstream_url: str = UPSTREAM_URL, branch: str = "main") -> dict:
