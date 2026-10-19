@@ -323,9 +323,11 @@ def ago(ts: str | None) -> str:
 
 
 # ---------------------------------------------------------------- a private git repository as the state store
+STATE_DIR = "state"  # inside the student's own private copy of Hunter; upstream never touches it
 STATE_FILE = "hunter-state.json"
 SEEN_FILE = "seen_jobs.json"
 REPO_SETTING = "cloud.state_repo"
+UPSTREAM_URL = "https://github.com/sammyvandenburg/JobHunterOS.git"
 
 
 class RepoError(BundleError):
@@ -356,13 +358,30 @@ def link_repo(db: Database, repo_dir) -> dict:
     return {"state_repo": str(d), "remote": _git(d, "remote", "get-url", "origin", check=False) or None}
 
 
-def repo_dir(db: Database, override=None):
+def software_repo():
+    """The checkout this code runs from, when it is a git clone: the student's own private copy of Hunter."""
     from pathlib import Path as _P
 
-    d = override or db.get_setting(REPO_SETTING)
+    root = _P(__file__).resolve().parents[2]
+    return root if (root / ".git").exists() else None
+
+
+def repo_dir(db: Database, override=None):
+    """Where the state lives: an explicit path, the linked path, or (the default) this very checkout."""
+    from pathlib import Path as _P
+
+    d = override or db.get_setting(REPO_SETTING) or software_repo()
     if not d:
-        raise RepoError("No state repository linked. Run `jobhunter cloud link --repo <clone>` first.")
+        raise RepoError("No state repository. Run Hunter from a git clone of your own private copy, or `jobhunter cloud link --repo <clone>`.")
     return _P(d)
+
+
+def state_dir(repo):
+    from pathlib import Path as _P
+
+    d = _P(repo) / STATE_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def save_to_repo(ctx: AppContext, db: Database, repo=None) -> dict:
@@ -376,19 +395,18 @@ def save_to_repo(ctx: AppContext, db: Database, repo=None) -> dict:
     leaks = check_bundle_privacy(bundle)
     if leaks:
         raise BundleError(f"Refusing to save: forbidden content {leaks}")
-    (d / STATE_FILE).write_text(json.dumps(bundle, ensure_ascii=False, indent=1), encoding="utf-8")
+    sd = state_dir(d)
+    (sd / STATE_FILE).write_text(json.dumps(bundle, ensure_ascii=False, indent=1), encoding="utf-8")
     seen = {}
     for n in bundle.get("results", {}).get("notifications", []):
         for k in n.get("job_keys", []):
             if n.get("status") in {"sent", "uncertain", "sending"}:
                 seen[k] = {"emailed_at": n.get("sent_at") or n.get("created_at"), "status": n.get("status")}
-    (d / SEEN_FILE).write_text(json.dumps(seen, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
-    gitignore = d / ".gitignore"
-    if not gitignore.exists():
-        gitignore.write_text("# Only Hunter's state files belong here.\n*.db\n*.sqlite\n*.pdf\n*.docx\n")
-    _git(d, "add", "-A")
-    if not _git(d, "status", "--porcelain"):
-        return {"saved": False, "note": "Nothing changed since the last save.", "path": str(d)}
+    (sd / SEEN_FILE).write_text(json.dumps(seen, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
+    # Only the state directory is ever staged: a stray CV or database next to the code never gets committed.
+    _git(d, "add", "--", STATE_DIR)
+    if not _git(d, "status", "--porcelain", "--", STATE_DIR):
+        return {"saved": False, "note": "Nothing changed since the last save.", "path": str(sd)}
     from jobhunter.util import hostname
 
     _git(d, "-c", "user.name=Hunter", "-c", "user.email=hunter@jobhunteros.local", "commit", "-q", "-m", f"Hunter state {bundle['exported_at']} ({bundle['exported_by']} on {hostname()})")
@@ -405,8 +423,8 @@ def save_to_repo(ctx: AppContext, db: Database, repo=None) -> dict:
                 _git(d, "pull", "--rebase", "--quiet", check=False)
         if not pushed:
             raise RepoError(f"Could not push the state: {last}")
-    db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(d / STATE_FILE), "pushed": pushed})
-    return {"saved": True, "pushed": pushed, "commit": _git(d, "rev-parse", "--short", "HEAD"), "path": str(d / STATE_FILE), "jobs": len(bundle["results"]["jobs"]), "notifications": len(bundle["results"]["notifications"])}
+    db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(sd / STATE_FILE), "pushed": pushed})
+    return {"saved": True, "pushed": pushed, "commit": _git(d, "rev-parse", "--short", "HEAD"), "path": str(sd / STATE_FILE), "jobs": len(bundle["results"]["jobs"]), "notifications": len(bundle["results"]["notifications"])}
 
 
 def load_from_repo(ctx: AppContext, db: Database, repo=None, restore: bool = False) -> dict:
@@ -415,9 +433,32 @@ def load_from_repo(ctx: AppContext, db: Database, repo=None, restore: bool = Fal
     d = repo_dir(db, repo)
     if _has_remote(d):
         _git(d, "pull", "--rebase", "--quiet", check=False)
-    f = d / STATE_FILE
+    f = d / STATE_DIR / STATE_FILE
     if not f.exists():
-        return {"loaded": False, "note": "The state repository has no hunter-state.json yet. Save from the computer that has the profile first."}
+        return {"loaded": False, "note": "There is no state/hunter-state.json yet. Save from the computer that has the profile first (`jobhunter cloud save`)."}
     bundle = json.loads(f.read_text(encoding="utf-8"))
     res = import_bundle(ctx, db, bundle, inputs=restore, results=True)
     return {"loaded": True, "commit": _git(d, "rev-parse", "--short", "HEAD", check=False), "exported_at": bundle.get("exported_at"), "exported_by": bundle.get("exported_by"), **res}
+
+
+def update_from_upstream(repo=None, upstream_url: str = UPSTREAM_URL, branch: str = "main") -> dict:
+    """Bring KubeCraft's newer Hunter into the student's own copy. Upstream never touches `state/`, so a
+    merge cannot conflict with personal state; a conflict in code is reported, never resolved blindly."""
+    d = repo or software_repo()
+    if not d:
+        raise RepoError("Hunter is not running from a git clone, so there is nothing to update.")
+    remotes = _git(d, "remote").split()
+    if "upstream" not in remotes:
+        _git(d, "remote", "add", "upstream", upstream_url)
+    _git(d, "fetch", "--quiet", "upstream", branch)
+    before = _git(d, "rev-parse", "--short", "HEAD")
+    import subprocess
+
+    res = subprocess.run(["git", "-C", str(d), "-c", "user.name=Hunter", "-c", "user.email=hunter@jobhunteros.local", "merge", "--no-edit", f"upstream/{branch}"], capture_output=True, text=True, timeout=120)
+    if res.returncode != 0:
+        subprocess.run(["git", "-C", str(d), "merge", "--abort"], capture_output=True, text=True)
+        return {"updated": False, "note": "KubeCraft's update does not merge cleanly with your copy. Nothing was changed. Ask for help with: " + (res.stdout or res.stderr).strip()[:200]}
+    after = _git(d, "rev-parse", "--short", "HEAD")
+    changed = _git(d, "diff", "--name-only", before, after).split() if before != after else []
+    touched_state = [f for f in changed if f.startswith(STATE_DIR + "/")]
+    return {"updated": before != after, "from": before, "to": after, "files_changed": len(changed), "state_touched": touched_state, "note": "Up to date." if before == after else "Hunter is updated. Run `uv sync` once, then restart the dashboard if it is open."}

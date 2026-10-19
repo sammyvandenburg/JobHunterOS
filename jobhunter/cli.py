@@ -560,6 +560,8 @@ def cmd_cloud(args):
             emit(args, {"tagged": args.tag})
         elif c == "link":
             emit(args, cloudstate.link_repo(db, args.repo))
+        elif c == "update":
+            emit(args, cloudstate.update_from_upstream(args.repo, upstream_url=args.upstream or cloudstate.UPSTREAM_URL, branch=args.branch))
         elif c == "save":
             emit(args, cloudstate.save_to_repo(ctx, db, args.repo))
         elif c == "load":
@@ -1069,8 +1071,12 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("path")
     x = cls.add_parser("tag-run", help="mark the latest hunt run as a cloud run with a tag")
     x.add_argument("tag")
-    x = cls.add_parser("link", help="remember the clone of your private state repository")
+    x = cls.add_parser("link", help="use another clone for the state (default: this checkout's own state/ folder)")
     x.add_argument("--repo", required=True)
+    x = cls.add_parser("update", help="merge KubeCraft's newer Hunter into your own copy; state/ is never touched")
+    x.add_argument("--repo")
+    x.add_argument("--upstream")
+    x.add_argument("--branch", default="main")
     x = cls.add_parser("save", help="write the state into the state repository, commit and push")
     x.add_argument("--repo")
     x = cls.add_parser("load", help="pull the state repository and merge it (--restore on a fresh cloud machine)")

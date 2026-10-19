@@ -36,6 +36,10 @@ jobs:
       - name: Install (locked)
         run: uv sync --frozen --extra dev --extra browser
 
+      - name: No personal state in the shared repository
+        if: github.repository == 'sammyvandenburg/JobHunterOS'
+        run: |
+          if ls state/*.json >/dev/null 2>&1; then echo "state/*.json must never be committed to the shared repository"; exit 1; fi
       - name: Lint
         run: uv run ruff check .
 

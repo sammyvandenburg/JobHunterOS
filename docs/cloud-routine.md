@@ -4,56 +4,84 @@ Nothing here is operated by KubeCraft. The student's claude.ai account runs a sc
 cloud session (a Routine) with the student's own Gmail connector; a small private GitHub repository the
 student owns keeps the state between runs. The KubeCraft repository holds code only.
 
-## The student's path (what `/jobhunter` does)
-1. Clone or open JobHunterOS in Claude Code, run `/jobhunter`, give the CV and the LinkedIn PDF, confirm
-   the profile, answer the six basics. (Unchanged.)
-2. `Find jobs now` → the existing engine and sources rank the matches. (Unchanged.)
-3. "Shall I email you these?" → Hunter asks for the address once, then: a private `jobhunter-state`
-   repository (Claude creates it when it has a GitHub tool that can; otherwise the student creates it at
-   github.com/new and pastes the URL), `jobhunter cloud link`, `jobhunter cloud save`, and the digest goes
-   out through Claude's own Gmail connector (`digest prepare` → send → `digest record`).
-4. `/jobhunter nightly` → Hunter walks them through the routine (below).
-5. Every morning the routine restores the state from their repository, hunts, emails once, saves.
-6. On the laptop, `/jobhunter sync` (or opening Hunter) pulls the results into the dashboard; notes,
-   favorites and applications stay local and are never overwritten.
+## One private copy per student
+The student's unit of ownership is one private GitHub repository: their copy of Hunter (fork of
+KubeCraft's repository, or a private repository created from it as a template). It holds the software,
+the `/jobhunter` skill, and a `state/` folder with the two small files Hunter writes. There is no second
+repository and no KubeCraft service. KubeCraft's own repository never contains a state file: `state/`
+there holds only a README, and its CI fails if a `state/*.json` is ever committed to it.
+
+## The student's path
+1. Open my Hunter: their private copy in Claude Code (local, or a cloud session on that repository).
+2. Upload CV: `/jobhunter`, the CV and the LinkedIn PDF, confirm the profile.
+3. Set preferences: the six basics.
+4. Find jobs: the existing engine and sources.
+5. Open dashboard: `uv run jobhunter dashboard` on their computer (see below for the cloud workspace).
+6. Enable daily emails: "Shall I email you these?" → address once → `cloud save` commits `state/` to
+   their copy → the digest goes out through Claude's Gmail connector → `/jobhunter nightly` gives the
+   routine settings.
+Every morning the routine restores the state from `state/`, hunts, emails once, and pushes `state/`
+back to the copy's main branch. On the laptop, `/jobhunter sync` pulls the results into the dashboard;
+notes, favorites and applications stay local and are never overwritten. `/jobhunter update` merges
+KubeCraft's newer Hunter into the copy; `state/` is never touched by upstream, so it cannot conflict.
 
 ## What is reused and what was replaced
 Reused unchanged: onboarding, profile builder and evidence rules, matching engine, sources, dashboard,
 notes, favorites, application tracker, the digest composer and outbox, the `digest prepare` /
 `digest record` handoff, the "claude" transport, the state bundle (`cloud export` / `restore` / `import`)
 and its privacy filter, the standalone Gmail OAuth, SMTP and local scheduler (all optional).
-Replaced: the Google Drive relay (search, download, base64, upload through Claude's context) by three
-commands over the student's own git repository: `cloud link`, `cloud load [--restore]`, `cloud save`.
-The file is the same bundle, pretty-printed as `hunter-state.json`, plus `seen_jobs.json` (the emailed
-job keys, the one thing the original tiny Hunter kept). Git moves bytes on disk, so nothing passes
-through the model and size no longer matters; pushes rebase on a race.
+Replaced: the Google Drive relay by `cloud save` / `cloud load` over the student's own copy (git moves
+bytes on disk, nothing passes through the model); the separate state repository by the `state/` folder
+of that same copy. `cloud save` stages only `state/`, so a CV or database left next to the code is never
+committed by Hunter. `cloud update` is the distribution path.
 
-## What the state repository holds
+## What `state/` holds
 `hunter-state.json`: the approved profile facts and targets, preferences, three consents (readiness,
 profile approval, the confirmed digest address), the keys of dismissed and applied jobs, the emailed
 jobs with a snippet and their match outcome, cloud run summaries, the email history.
 `seen_jobs.json`: emailed job keys with time and status. Never: CV or LinkedIn text, notes, drafts,
-favorites, saved flags, application details, tokens. `cloud save` refuses a bundle with a forbidden section.
+favorites, saved flags, application details, tokens, mailbox contents. `cloud save` refuses a bundle
+with a forbidden section. The copy is private on GitHub; the profile facts in it are the student's own.
+
+## Distributing updates
+Fork or template, then `jobhunter cloud update`: it adds KubeCraft's repository as `upstream`, fetches,
+and merges `upstream/main` into the student's main. Because KubeCraft's commits never touch `state/`,
+the merge cannot conflict with personal state; a code conflict (only possible if the student edited the
+code) is reported and aborted, never resolved blindly. GitHub's "Sync fork" button does the same for a
+fork. Tested in `tests/test_cloud_repo.py`.
+
+## The dashboard from a cloud workspace
+The dashboard binds to 127.0.0.1 on purpose and has no login. A Claude Code cloud session can start it
+(`uv run jobhunter dashboard`) and Claude can drive it with a browser inside the container, but the
+session exposes no preview port or public URL to the student (checked 2026-10-19: no port-forwarding
+or preview facility is documented or present in the environment, and the network proxy does not
+support tunnels). So from the cloud workspace the dashboard is only reachable by Claude, not by the
+student. Temporary access for the student means running it on their own computer (or Remote Control
+to their computer); persistent hosting would need authentication the dashboard does not have and is a
+separate decision, not part of this design.
 
 ## The routine
 Create it on https://claude.ai/code/routines (or with `/schedule` in Claude Code); that is where the
 repository and the connector are attached. A routine created through the remote-control API from a
 cloud session got neither on this account (verified 2026-10-19), so the agent gives the student these
 settings instead of creating it:
-- Repository: JobHunterOS (the branch KubeCraft tells students to use). The student's GitHub access in
-  Claude must also cover their `jobhunter-state` repository; the routine attaches it with `add_repo`.
+- Repository: the student's own private copy of Hunter, branch main.
 - Connector: Gmail. Nothing else.
 - Schedule: once a day, early morning, the student's timezone (minimum interval is hourly).
 - Prompt:
 
 ```
 You are Hunter (JobHunterOS). Do the "Nightly run" in .claude/skills/jobhunter/cloud.md, step by step,
-in this repository. My private state repository is <github-user>/jobhunter-state. Use only the Gmail
-connector and the add_repo tool as that file says. Send email only to the address
-`uv run jobhunter digest prepare --json` prints, and only when its status is "ready". Do not commit or
-push anything except the state repository through `jobhunter cloud save`. Finish with the three-line
-report the file asks for.
+in this repository. Use only the Gmail connector. Send email only to the address
+`uv run jobhunter digest prepare --json` prints, and only when its status is "ready". Commit and push
+nothing except what `uv run jobhunter cloud save` does. Finish with the three-line report the file
+asks for.
 ```
+
+Open point to verify on the first real run: a cloud session normally pushes to a session branch, not
+to main. `cloud save` pushes the current branch; if the routine's checkout is on a session branch, the
+state would land there and the next run would not see it. The first "Run now" shows which branch
+received the commit; if it is not main, the routine needs its outcome branch set to main.
 
 ## Why JobSpy is not a default source
 The earlier tiny Hunter searched LinkedIn with python-jobspy. JobSpy scrapes LinkedIn, Indeed, Glassdoor

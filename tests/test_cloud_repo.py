@@ -54,9 +54,9 @@ def test_github_state_round_trip_two_cloud_runs_and_the_laptop(ctx, db, tmp_path
     assert cloudstate.link_repo(db, laptop_clone)["remote"]
     res = cloudstate.save_to_repo(ctx, db)
     assert res["saved"] and res["pushed"] and res["jobs"] == 1  # the dismissed job travels as an exclusion
-    state = json.loads((laptop_clone / "hunter-state.json").read_text())
+    state = json.loads((laptop_clone / "state" / "hunter-state.json").read_text())
     assert "Ask about" not in json.dumps(state) and state["inputs"]["consents"]["digest_email"]["address"] == "student@example.com"
-    assert json.loads((laptop_clone / "seen_jobs.json").read_text()) == {}
+    assert json.loads((laptop_clone / "state" / "seen_jobs.json").read_text()) == {}
 
     # Cloud run one: fresh machine, fresh clone, restore, hunt, email once, save.
     c1, d1 = _fresh(tmp_path, "cloud1")
@@ -71,7 +71,7 @@ def test_github_state_round_trip_two_cloud_runs_and_the_laptop(ctx, db, tmp_path
     saved1 = cloudstate.save_to_repo(c1, d1, clone1)
     assert saved1["saved"] and saved1["pushed"] and saved1["notifications"] == 1
     d1.close()
-    seen = json.loads(subprocess.run(["git", "-C", str(_clone(github, tmp_path / "peek")), "show", "HEAD:seen_jobs.json"], capture_output=True, text=True, check=True).stdout)
+    seen = json.loads(subprocess.run(["git", "-C", str(_clone(github, tmp_path / "peek")), "show", "HEAD:state/seen_jobs.json"], capture_output=True, text=True, check=True).stdout)
     assert len(seen) == len(h1["jobs"]) and all(v["status"] == "sent" for v in seen.values())
 
     # Cloud run two: another fresh machine; restores run one's state; sends nothing.
@@ -107,7 +107,7 @@ def test_github_state_round_trip_two_cloud_runs_and_the_laptop(ctx, db, tmp_path
     cloudstate.load_from_repo(ctx, db)
     assert views.job_detail(db, berlin["id"])["favorited"] is True
     assert db.fetchone("SELECT COUNT(*) AS n FROM notifications")["n"] == 1
-    assert "Favorite" not in (laptop_clone / "hunter-state.json").read_text() and "favorited" not in (laptop_clone / "hunter-state.json").read_text()
+    assert "Favorite" not in (laptop_clone / "state" / "hunter-state.json").read_text() and "favorited" not in (laptop_clone / "state" / "hunter-state.json").read_text()
 
 
 def test_push_race_is_resolved_by_rebase_and_errors_are_plain(ctx, db, tmp_path, github):
@@ -130,5 +130,54 @@ def test_push_race_is_resolved_by_rebase_and_errors_are_plain(ctx, db, tmp_path,
     assert cloudstate.save_to_repo(ctx, db)["saved"] is False
     with pytest.raises(cloudstate.RepoError):
         cloudstate.link_repo(db, tmp_path / "not-a-clone")
-    with pytest.raises(cloudstate.RepoError):
-        cloudstate.repo_dir(connect(AppContext.from_env(demo=False, home=tmp_path / "nolink").paths.db_path))
+    # Nothing linked means "this checkout": the student's own private copy of Hunter is the state repository.
+    assert cloudstate.repo_dir(connect(AppContext.from_env(demo=False, home=tmp_path / "nolink").paths.db_path)) == cloudstate.software_repo()
+
+
+def test_single_private_copy_keeps_code_and_state_and_updates_cleanly(ctx, db, tmp_path, github):
+    """One repository per student: Hunter's code plus state/. KubeCraft's updates merge in without touching state."""
+    # "KubeCraft" publishes the tool; the student has a private copy with an origin of their own.
+    upstream = tmp_path / "upstream.git"
+    subprocess.run(["git", "init", "--bare", "-q", "-b", "main", str(upstream)], check=True)
+    kube = _clone(upstream, tmp_path / "kube")
+    (kube / "hunter.py").write_text("print('v1')\n")
+    (kube / "state").mkdir()
+    (kube / "state" / "README.md").write_text("private state lives here\n")
+    _git(kube, "add", "-A")
+    _git(kube, "-c", "user.name=k", "-c", "user.email=k@k", "commit", "-q", "-m", "v1")
+    _git(kube, "push", "-q", "origin", "main")
+    student = _clone(upstream, tmp_path / "student")
+    _git(student, "remote", "set-url", "origin", str(github))  # their own private repository
+    _git(student, "push", "-q", "-f", "origin", "main")
+    approve_profile(db, ctx)
+    notifications.set_recipient(db, "student@example.com")
+    res = cloudstate.save_to_repo(ctx, db, student)
+    assert res["saved"] and res["pushed"]
+    committed = _git(student, "show", "--stat", "--name-only", "--format=", "HEAD").split()
+    assert committed == ["state/hunter-state.json", "state/seen_jobs.json"]
+    # A stray private file next to the code is never staged by a save.
+    (student / "my-cv.pdf").write_bytes(b"%PDF-1.4 secret")
+    db.set_setting("preferences", {**(db.get_setting("preferences") or {}), "current_location": "Utrecht, Netherlands"})
+    cloudstate.save_to_repo(ctx, db, student)
+    assert "my-cv.pdf" not in _git(student, "ls-files")
+    # KubeCraft ships v2; the student's copy updates without touching their state.
+    (kube / "hunter.py").write_text("print('v2')\n")
+    _git(kube, "add", "-A")
+    _git(kube, "-c", "user.name=k", "-c", "user.email=k@k", "commit", "-q", "-m", "v2")
+    _git(kube, "push", "-q", "origin", "main")
+    up = cloudstate.update_from_upstream(student, upstream_url=str(upstream))
+    assert up["updated"] and up["state_touched"] == [] and (student / "hunter.py").read_text() == "print('v2')\n"
+    assert "Utrecht" in (student / "state" / "hunter-state.json").read_text()
+    assert cloudstate.update_from_upstream(student, upstream_url=str(upstream))["updated"] is False
+    # A conflicting upstream change is reported, not forced.
+    (student / "hunter.py").write_text("print('student edit')\n")
+    _git(student, "add", "-A")
+    _git(student, "-c", "user.name=s", "-c", "user.email=s@s", "commit", "-q", "-m", "local edit")
+    (kube / "hunter.py").write_text("print('v3')\n")
+    _git(kube, "add", "-A")
+    _git(kube, "-c", "user.name=k", "-c", "user.email=k@k", "commit", "-q", "-m", "v3")
+    _git(kube, "push", "-q", "origin", "main")
+    up = cloudstate.update_from_upstream(student, upstream_url=str(upstream))
+    assert up["updated"] is False and "does not merge cleanly" in up["note"] and _git(student, "status", "--porcelain") == ""
+    # The default location is the checkout itself: no link, no second repository.
+    assert cloudstate.software_repo() is not None and cloudstate.repo_dir(db) == cloudstate.software_repo()

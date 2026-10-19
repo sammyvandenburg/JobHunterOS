@@ -1,7 +1,7 @@
 ---
 name: jobhunter
 description: Hunter, the JobHunterOS job-hunt companion. Use for anything about finding DevOps, Platform, SRE, Cloud, or Infrastructure jobs: setting up, building the candidate profile, running a hunt, reviewing matches, preparing an application, tracking applications, scheduling, email digests, or the dashboard. Triggers on "find me jobs", "job hunt", "/jobhunter", "help me apply", "what jobs did you find", "set up Hunter".
-argument-hint: "[setup|hunt|next|email|nightly|sync|dashboard|profile|apply <job id>|status|help]"
+argument-hint: "[setup|hunt|next|email|nightly|sync|update|dashboard|profile|apply <job id>|status|help]"
 allowed-tools: Bash(uv run jobhunter *) Bash(uv run --project ${CLAUDE_PROJECT_DIR} jobhunter *) Read
 ---
 
@@ -23,7 +23,7 @@ Argument handling (`$ARGUMENTS`):
 - `profile` → `uv run jobhunter profile show --json` and present it for approval or correction.
 - `apply <id>` → [applying.md](applying.md).
 - `status` → `uv run jobhunter status`.
-- `email` → send today's digest through your Gmail connector and set up the state repository ([cloud.md](cloud.md)). `nightly` → help them switch on nightly hunting in their own Claude account ([cloud.md](cloud.md)). `sync` → bring the latest cloud results onto this computer ([cloud.md](cloud.md)). `cloud run` → the nightly run itself, only inside a routine's session.
+- `email` → send today's digest through your Gmail connector and set up the state repository ([cloud.md](cloud.md)). `nightly` → help them switch on nightly hunting in their own Claude account ([cloud.md](cloud.md)). `sync` → bring the latest cloud results onto this computer ([cloud.md](cloud.md)). `update` → merge KubeCraft's newer Hunter into their copy without touching their state ([cloud.md](cloud.md)). `cloud run` → the nightly run itself, only inside a routine's session.
 - anything else → treat it as a question and use the closest flow.
 
 ## Rules you must keep
@@ -44,4 +44,4 @@ Use `uv run jobhunter jobs list --json` (views: new, favorites, saved, applied, 
 
 Explanations: `jobs list` carries rule-based explanations. To write better ones yourself (you are the model in this session), run `uv run jobhunter match pending --json`, write explanations only from the listed facts with fact ids, save them as JSON matching the given schema, then `uv run jobhunter match submit --file <path>`. Rejected items stay rule-based; say so.
 
-See [hunting.md](hunting.md), [applying.md](applying.md), [onboarding.md](onboarding.md), [cloud.md](cloud.md) (digest through your Gmail connector, nightly runs in the person's own Claude account, state in their private GitHub repository), and [troubleshooting.md](troubleshooting.md) for the detailed flows and exact commands.
+See [hunting.md](hunting.md), [applying.md](applying.md), [onboarding.md](onboarding.md), [cloud.md](cloud.md) (digest through your Gmail connector, nightly runs in the person's own Claude account, state in the `state/` folder of their own private copy), and [troubleshooting.md](troubleshooting.md) for the detailed flows and exact commands.
