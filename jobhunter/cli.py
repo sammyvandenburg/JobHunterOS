@@ -558,6 +558,12 @@ def cmd_cloud(args):
         elif c == "tag-run":
             cloudstate.tag_latest_run(db, args.tag)
             emit(args, {"tagged": args.tag})
+        elif c == "link":
+            emit(args, cloudstate.link_repo(db, args.repo))
+        elif c == "save":
+            emit(args, cloudstate.save_to_repo(ctx, db, args.repo))
+        elif c == "load":
+            emit(args, cloudstate.load_from_repo(ctx, db, args.repo, restore=args.restore))
         elif c == "status":
             emit(args, cloudstate.status(db))
     except cloudstate.BundleError as exc:
@@ -1063,6 +1069,13 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("path")
     x = cls.add_parser("tag-run", help="mark the latest hunt run as a cloud run with a tag")
     x.add_argument("tag")
+    x = cls.add_parser("link", help="remember the clone of your private state repository")
+    x.add_argument("--repo", required=True)
+    x = cls.add_parser("save", help="write the state into the state repository, commit and push")
+    x.add_argument("--repo")
+    x = cls.add_parser("load", help="pull the state repository and merge it (--restore on a fresh cloud machine)")
+    x.add_argument("--repo")
+    x.add_argument("--restore", action="store_true")
     cls.add_parser("status")
     cl.set_defaults(fn=cmd_cloud)
 

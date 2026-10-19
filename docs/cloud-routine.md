@@ -1,80 +1,81 @@
-# Nightly hunting in the student's own Claude account (proof setup)
+# Nightly hunting in the student's own Claude account
 
 Nothing here is operated by KubeCraft. The student's claude.ai account runs a scheduled Claude Code
-cloud session (a Routine), with the student's own Gmail and Google Drive connectors. The repository
-only provides the code and the procedure (`.claude/skills/jobhunter/cloud.md`).
+cloud session (a Routine) with the student's own Gmail connector; a small private GitHub repository the
+student owns keeps the state between runs. The KubeCraft repository holds code only.
 
-## What the student needs
-- Claude Pro, Max, Team or Enterprise (Routines and cloud sessions are not on the free plan).
-- The Gmail and Google Drive connectors connected at https://claude.ai/customize/connectors with
-  the account that should receive the digest and hold the state file.
-- This repository reachable from their claude.ai GitHub access (a private fork is fine; it holds
-  code only, never data).
-- One local step first: on their computer, in Claude Code, `/jobhunter cloud sync` creates the private
-  Drive folder (with their consent) and uploads the first state file from their approved profile.
+## The student's path (what `/jobhunter` does)
+1. Clone or open JobHunterOS in Claude Code, run `/jobhunter`, give the CV and the LinkedIn PDF, confirm
+   the profile, answer the six basics. (Unchanged.)
+2. `Find jobs now` → the existing engine and sources rank the matches. (Unchanged.)
+3. "Shall I email you these?" → Hunter asks for the address once, then: a private `jobhunter-state`
+   repository (Claude creates it when it has a GitHub tool that can; otherwise the student creates it at
+   github.com/new and pastes the URL), `jobhunter cloud link`, `jobhunter cloud save`, and the digest goes
+   out through Claude's own Gmail connector (`digest prepare` → send → `digest record`).
+4. `/jobhunter nightly` → Hunter walks them through the routine (below).
+5. Every morning the routine restores the state from their repository, hunts, emails once, saves.
+6. On the laptop, `/jobhunter sync` (or opening Hunter) pulls the results into the dashboard; notes,
+   favorites and applications stay local and are never overwritten.
+
+## What is reused and what was replaced
+Reused unchanged: onboarding, profile builder and evidence rules, matching engine, sources, dashboard,
+notes, favorites, application tracker, the digest composer and outbox, the `digest prepare` /
+`digest record` handoff, the "claude" transport, the state bundle (`cloud export` / `restore` / `import`)
+and its privacy filter, the standalone Gmail OAuth, SMTP and local scheduler (all optional).
+Replaced: the Google Drive relay (search, download, base64, upload through Claude's context) by three
+commands over the student's own git repository: `cloud link`, `cloud load [--restore]`, `cloud save`.
+The file is the same bundle, pretty-printed as `hunter-state.json`, plus `seen_jobs.json` (the emailed
+job keys, the one thing the original tiny Hunter kept). Git moves bytes on disk, so nothing passes
+through the model and size no longer matters; pushes rebase on a race.
+
+## What the state repository holds
+`hunter-state.json`: the approved profile facts and targets, preferences, three consents (readiness,
+profile approval, the confirmed digest address), the keys of dismissed and applied jobs, the emailed
+jobs with a snippet and their match outcome, cloud run summaries, the email history.
+`seen_jobs.json`: emailed job keys with time and status. Never: CV or LinkedIn text, notes, drafts,
+favorites, saved flags, application details, tokens. `cloud save` refuses a bundle with a forbidden section.
 
 ## The routine
-Create it **from the claude.ai routines page** (https://claude.ai/code/routines) or with `/schedule`
-inside Claude Code, because that is where the connectors are attached. A routine created through the
-remote-control API from a cloud session stores no connectors on this account (verified 2026-10-19:
-"the connectors parameter is not available for this organization"), and a session without the Drive
-and Gmail tools cannot restore state or send the digest. Settings:
-- Repository: this one, default branch (or the branch KubeCraft tells students to use).
-- Connectors: Google Drive and Gmail. Nothing else.
-- Schedule: once a day, early morning in the student's timezone (minimum interval is hourly).
+Create it on https://claude.ai/code/routines (or with `/schedule` in Claude Code); that is where the
+repository and the connector are attached. A routine created through the remote-control API from a
+cloud session got neither on this account (verified 2026-10-19), so the agent gives the student these
+settings instead of creating it:
+- Repository: JobHunterOS (the branch KubeCraft tells students to use). The student's GitHub access in
+  Claude must also cover their `jobhunter-state` repository; the routine attaches it with `add_repo`.
+- Connector: Gmail. Nothing else.
+- Schedule: once a day, early morning, the student's timezone (minimum interval is hourly).
 - Prompt:
 
 ```
-You are Hunter. Do the "Nightly run" in .claude/skills/jobhunter/cloud.md, step by step, in this
-repository. Use only the Google Drive and Gmail connectors as that file says. Send email only to the
-address `uv run jobhunter digest prepare --json` prints, and only when its status is "ready".
-Do not email anyone else, do not write anything outside the Drive folder "JobHunterOS", and finish
-with the three-line report the file asks for.
+You are Hunter (JobHunterOS). Do the "Nightly run" in .claude/skills/jobhunter/cloud.md, step by step,
+in this repository. My private state repository is <github-user>/jobhunter-state. Use only the Gmail
+connector and the add_repo tool as that file says. Send email only to the address
+`uv run jobhunter digest prepare --json` prints, and only when its status is "ready". Do not commit or
+push anything except the state repository through `jobhunter cloud save`. Finish with the three-line
+report the file asks for.
 ```
 
-## What each run does
-restore state from Drive → hunt with the same Python code as on the laptop → prepare the digest →
-Claude sends it through the student's Gmail → record the outcome → export the state back to Drive.
-Two runs in a row never send the same digest: the email history travels in the state file.
+## Why JobSpy is not a default source
+The earlier tiny Hunter searched LinkedIn with python-jobspy. JobSpy scrapes LinkedIn, Indeed, Glassdoor
+and Google Jobs pages. LinkedIn's User Agreement and Indeed's terms forbid automated collection, which
+is why this repository's rules say "No scraping of LinkedIn or Indeed" and docs/sources.md lists them as
+import-only (alert emails, pasted text). Adding JobSpy would reverse that rule; it is a product decision,
+not a technical one. The existing 89 employer boards and feeds found 125 relevant jobs for the synthetic
+profile in the proof, so the default works without it.
 
 ## Costs and limits (checked 2026-10-19 against code.claude.com/docs/en/routines)
-Routines draw on the student's subscription usage like an interactive session. Each run clones the
-repository and spends a few minutes of tool calls; the hunt itself is deterministic Python and costs
-no tokens beyond reading its short JSON output. Limits: minimum hourly schedule; 100 scheduled runs
-per hour per account. Network: cloud sessions reach the public job boards (verified in this build).
-
-## Size of the state file
-Claude carries the file through its own context and connector calls, so it must stay small. The
-exporter therefore writes only what the other side cannot re-derive (the emailed and excluded jobs with
-their match outcome and a short snippet, the email history, run summaries, and the inputs), gzipped:
-about 9 KB for a night with two feeds in the proof. A full 89-source night is expected to stay under
-30 KB because the count of emailed jobs is capped per day. The first attempt, every relevant job with
-its full text, was 7 MB raw and could not be relayed at all; that is the data-persistence risk to keep
-in mind if the bundle ever grows (for example by carrying full descriptions again).
+Routines draw on the student's subscription usage like an interactive session (Pro, Max, Team,
+Enterprise). Each run clones the repository and spends a few minutes of tool calls; the hunt itself is
+deterministic Python. Limits: minimum hourly schedule; 100 scheduled runs per hour per account.
 
 ## What is and is not verified
-Live proof on 2026-10-19, owner's account, synthetic "Sam Example" profile, private Drive folder
-`JobHunterOS-proof`, two public feeds (Remotive, Arbeitnow):
-- Run one (fresh data folder): restored the laptop's state from Drive (byte-identical round trip),
-  hunted 1,212 postings (125 relevant), prepared a 15-job digest, sent it through the owner's Gmail
-  connector to the owner's own address (Gmail message id recorded), recorded `sent`, exported and
-  uploaded `hunter-state-…json.gz` (size verified on download).
-- Run two (another fresh folder): restored run one's state (15 jobs, 1 notification, matches),
-  hunted again, and sent nothing: "Already emailed today", with the 15 emailed jobs held back from
-  pending regardless of the day rule.
-- Laptop: imported the cloud results (15 jobs with the cloud's groups, the sent notification, the
-  cloud runs), made a real dashboard favorite and note on a cloud-found job, exported (neither the
-  note nor the favorite left the machine); run three restored that, hunted, skipped the email; the
-  laptop imported run three and still had the favorite, the note, one notification, its own profile
-  and documents.
-- Scheduled run: a one-time Routine created through the remote-control API fired on time
-  (06:43:28Z) in a fresh cloud session on the owner's account, on a new machine. That session had no
-  repository checkout (`/workspace` empty) and no Drive or Gmail tools, because this creation path
-  stores neither a source repository nor connectors on this account. Hunter stopped at step 1 and
-  reported "nothing was run, sent, or saved", which is the right behaviour, and the Drive folder was
-  unchanged. So the scheduled proof is blocked on how the routine is created, not on the code: the
-  owner creates it on https://claude.ai/code/routines with this repository (branch
-  `claude/cloud-agent-proof`) and the Google Drive and Gmail connectors attached, using the prompt
-  above. That run is still outstanding.
-The round trip, the no-repeat rule and the dashboard-action survival are also pinned by
-`tests/test_cloud_agent.py`.
+- `tests/test_cloud_repo.py`: two fresh cloud machines and the laptop share the state through a bare git
+  repository: restore, hunt, one email, no repeat, dashboard favorite and note survive, a push race is
+  resolved by rebase, nothing forbidden leaves the laptop.
+- `tests/test_cloud_agent.py`: the bundle, the handoff outcomes, the once-per-day rule.
+- Live, 2026-10-19, owner's account, synthetic profile: two independent cloud runs with the Drive relay,
+  one real digest sent through the owner's Gmail connector and recorded, no repeat, dashboard action
+  survived. (That relay is superseded by the repository store; the Gmail step is the same.)
+- A one-time routine fired on time in a fresh cloud session but, created through the API, had no
+  repository and no connectors; it stopped honestly. The scheduled run with the repository and the Gmail
+  connector attached, created on the routines page, is the remaining proof.

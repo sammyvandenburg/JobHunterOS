@@ -305,7 +305,7 @@ def tag_latest_run(db: Database, tag: str) -> None:
 def status(db: Database) -> dict:
     last = db.get_setting("cloud.last_import") or {}
     exported = db.get_setting("cloud.last_export") or {}
-    return {"role": db.get_setting("cloud.role") or "laptop", "last_import": last, "last_export": exported, "digest_transport": db.get_setting("digest.transport")}
+    return {"role": db.get_setting("cloud.role") or "laptop", "state_repo": db.get_setting(REPO_SETTING), "last_import": last, "last_export": exported, "digest_transport": db.get_setting("digest.transport")}
 
 
 def check_bundle_privacy(bundle: dict) -> list[str]:
@@ -320,3 +320,104 @@ def ago(ts: str | None) -> str:
         return "never"
     s = int((now() - t).total_seconds())
     return "just now" if s < 90 else (f"{s // 60} min ago" if s < 3600 else f"{s // 3600} h ago")
+
+
+# ---------------------------------------------------------------- a private git repository as the state store
+STATE_FILE = "hunter-state.json"
+SEEN_FILE = "seen_jobs.json"
+REPO_SETTING = "cloud.state_repo"
+
+
+class RepoError(BundleError):
+    pass
+
+
+def _git(repo_dir, *args: str, check: bool = True) -> str:
+    import subprocess
+
+    res = subprocess.run(["git", "-C", str(repo_dir), *args], capture_output=True, text=True, timeout=120)
+    if check and res.returncode != 0:
+        raise RepoError(f"git {' '.join(args)} failed: {(res.stderr or res.stdout).strip()[:300]}")
+    return (res.stdout or "").strip()
+
+
+def _has_remote(repo_dir) -> bool:
+    return bool(_git(repo_dir, "remote", check=False))
+
+
+def link_repo(db: Database, repo_dir) -> dict:
+    """Remember the student's own private state repository (a git clone on this machine)."""
+    from pathlib import Path as _P
+
+    d = _P(repo_dir).expanduser().resolve()
+    if not (d / ".git").exists():
+        raise RepoError(f"{d} is not a git clone. Clone your private state repository there first.")
+    db.set_setting(REPO_SETTING, str(d))
+    return {"state_repo": str(d), "remote": _git(d, "remote", "get-url", "origin", check=False) or None}
+
+
+def repo_dir(db: Database, override=None):
+    from pathlib import Path as _P
+
+    d = override or db.get_setting(REPO_SETTING)
+    if not d:
+        raise RepoError("No state repository linked. Run `jobhunter cloud link --repo <clone>` first.")
+    return _P(d)
+
+
+def save_to_repo(ctx: AppContext, db: Database, repo=None) -> dict:
+    """Export the bundle into the state repository, commit, push (pull --rebase first when a remote exists).
+    The file is pretty JSON so a diff on GitHub stays readable; `seen_jobs.json` is the human-readable
+    list of emailed jobs, the one thing the original tiny Hunter kept."""
+    d = repo_dir(db, repo)
+    if _has_remote(d):
+        _git(d, "pull", "--rebase", "--quiet", check=False)
+    bundle = export_bundle(ctx, db)
+    leaks = check_bundle_privacy(bundle)
+    if leaks:
+        raise BundleError(f"Refusing to save: forbidden content {leaks}")
+    (d / STATE_FILE).write_text(json.dumps(bundle, ensure_ascii=False, indent=1), encoding="utf-8")
+    seen = {}
+    for n in bundle.get("results", {}).get("notifications", []):
+        for k in n.get("job_keys", []):
+            if n.get("status") in {"sent", "uncertain", "sending"}:
+                seen[k] = {"emailed_at": n.get("sent_at") or n.get("created_at"), "status": n.get("status")}
+    (d / SEEN_FILE).write_text(json.dumps(seen, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
+    gitignore = d / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text("# Only Hunter's state files belong here.\n*.db\n*.sqlite\n*.pdf\n*.docx\n")
+    _git(d, "add", "-A")
+    if not _git(d, "status", "--porcelain"):
+        return {"saved": False, "note": "Nothing changed since the last save.", "path": str(d)}
+    from jobhunter.util import hostname
+
+    _git(d, "-c", "user.name=Hunter", "-c", "user.email=hunter@jobhunteros.local", "commit", "-q", "-m", f"Hunter state {bundle['exported_at']} ({bundle['exported_by']} on {hostname()})")
+    pushed = None
+    if _has_remote(d):
+        last = ""
+        for _ in range(3):
+            try:
+                _git(d, "push", "--quiet")
+                pushed = True
+                break
+            except RepoError as exc:
+                last = str(exc)
+                _git(d, "pull", "--rebase", "--quiet", check=False)
+        if not pushed:
+            raise RepoError(f"Could not push the state: {last}")
+    db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(d / STATE_FILE), "pushed": pushed})
+    return {"saved": True, "pushed": pushed, "commit": _git(d, "rev-parse", "--short", "HEAD"), "path": str(d / STATE_FILE), "jobs": len(bundle["results"]["jobs"]), "notifications": len(bundle["results"]["notifications"])}
+
+
+def load_from_repo(ctx: AppContext, db: Database, repo=None, restore: bool = False) -> dict:
+    """Pull the state repository and merge its file: `restore=True` on a fresh cloud machine (inputs too),
+    `restore=False` on the laptop (results only; notes, favorites, applications are never touched)."""
+    d = repo_dir(db, repo)
+    if _has_remote(d):
+        _git(d, "pull", "--rebase", "--quiet", check=False)
+    f = d / STATE_FILE
+    if not f.exists():
+        return {"loaded": False, "note": "The state repository has no hunter-state.json yet. Save from the computer that has the profile first."}
+    bundle = json.loads(f.read_text(encoding="utf-8"))
+    res = import_bundle(ctx, db, bundle, inputs=restore, results=True)
+    return {"loaded": True, "commit": _git(d, "rev-parse", "--short", "HEAD", check=False), "exported_at": bundle.get("exported_at"), "exported_by": bundle.get("exported_by"), **res}

@@ -1,7 +1,7 @@
 ---
 name: jobhunter
 description: Hunter, the JobHunterOS job-hunt companion. Use for anything about finding DevOps, Platform, SRE, Cloud, or Infrastructure jobs: setting up, building the candidate profile, running a hunt, reviewing matches, preparing an application, tracking applications, scheduling, email digests, or the dashboard. Triggers on "find me jobs", "job hunt", "/jobhunter", "help me apply", "what jobs did you find", "set up Hunter".
-argument-hint: "[setup|hunt|next|dashboard|profile|apply <job id>|status|cloud run|cloud sync|help]"
+argument-hint: "[setup|hunt|next|email|nightly|sync|dashboard|profile|apply <job id>|status|help]"
 allowed-tools: Bash(uv run jobhunter *) Bash(uv run --project ${CLAUDE_PROJECT_DIR} jobhunter *) Read
 ---
 
@@ -13,7 +13,7 @@ Everything you do goes through the `jobhunter` command line (run it as `uv run j
 
 1. Run `uv run jobhunter next --json`.
 2. If `setup_next` is not null, continue setup with that step (see [onboarding.md](onboarding.md)). Setup is four steps: finished? → two files → "does this look right?" → six quick basics in one go. Never ask for anything already answered. Never ask about visas or moving.
-3. If setup is done, read `attention.items` and tell the person the most useful thing first, then offer: find jobs now, show the best matches, open the dashboard, or help with an application.
+3. If setup is done, read `attention.items` and tell the person the most useful thing first, then offer: find jobs now, show the best matches, email them the digest (if you have the Gmail connector), switch on nightly hunting, open the dashboard, or help with an application. After the first hunt with results, offer the email once: "Shall I email you these? Which address?" and follow [cloud.md](cloud.md).
 
 Argument handling (`$ARGUMENTS`):
 - `setup` → onboarding flow.
@@ -23,7 +23,7 @@ Argument handling (`$ARGUMENTS`):
 - `profile` → `uv run jobhunter profile show --json` and present it for approval or correction.
 - `apply <id>` → [applying.md](applying.md).
 - `status` → `uv run jobhunter status`.
-- `cloud run` → the nightly cloud run in [cloud.md](cloud.md) (only in a cloud session with Drive and Gmail connectors). `cloud sync` → bring the latest cloud results onto this computer, also in [cloud.md](cloud.md).
+- `email` → send today's digest through your Gmail connector and set up the state repository ([cloud.md](cloud.md)). `nightly` → help them switch on nightly hunting in their own Claude account ([cloud.md](cloud.md)). `sync` → bring the latest cloud results onto this computer ([cloud.md](cloud.md)). `cloud run` → the nightly run itself, only inside a routine's session.
 - anything else → treat it as a question and use the closest flow.
 
 ## Rules you must keep
@@ -44,4 +44,4 @@ Use `uv run jobhunter jobs list --json` (views: new, favorites, saved, applied, 
 
 Explanations: `jobs list` carries rule-based explanations. To write better ones yourself (you are the model in this session), run `uv run jobhunter match pending --json`, write explanations only from the listed facts with fact ids, save them as JSON matching the given schema, then `uv run jobhunter match submit --file <path>`. Rejected items stay rule-based; say so.
 
-See [hunting.md](hunting.md), [applying.md](applying.md), [onboarding.md](onboarding.md), [cloud.md](cloud.md) (nightly runs in the person's own Claude account, digest through your Gmail connector, state in their Drive), and [troubleshooting.md](troubleshooting.md) for the detailed flows and exact commands.
+See [hunting.md](hunting.md), [applying.md](applying.md), [onboarding.md](onboarding.md), [cloud.md](cloud.md) (digest through your Gmail connector, nightly runs in the person's own Claude account, state in their private GitHub repository), and [troubleshooting.md](troubleshooting.md) for the detailed flows and exact commands.
