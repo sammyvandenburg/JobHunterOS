@@ -150,6 +150,8 @@ def retry_plan(db: Database, row: dict) -> dict:
     from jobhunter.services.email import gmail, transport
 
     attempts = int(row.get("attempts") or 0)
+    if db.get_setting("digest.transport") == "claude":
+        return {"will_retry": False, "reason": "Claude sends the emails in this setup and tries again on its next run"}
     if attempts >= AUTO_RETRY_MAX_ATTEMPTS:
         return {"will_retry": False, "reason": f"Hunter already tried {attempts} times and will not try again by itself"}
     if not transport.describe(db)["configured"]:
@@ -301,6 +303,43 @@ def _jobs_by_ids(db: Database, ids: list[int]) -> list[dict]:
 
 def history(db: Database, limit: int = 30) -> list[dict]:
     return db.fetchall("SELECT * FROM notifications ORDER BY id DESC LIMIT ?", (limit,))
+
+
+def prepare_handoff(ctx: AppContext, db: Database) -> dict:
+    """Compose the next digest and claim it in the outbox, for Claude to send through its own Gmail connector.
+    Python never sends in this mode and never sees a token. The recipient in the result is the only address
+    Claude may use; `record_handoff` closes the row with what really happened."""
+    addr = recipient(db)
+    if not addr:
+        raise DigestError("No confirmed digest address. Confirm one first (`jobhunter digest address you@example.com`).")
+    jobs = pending_jobs(db)
+    if not jobs:
+        return {"status": "skipped", "note": "Nothing new worth emailing."}
+    digest = compose(db, jobs)
+    path = ctx.paths.exports_dir / "digests" / f"digest-{now_iso().replace(':', '')}.txt"
+    write_private_file(path, digest.text.encode("utf-8"))
+    nid, why_not = _claim(db, digest, addr, str(path), False)
+    if why_not:
+        return why_not
+    db.update("notifications", {"channel": "email", "error": None}, "id = ?", (nid,))
+    return {"status": "ready", "notification_id": nid, "to": addr, "subject": digest.subject, "text": digest.text, "html": digest.html, "content_hash": digest.content_hash, "jobs": digest.job_ids, "rules": ["Send to exactly this address, nothing else, nobody in cc or bcc.", "Send the subject, text and html as given.", "Then run `jobhunter digest record <notification_id> sent --message-id <id>`; on an error `failed --error \"...\"`; if you do not know whether it went out, `uncertain`."]}
+
+
+def record_handoff(db: Database, notification_id: int, outcome: str, message_id: str | None = None, error: str | None = None) -> dict:
+    """What happened to a digest Claude sent (or did not). Only a claimed ('sending') row can be recorded."""
+    if outcome not in {"sent", "failed", "uncertain"}:
+        raise DigestError("Outcome must be sent, failed, or uncertain.")
+    row = db.fetchone("SELECT * FROM notifications WHERE id = ?", (notification_id,))
+    if not row:
+        raise DigestError(f"Digest {notification_id} not found.")
+    if row["status"] != "sending":
+        raise DigestError(f"Digest {notification_id} is already recorded as {row['status']}; nothing changed.")
+    with db.tx():
+        db.update("notifications", {"status": outcome, "error": error if outcome != "sent" else None, "provider_message_id": message_id, "sent_at": now_iso() if outcome == "sent" else None}, "id = ?", (notification_id,))
+        if outcome == "sent":
+            db.execute("UPDATE notifications SET resolved_at = ?, resolution = 'superseded' WHERE kind = 'digest' AND status = 'failed' AND resolved_at IS NULL AND id != ?", (now_iso(), notification_id))
+            db.execute("UPDATE schedule SET last_digest_at = ? WHERE id = 1", (now_iso(),))
+    return {"notification_id": notification_id, "status": outcome, "note": {"sent": "Recorded as sent.", "failed": "Recorded as failed. Hunter will offer it again under Needs attention.", "uncertain": "Recorded as uncertain. It will not be sent again by itself; the person decides under Needs attention."}[outcome]}
 
 
 def send_test(ctx: AppContext, db: Database) -> dict:

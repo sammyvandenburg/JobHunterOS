@@ -537,6 +537,36 @@ def cmd_drafts(args):
         raise CliError(str(exc)) from exc
 
 
+def cmd_cloud(args):
+    from jobhunter.services import cloudstate
+
+    ctx, db = _open(args)
+    try:
+        c = args.cloud_cmd
+        if c == "export":
+            bundle = cloudstate.export_bundle(ctx, db, include_inputs=not args.results_only, include_results=not args.inputs_only)
+            leaks = cloudstate.check_bundle_privacy(bundle)
+            if leaks:
+                raise cloudstate.BundleError(f"Refusing to export: forbidden content {leaks}")
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.out).write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+            db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(args.out)})
+            emit(args, {"written": str(args.out), "bytes": Path(args.out).stat().st_size, "jobs": len((bundle.get("results") or {}).get("jobs") or []), "notifications": len((bundle.get("results") or {}).get("notifications") or []), "inputs": "inputs" in bundle})
+        elif c in {"restore", "import"}:
+            bundle = json.loads(Path(args.path).read_text(encoding="utf-8"))
+            res = cloudstate.import_bundle(ctx, db, bundle, inputs=(c == "restore"), results=True)
+            emit(args, res)
+        elif c == "tag-run":
+            cloudstate.tag_latest_run(db, args.tag)
+            emit(args, {"tagged": args.tag})
+        elif c == "status":
+            emit(args, cloudstate.status(db))
+    except cloudstate.BundleError as exc:
+        raise CliError(str(exc)) from exc
+    finally:
+        db.close()
+
+
 def cmd_schedule(args):
     from jobhunter.services import schedule, worker
 
@@ -614,6 +644,14 @@ def cmd_digest(args):
         c = args.digest_cmd
         if c == "test":
             emit(args, notifications.send_test(ctx, db))
+        elif c == "prepare":
+            emit(args, notifications.prepare_handoff(ctx, db))
+        elif c == "record":
+            emit(args, notifications.record_handoff(db, args.id, args.outcome, message_id=args.message_id, error=args.error))
+        elif c == "transport":
+            if args.name == "claude":
+                db.set_setting("digest.transport", "claude")
+            emit(args, {"transport": db.get_setting("digest.transport"), "note": "Claude sends digests through its own Gmail connector; Python only prepares and records." if args.name == "claude" else "Use `digest smtp ...` or `email connect gmail-send` to switch back."})
         elif c == "use-connected-address":
             emit(args, notifications.confirm_suggested_recipient(db))
         elif c == "retry":
@@ -1014,6 +1052,21 @@ def build_parser() -> argparse.ArgumentParser:
     drs.add_parser("due")
     dr.set_defaults(fn=cmd_drafts)
 
+    cl = sub.add_parser("cloud", help="state file for a Claude-operated cloud run (restore, hunt, export)")
+    cls = cl.add_subparsers(dest="cloud_cmd", required=True)
+    x = cls.add_parser("export", help="write the state file (inputs + results)")
+    x.add_argument("--out", required=True)
+    x.add_argument("--inputs-only", action="store_true")
+    x.add_argument("--results-only", action="store_true")
+    x = cls.add_parser("restore", help="cloud side: load inputs and results from a state file into an empty data folder")
+    x.add_argument("path")
+    x = cls.add_parser("import", help="laptop side: merge results (jobs, history) from a state file; never touches notes, favorites or applications")
+    x.add_argument("path")
+    x = cls.add_parser("tag-run", help="mark the latest hunt run as a cloud run with a tag")
+    x.add_argument("tag")
+    cls.add_parser("status")
+    cl.set_defaults(fn=cmd_cloud)
+
     sc = sub.add_parser("schedule", help="how often Hunter looks and when it tells you")
     scs = sc.add_subparsers(dest="schedule_cmd", required=True)
     scs.add_parser("show")
@@ -1057,6 +1110,14 @@ def build_parser() -> argparse.ArgumentParser:
     dgs.add_parser("history")
     dgs.add_parser("status")
     dgs.add_parser("test", help="send a short test email to the confirmed address")
+    dgs.add_parser("prepare", help="compose and claim the next digest for Claude to send through its Gmail connector")
+    x = dgs.add_parser("record", help="record what happened to a digest Claude sent")
+    x.add_argument("id", type=int)
+    x.add_argument("outcome", choices=["sent", "failed", "uncertain"])
+    x.add_argument("--message-id")
+    x.add_argument("--error")
+    x = dgs.add_parser("transport", help="which transport sends digests (claude = Claude's own Gmail connector)")
+    x.add_argument("name", choices=["claude", "show"])
     dgs.add_parser("use-connected-address", help="send digests to the Gmail address you connected")
     x = dgs.add_parser("retry", help="send a failed or uncertain digest again (asks for --force when it may already have arrived)")
     x.add_argument("id", type=int)

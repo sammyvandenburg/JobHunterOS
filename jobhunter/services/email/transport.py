@@ -58,6 +58,8 @@ def describe(db: Database, store: SecretStore | None = None) -> dict:
     if t == "gmail":
         acct = db.fetchone("SELECT * FROM email_accounts WHERE provider = 'gmail' AND purpose = 'send' AND status = 'connected'")
         return {"transport": "gmail", "configured": acct is not None, "detail": acct["address"] if acct else "Gmail send is not connected"}
+    if t == "claude":
+        return {"transport": "claude", "configured": True, "detail": "Claude sends digests through its own Gmail connector and records the outcome here"}
     return {"transport": None, "configured": False, "detail": "No email transport configured. Digests can still be previewed in the dashboard."}
 
 
@@ -71,6 +73,8 @@ def send(ctx: AppContext, db: Database, to_address: str, subject: str, text: str
             from jobhunter.services.email import gmail
 
             return gmail.send_message(ctx, db, to_address, subject, text, html)
+        if t == "claude":
+            raise TransportNotConfigured("In this setup Claude sends the digest through its own Gmail connector: `jobhunter digest prepare --json`, then `jobhunter digest record`.")
         raise TransportNotConfigured("No email transport is configured. Run `jobhunter digest smtp ...` or `jobhunter email connect gmail-send`.")
     except SecretStoreLocked as exc:
         raise TransportNotConfigured(str(exc)) from exc
