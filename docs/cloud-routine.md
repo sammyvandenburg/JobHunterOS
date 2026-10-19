@@ -67,9 +67,14 @@ Live proof on 2026-10-19, owner's account, synthetic "Sam Example" profile, priv
   note nor the favorite left the machine); run three restored that, hunted, skipped the email; the
   laptop imported run three and still had the favorite, the note, one notification, its own profile
   and documents.
-- Scheduled run: a one-time Routine fired in a fresh cloud session on the owner's account, but it
-  carried no connectors (see above), so it could only prove the fresh start and the checkout, not the
-  Drive and Gmail steps. The connector-bearing routine has to be created by the owner on the routines
-  page; that run is still outstanding.
+- Scheduled run: a one-time Routine created through the remote-control API fired on time
+  (06:43:28Z) in a fresh cloud session on the owner's account, on a new machine. That session had no
+  repository checkout (`/workspace` empty) and no Drive or Gmail tools, because this creation path
+  stores neither a source repository nor connectors on this account. Hunter stopped at step 1 and
+  reported "nothing was run, sent, or saved", which is the right behaviour, and the Drive folder was
+  unchanged. So the scheduled proof is blocked on how the routine is created, not on the code: the
+  owner creates it on https://claude.ai/code/routines with this repository (branch
+  `claude/cloud-agent-proof`) and the Google Drive and Gmail connectors attached, using the prompt
+  above. That run is still outstanding.
 The round trip, the no-repeat rule and the dashboard-action survival are also pinned by
 `tests/test_cloud_agent.py`.
