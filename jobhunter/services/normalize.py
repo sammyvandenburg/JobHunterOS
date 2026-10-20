@@ -279,7 +279,9 @@ def classify_relevance(title: str, description: str) -> tuple[str, str]:
     if title_infra and TITLE_INFRA.search(primary) and DATA_FLAVOUR.search(primary) and not re.search(r"\b(devops|sre|site reliability|mlops|kubernetes|cloud)\b", primary, re.I):
         return "uncertain", "This is a data or machine-learning platform job. Part of the work may be infrastructure work; check the description."
     if MANAGEMENT.search(primary) and not re.search(r"\blead\b", primary, re.I):
-        return "irrelevant", "This is a management role (people and budget), not an engineering job."
+        if title_infra or hits >= 3:
+            return "uncertain", "This is a leadership role (people and budget). A stretch only with experience leading a team."
+        return "irrelevant", "This is a management role, not an engineering job."
     if SECURITY_OPS.search(t) and not re.search(r"\bdevsecops\b", t, re.I):
         if hits >= 3:
             return "uncertain", "This is a security job. Part of the work may be infrastructure work; check what they expect day to day."

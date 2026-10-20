@@ -49,10 +49,16 @@ Never write under `actions/` (that is the page's), never republish the page with
 never put the CV, notes, drafts or tokens in any document (the export command refuses that on its own).
 
 ## What the page does on its own
-- Shows profile, recommended jobs grouped, Favorites, Saved, Applied, Needs checking (unclear location),
-  Older (posted more than 14 days ago), Not interested, All. Each job has the description (up to 3,000
-  characters) and links to the employer's listing, the apply page, and where Hunter found it.
-- Its status line says when Hunter last synced and how many changes are waiting for Hunter.
+- Shows a one-line profile (headline, where, arrangement, years from dated paid work), four counters, Top
+  picks (best five, different employers first, each with "Why" and "Check"), what needs attention (only what
+  the data shows), and the full list with search and chips: Good matches, Worth a shot, Backup options,
+  Needs checking, Older, Favorites, Saved, Applied, Not interested. A job opens in a drawer with
+  Opportunity, Why it fits, Next actions, My notes (add, edit, delete) and the description with links.
+- Its bar says when the last search finished, when Hunter last synced, how many changes wait for Hunter,
+  the next search only when a worker is really running, and whether email is on.
+- "Edit preferences" on the page writes `actions/_prefs` (where they live, countries, lowest pay, remote).
+  `board import` applies it through the same parser as setup and reports "rejected: …" when it cannot;
+  tell them in one line what changed. Until the next sync the page shows "new preferences: Hunter next run".
 - Favorite, Save, Mark applied, Not interested, and a private note per job: saved immediately, marked
   "Hunter: next run" until the next sync applies them.
 - Survives closing and reopening: the data lives in the page's database, not in the browser.

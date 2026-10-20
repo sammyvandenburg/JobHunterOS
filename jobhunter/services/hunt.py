@@ -248,7 +248,7 @@ def sources_state(db: Database, source_ids: list[str] | None = None) -> tuple[li
     return [], "none_for_countries", "None of the enabled job sources cover your countries. Add an employer board for your country, or check your countries under Profile & settings."
 
 
-STAGE_WORDS = {"starting": "Starting", "checking sources": "Checking job sites", "discovering employers": "Looking for new employers", "comparing jobs": "Comparing jobs with your profile", "finding original links": "Finding the original listings", "ready": "Ready"}
+STAGE_WORDS = {"starting": "Starting", "comparing stored jobs": "Comparing the jobs already found", "checking sources": "Checking job sites", "discovering employers": "Looking for new employers", "comparing jobs": "Comparing jobs with your profile", "finding original links": "Finding the original listings", "ready": "Ready"}
 
 
 def _progress_update(db: Database, run_id: int, prog: dict) -> None:
@@ -346,10 +346,19 @@ def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] |
         "sources_added": 0,
         "failures": [],
     }
-    prog = {"stage": "checking sources", "sources_total": len(sources), "sources_done": 0, "jobs_new": 0, "jobs_relevant_new": 0}
+    from jobhunter.services.matching import engine
+
+    # Stored jobs first: what is already in the database is compared before any site is asked, so the
+    # page has a shortlist within seconds even when the sites are slow.
+    prog = {"stage": "comparing stored jobs", "sources_total": len(sources), "sources_done": 0, "jobs_new": 0, "jobs_relevant_new": 0}
+    _progress_update(db, run_id, prog)
+    try:
+        engine.rematch_quietly(ctx, db)
+    except Exception:
+        pass  # the full pass at the end reports a real failure
+    prog["stage"] = "checking sources"
     _progress_update(db, run_id, prog)
     employers_before = db.fetchone("SELECT COUNT(*) AS n FROM employers")["n"]
-    from jobhunter.services.matching import engine
 
     timings: dict[str, float] = {}
     t_sources = time.monotonic()

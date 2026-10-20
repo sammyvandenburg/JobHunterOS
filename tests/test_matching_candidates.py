@@ -61,7 +61,7 @@ def _seed(ctx, db):
         base.update(kw)
         posts.append(RawPosting(**base))
     ids = hunt.import_postings(ctx, db, posts)["job_ids"]
-    return dict(zip([v[0] for v in VACANCIES], ids))
+    return dict(zip([v[0] for v in VACANCIES], ids, strict=True))
 
 
 def _match(db, jid):
@@ -76,8 +76,9 @@ def _match(db, jid):
 
 
 def test_adjacent_roles_are_classified_by_the_work():
-    assert classify_relevance("Head of Platform Engineering", INFRA)[0] == "irrelevant"
-    assert classify_relevance("Engineering Manager, Infrastructure", INFRA)[0] == "irrelevant"
+    assert classify_relevance("Head of Platform Engineering", INFRA)[0] == "uncertain"  # a stretch, decided by leadership evidence
+    assert classify_relevance("Engineering Manager, Infrastructure", INFRA)[0] == "uncertain"
+    assert classify_relevance("Head of Marketing", "Own the brand and the campaigns.")[0] == "irrelevant"
     assert classify_relevance("Lead Platform Engineer", INFRA)[0] == "relevant"
     assert classify_relevance("Security Operations Engineer", SECOPS)[0] == "uncertain"
     assert classify_relevance("Security Operations Engineer", "Triage alerts in the SIEM. Write reports.")[0] == "irrelevant"
@@ -108,10 +109,16 @@ def test_each_candidate_gets_a_defensible_result_on_the_same_vacancies(ctx, db, 
     for key, groups in expect.items():
         m = _match(db, jobs[key])
         assert m["match_group"] in groups, (name, key, m["match_group"], m["exclusion_reason"], m["gaps"])
-    # Everyone: management, a software job on a platform team, US-only remote, Germany and office-only are never recommended.
-    for key in ("head", "swe_platform_team", "us_only", "berlin_hybrid", "office_only"):
+    # Everyone: a software job on a platform team, US-only remote, Germany and office-only are never recommended.
+    for key in ("swe_platform_team", "us_only", "berlin_hybrid", "office_only"):
         m = _match(db, jobs[key])
         assert m["match_group"] in {None, "excluded"}, (name, key, m)
+    # Head of Platform: a credible stretch only for the senior engineer who led a team; everyone else sees why not.
+    head = _match(db, jobs["head"])
+    if name == "senior":
+        assert head["match_group"] in {"good", "worth_a_shot", "backup"}, head
+    else:
+        assert head["match_group"] in {None, "excluded"} and "leading a team" in (head["exclusion_reason"] or ""), (name, head)
     assert "US" in _match(db, jobs["us_only"])["exclusion_reason"] or "United States" in _match(db, jobs["us_only"])["exclusion_reason"]
     assert "Germany" in _match(db, jobs["berlin_hybrid"])["exclusion_reason"]
     assert "office" in _match(db, jobs["office_only"])["exclusion_reason"].lower()

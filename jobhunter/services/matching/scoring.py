@@ -17,9 +17,11 @@ from jobhunter.services import freshness
 from jobhunter.services.matching.skills import TOOL_LABELS, canonical_skill_keys, coverage
 from jobhunter.services.matching.skills import job_tools as _job_tools
 from jobhunter.services.matching.skills import tool_label as _tool_label
-from jobhunter.services.normalize import country_names, seniority_of
+from jobhunter.services.normalize import MANAGEMENT, country_names, primary_role, seniority_of
 from jobhunter.services.preferences import EU_EEA, EUROPE, NORTH_AMERICA
 from jobhunter.services.profile import RELEVANT_DOMAINS, role_domain
+
+LEADERSHIP = re.compile(r"\b(lead|led|leading|head of|manager|managed|team of \d+|mentor(ed|ing)?|line manage)\b", re.I)
 
 LEVELS = ["intern", "entry", "junior", "mid", "senior", "staff"]
 CANDIDATE_LEVEL_INDEX = {"entry": 1, "junior": 2, "mid": 3, "senior": 4, "staff": 5, "unknown": 2}
@@ -103,6 +105,10 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
 
     # 1. Role relevance -----------------------------------------------------
     relevance = job.get("relevance") or "unknown"
+    if relevance == "uncertain" and MANAGEMENT.search(primary_role(title)):
+        # A leadership role is a credible stretch only with leadership evidence in paid work.
+        if not (cand_level in {"senior", "staff"} and any(LEADERSHIP.search(f.text) for f in professional_roles)):
+            return _exclude(res, "A leadership role. Your approved profile has no paid experience leading a team yet.")
     direction = _direction_match(title, targets) if relevance == "relevant" else None
     if relevance == "relevant":
         rel = 25.0
@@ -149,7 +155,7 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
         if in_cv:
             res.gaps.append("Your CV mentions " + _join(in_cv[:4]) + ", but " + ("it is" if len(in_cv) == 1 else "they are") + " not in your approved profile yet. Add " + ("it" if len(in_cv) == 1 else "them") + " under Profile so Hunter can count " + ("it" if len(in_cv) == 1 else "them") + ".")
         if not_in_cv:
-            res.gaps.append("They also ask for " + _join(not_in_cv[:5]) + ". " + ("It is" if len(not_in_cv) == 1 else "These are") + " not in your CV.")
+            res.gaps.append("They also ask for " + _join(not_in_cv[:5]) + ". " + ("It is" if len(not_in_cv) == 1 else "These are") + " not established in your approved profile.")
     if thin_text:
         res.gaps.append("The posting has almost no text, so this is a guess from the title. Open it to check.")
 

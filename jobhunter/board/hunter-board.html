@@ -2,114 +2,148 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
-/* Layout: a dark workbench. One sticky bar, a profile strip, counters, then a two-column list + detail
-   that folds to one column with a bottom sheet on phones. Dark-first: KubeCraft black with an orange accent. */
+/* Layout: a personal career workspace. Compact bar, one-line profile, four small counters, top picks,
+   what needs attention, then the full list with chips. A job opens in a drawer with a section menu.
+   Dark-first: KubeCraft black with the orange cog; light theme mirrored. */
 :root{
   color-scheme:dark;
-  --bg:#0d0e10;--panel:#17181c;--panel-2:#1e2026;--line:#2b2e36;--ink:#f3f4f6;--ink-2:#c9cdd4;--muted:#8b919c;
-  --accent:#ff7a00;--accent-ink:#111214;--accent-dim:rgba(255,122,0,.14);
+  --bg:#0e0f12;--panel:#17191e;--panel-2:#1f2229;--line:#2c3039;--ink:#f3f4f6;--ink-2:#c7cbd3;--muted:#8d939e;
+  --accent:#ff7a00;--accent-ink:#121316;--accent-dim:rgba(255,122,0,.14);
   --good:#45d07a;--good-dim:rgba(69,208,122,.14);--warn:#f2b63f;--warn-dim:rgba(242,182,63,.16);--bad:#ff6565;--bad-dim:rgba(255,101,101,.14);--info:#7fa6ff;--info-dim:rgba(127,166,255,.14);
-  --bar:#09090b;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;
+  --bar:#0a0a0c;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;--shadow:0 12px 40px rgba(0,0,0,.45);
   --display:"Manrope",ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
   --body:"Source Sans 3",ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
   --r:12px;--r-sm:8px;
 }
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
   color-scheme:light;
-  --bg:#f5f4f1;--panel:#ffffff;--panel-2:#f0efeb;--line:#e1dfd9;--ink:#17181c;--ink-2:#3b3f47;--muted:#676c76;
+  --bg:#f4f3f0;--panel:#ffffff;--panel-2:#efeeea;--line:#dfddd7;--ink:#17181c;--ink-2:#3b3f47;--muted:#6a6f78;
   --accent:#e06a00;--accent-ink:#ffffff;--accent-dim:rgba(224,106,0,.12);
   --good:#1b8a48;--good-dim:rgba(27,138,72,.12);--warn:#9a6b00;--warn-dim:rgba(242,182,63,.2);--bad:#c43131;--bad-dim:rgba(196,49,49,.1);--info:#2f5bd3;--info-dim:rgba(47,91,211,.1);
-  --bar:#121316;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;
+  --bar:#121316;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;--shadow:0 12px 40px rgba(20,20,30,.18);
 }}
 :root[data-theme="light"]{
   color-scheme:light;
-  --bg:#f5f4f1;--panel:#ffffff;--panel-2:#f0efeb;--line:#e1dfd9;--ink:#17181c;--ink-2:#3b3f47;--muted:#676c76;
+  --bg:#f4f3f0;--panel:#ffffff;--panel-2:#efeeea;--line:#dfddd7;--ink:#17181c;--ink-2:#3b3f47;--muted:#6a6f78;
   --accent:#e06a00;--accent-ink:#ffffff;--accent-dim:rgba(224,106,0,.12);
   --good:#1b8a48;--good-dim:rgba(27,138,72,.12);--warn:#9a6b00;--warn-dim:rgba(242,182,63,.2);--bad:#c43131;--bad-dim:rgba(196,49,49,.1);--info:#2f5bd3;--info-dim:rgba(47,91,211,.1);
-  --bar:#121316;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;
+  --bar:#121316;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;--shadow:0 12px 40px rgba(20,20,30,.18);
 }
 *{box-sizing:border-box}
 html{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);min-height:100%}
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bar)}
-button,textarea,input{font:inherit;color:inherit}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bar)}
+button,textarea,input,select{font:inherit;color:inherit}
 h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
 a{color:var(--accent)}
-.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bar);color:var(--bar-ink);border-bottom:1px solid rgba(255,255,255,.07)}
-.bar .in{display:flex;align-items:center;gap:12px;max-width:1240px;margin:0 auto;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;letter-spacing:.2px;font-size:17px}
-.brand svg{width:30px;height:30px;flex:none}
-.brand small{display:block;font-weight:600;color:var(--bar-muted);font-size:11px;letter-spacing:.4px;text-transform:uppercase}
-.status{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--bar-muted);text-align:right;min-width:0}
-.dot{width:8px;height:8px;border-radius:50%;background:#5d6470;flex:none}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bar);color:var(--bar-ink);border-bottom:1px solid rgba(255,255,255,.07)}
+.bar .in{display:flex;align-items:center;gap:12px;max-width:1180px;margin:0 auto;padding-block:9px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:16px;letter-spacing:.2px}
+.brand svg{width:28px;height:28px;flex:none}
+.brand small{display:block;font-weight:600;color:var(--bar-muted);font-size:10.5px;letter-spacing:.4px;text-transform:uppercase}
+.bar .title{font-family:var(--display);font-weight:700;color:var(--bar-ink);font-size:14px;opacity:.9}
+.bar .right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stat{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--bar-muted);padding:4px 9px;border:1px solid rgba(255,255,255,.1);border-radius:999px;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:#5d6470;flex:none}
 .dot.ok{background:var(--good)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
-main{max-width:1240px;margin:0 auto;padding-block:16px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-.notice{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
-.notice h2{font-size:17px;margin-bottom:4px}
-.notice p{margin:0;color:var(--ink-2)}
-.profile{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--r);padding:14px 16px;margin-bottom:14px}
-.profile h2{font-size:15px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
-.profile p{margin:0 0 8px;color:var(--ink-2);max-width:70ch}
-.facts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13.5px;color:var(--ink-2)}
-.facts b{color:var(--ink);font-weight:600}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.bar .btn{padding:5px 10px;font-size:12.5px;background:transparent;border-color:rgba(255,255,255,.18);color:var(--bar-ink)}
+.bar .btn:hover{border-color:var(--accent)}
+main{max-width:1180px;margin:0 auto;padding-block:14px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+.notice{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.notice h2{font-size:17px;margin-bottom:4px}.notice p{margin:0;color:var(--ink-2)}
+.who{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--r);padding:10px 14px}
+.who h1{font-size:17px}
+.who .line{color:var(--ink-2);font-size:13.5px}
+.who .acts{margin-left:auto;display:flex;gap:8px}
+.who details{flex-basis:100%;margin-top:4px}
+.who summary{display:none}
+.who .more{color:var(--ink-2);font-size:13.5px;border-top:1px solid var(--line);padding-top:10px;margin-top:6px;display:grid;gap:8px}
+.who .more p{margin:0;max-width:75ch}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;color:var(--ink-2);background:var(--panel-2)}
-.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
-.metric{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
-.metric b{display:block;font-family:var(--display);font-size:22px;line-height:1.2;font-variant-numeric:tabular-nums}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.metric{display:flex;align-items:baseline;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;cursor:pointer;text-align:left}
+.metric:hover{border-color:var(--accent)}
+.metric b{font-family:var(--display);font-size:20px;line-height:1.1;font-variant-numeric:tabular-nums}
 .metric span{color:var(--muted);font-size:12.5px}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;align-items:start}
-.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none}
-.tab{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;cursor:pointer;white-space:nowrap;font-size:13.5px;font-weight:600}
-.tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.tab .n{opacity:.8;margin-left:5px;font-variant-numeric:tabular-nums}
-.list{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.grouph{padding:8px 12px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:var(--panel-2);border-bottom:1px solid var(--line)}
-.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 12px;cursor:pointer}
-.row:last-child{border-bottom:0}
-.row:hover,.row[aria-current="true"]{background:var(--panel-2)}
-.row:focus-visible,.btn:focus-visible,.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.row .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--display)}
-.row .s{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.row .why{color:var(--ink-2);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.marks{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:46%}
+section.block h2{font-size:13px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-family:var(--body);font-weight:600;margin-bottom:8px;display:flex;align-items:baseline;gap:10px}
+section.block h2 small{text-transform:none;letter-spacing:0;font-weight:400}
+.picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.pick{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:6px;min-width:0}
+.pick:hover{border-color:var(--accent)}
+.pick .t{font-family:var(--display);font-weight:700;font-size:15.5px;line-height:1.3}
+.pick .s,.row .s{color:var(--muted);font-size:13px}
+.pick .why,.row .why{font-size:13.5px;color:var(--ink-2)}
+.pick .why b,.row .why b{color:var(--ink);font-weight:600}
+.pick .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .pill{font-size:11.5px;border-radius:999px;padding:2px 8px;white-space:nowrap;border:1px solid transparent;font-weight:600}
 .g-good{background:var(--good-dim);color:var(--good)}.g-worth_a_shot{background:var(--info-dim);color:var(--info)}
-.g-backup{background:var(--panel-2);color:var(--ink-2);border-color:var(--line)}.g-other{background:var(--panel-2);color:var(--muted);border-color:var(--line)}
+.g-backup{background:var(--panel-2);color:var(--ink-2);border-color:var(--line)}.g-uncertain{background:var(--warn-dim);color:var(--warn)}.g-other{background:var(--panel-2);color:var(--muted);border-color:var(--line)}
 .p-applied{background:var(--good-dim);color:var(--good)}.p-dismissed{background:var(--bad-dim);color:var(--bad)}.p-pending{background:var(--warn-dim);color:var(--warn)}.p-fresh{background:var(--accent-dim);color:var(--accent)}
 .star{color:var(--accent)}
-.empty{padding:28px 16px;color:var(--muted);text-align:center}
-aside.detail{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;position:sticky;top:calc(66px + env(safe-area-inset-top,0px));max-height:calc(100vh - 90px);overflow:auto;min-width:0}
-aside.detail h2{font-size:18px;margin-bottom:2px}
-.sub{color:var(--muted);font-size:13px;margin-bottom:10px}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
-.btn{border:1px solid var(--line);background:var(--panel-2);border-radius:var(--r-sm);padding:9px 10px;cursor:pointer;font-weight:600;font-size:13.5px}
+.btn{border:1px solid var(--line);background:var(--panel-2);border-radius:var(--r-sm);padding:7px 11px;cursor:pointer;font-weight:600;font-size:13px;line-height:1.2}
 .btn:hover{border-color:var(--accent)}
 .btn.on{background:var(--accent-dim);border-color:var(--accent);color:var(--ink)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.sm{padding:5px 9px;font-size:12.5px}
 .btn:disabled{opacity:.55;cursor:default}
-.save{font-size:12.5px;min-height:18px;margin:4px 0 8px;color:var(--muted)}
-.save.ok{color:var(--good)}.save.err{color:var(--bad)}.save.warn{color:var(--warn)}
-textarea{width:100%;min-height:84px;border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:8px;resize:vertical}
-h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:14px 0 6px;font-family:var(--body)}
+.btn:focus-visible,.row:focus-visible,.metric:focus-visible,.fchip:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.attn{display:grid;gap:6px}
+.attn .item{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:var(--r-sm);padding:8px 12px;font-size:13.5px}
+.attn .item.good{border-left-color:var(--good)}.attn .item.bad{border-left-color:var(--bad)}
+.attn .item button{margin-left:auto}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.tools input[type=search]{flex:1 1 220px;min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px}
+.fchips{display:flex;flex-wrap:wrap;gap:6px}
+.fchip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 11px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
+.fchip[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.fchip .n{opacity:.8;margin-left:4px;font-variant-numeric:tabular-nums}
+.fsel{display:none;border:1px solid var(--line);background:var(--panel);border-radius:var(--r-sm);padding:7px 10px}
+.list{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.grouph{padding:7px 12px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:var(--panel-2);border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:9px 12px;cursor:pointer}
+.row:last-child{border-bottom:0}
+.row:hover,.row[aria-current="true"]{background:var(--panel-2)}
+.row .t{font-weight:700;font-family:var(--display);font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .s,.row .why{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.marks{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:44%}
+.empty{padding:26px 16px;color:var(--muted);text-align:center}
+.foot{color:var(--muted);font-size:12.5px}
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40}
+.drawer{position:fixed;top:env(safe-area-inset-top,0px);right:0;bottom:0;width:min(600px,100%);background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:41;display:flex;flex-direction:column;min-width:0}
+.drawer header{display:flex;align-items:flex-start;gap:10px;padding:14px 16px 8px;padding-right:max(16px,env(safe-area-inset-right,0px))}
+.drawer header h2{font-size:18px;line-height:1.25}
+.drawer .sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+.secnav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding:4px 16px 8px;border-bottom:1px solid var(--line)}
+.secnav button{border:0;background:none;color:var(--muted);font-weight:600;font-size:13px;padding:5px 8px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.secnav button:hover{color:var(--ink)}
+.dbody{overflow:auto;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px;min-width:0}
+.sec h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 6px;font-family:var(--body)}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:14px}
+.kv span:first-child{color:var(--muted)}
 ul.r{margin:0;padding-left:18px}ul.r li{margin:3px 0}
-.desc{white-space:pre-wrap;color:var(--ink-2);font-size:14px;max-width:70ch}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.save{font-size:12.5px;min-height:18px;margin:4px 0 0;color:var(--muted)}
+.save.ok{color:var(--good)}.save.err{color:var(--bad)}.save.warn{color:var(--warn)}
+textarea{width:100%;min-height:90px;border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:8px;resize:vertical}
+input[type=text]{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:8px}
+select{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:8px}
+label{display:grid;gap:4px;font-size:13px;color:var(--ink-2)}
+.desc{white-space:pre-wrap;color:var(--ink-2);font-size:14px;max-width:72ch}
 .links{display:flex;flex-direction:column;gap:4px;font-size:14px;word-break:break-word}
 .conflict{border:1px solid var(--warn);background:var(--warn-dim);border-radius:var(--r-sm);padding:8px;margin:6px 0;font-size:13px}
 .conflict .theirs{white-space:pre-wrap;margin:6px 0;color:var(--ink)}
-.closebtn{display:none}
-.foot{color:var(--muted);font-size:12.5px;margin-top:18px}
-@media (max-width:900px){
+.modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;width:min(480px,100%);display:grid;gap:10px;max-height:90vh;overflow:auto}
+@media (max-width:860px){
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .profile{grid-template-columns:minmax(0,1fr)}
-  .layout{grid-template-columns:minmax(0,1fr)}
-  .marks{max-width:40%}
-  aside.detail{position:fixed;left:0;right:0;bottom:0;top:auto;max-height:84vh;border-radius:16px 16px 0 0;z-index:20;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));box-shadow:0 -10px 40px rgba(0,0,0,.4)}
-  aside.detail[hidden]{display:none}
-  .closebtn{display:inline-block;float:right}
-  .status .long{display:none}
+  .who .acts{margin-left:0}
+  .fchips{display:none}.fsel{display:block}
+  .marks{max-width:38%}
+  .drawer{width:100%;border-left:0}
 }
-@media (prefers-reduced-motion:no-preference){.row,.btn,.tab{transition:background .12s,border-color .12s}}
+@media (prefers-reduced-motion:no-preference){.row,.btn,.fchip,.metric,.pick{transition:background .12s,border-color .12s}}
 </style>
 
 <header class="bar">
@@ -118,22 +152,23 @@ ul.r{margin:0;padding-left:18px}ul.r li{margin:3px 0}
       <svg viewBox="0 0 200 200" role="img" aria-label="KubeCraft"><g fill="none" stroke="#ff7a00" stroke-width="12"><circle cx="100" cy="100" r="70"/><circle cx="100" cy="100" r="28" fill="#ff7a00" stroke="none"/><path d="M100 8v34M100 158v34M8 100h34M158 100h34M35 35l24 24M141 141l24 24M165 35l-24 24M59 141l-24 24"/></g><g fill="#ff7a00"><path d="M100 52l8 14h-16zM100 148l-8-14h16zM52 100l14-8v16zM148 100l-14 8v-16zM66 66l15 1-1 15zM134 134l-15-1 1-15zM134 66l-1 15-15-1zM66 134l1-15 15 1z"/></g></svg>
       <div>Hunter<small>by KubeCraft</small></div>
     </div>
-    <div class="status" id="status"><span class="dot" id="dot"></span><span id="statusText">Connecting…</span></div>
+    <div class="title">Your job hunt</div>
+    <div class="right" id="barRight"></div>
   </div>
 </header>
 <main>
   <section id="notice" hidden></section>
-  <section class="profile" id="profile" hidden aria-label="Your profile"></section>
-  <section class="metrics" id="metrics" aria-label="Summary"></section>
-  <div class="layout">
-    <section>
-      <nav class="tabs" id="tabs" role="tablist" aria-label="Job lists"></nav>
-      <div class="list" id="list" role="list"><div class="empty">Loading your jobs…</div></div>
-    </section>
-    <aside class="detail" id="detail" hidden aria-live="polite"></aside>
-  </div>
-  <p class="foot">Only you can see this page. Hunter keeps it in step with your computer and your nightly hunts; a change you make here reaches Hunter on its next run.</p>
+  <section class="who" id="who" hidden></section>
+  <section class="metrics" id="metrics" aria-label="Your numbers"></section>
+  <section class="block" id="picks" hidden><h2>Top picks for you <small id="picksNote"></small></h2><div class="picks" id="picksList"></div></section>
+  <section class="block" id="attn" hidden><h2>Needs your attention</h2><div class="attn" id="attnList"></div></section>
+  <section class="block" id="all"><h2>All recommended jobs <small id="allNote"></small></h2>
+    <div class="tools"><input type="search" id="q" placeholder="Search title, company or place" aria-label="Search jobs"><div class="fchips" id="chips" role="tablist"></div><select class="fsel" id="fsel" aria-label="Which jobs"></select></div>
+    <div class="list" id="list" role="list"><div class="empty">Loading your jobs…</div></div>
+  </section>
+  <p class="foot">Only you can see this page. Hunter keeps it in step with your computer and your nightly hunts; what you do here reaches Hunter on its next run. To prepare an application, ask Hunter in Claude Code: /jobhunter apply.</p>
 </main>
+<div id="overlay"></div>
 
 <script>
 /* ===CORE-START=== pure logic, testable without a browser */
@@ -142,9 +177,7 @@ const Core = (() => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const blankAction = (jobKey) => ({ job_key: jobKey, favorite: false, saved: false, applied_at: null, dismissed: false, note: null, rev: 0 });
 
-  // Conditional write for the page. The browser db API has no if_version: set/update are last-writer-wins.
-  // Protocol: take a short lease, read the current document, let `mutate` check its precondition against what
-  // is really stored, then write with rev+1. Two tabs cannot both "win" on the same stale base.
+  // Conditional write: the browser db API has no if_version, so take a short lease, read, check, write rev+1.
   async function commit(db, path, mutate, holder, opts = {}) {
     const ttlMs = opts.ttlMs || 2000, retries = opts.retries ?? 3;
     const ref = db.doc(path);
@@ -166,8 +199,7 @@ const Core = (() => {
         continue;
       }
       let snap;
-      try { snap = await ref.get(); }
-      catch (e) { return { status: "error", code: e && e.code || "unavailable", message: e && e.message }; }
+      try { snap = await ref.get(); } catch (e) { return { status: "error", code: e && e.code || "unavailable" }; }
       const cur = snap.exists ? (snap.data() || {}) : {};
       const out = mutate(clone(cur));
       if (!out || out.conflict) return { status: "conflict", current: cur, attempts: attempt + 1 };
@@ -175,21 +207,18 @@ const Core = (() => {
       next.rev = (Number(cur.rev) || 0) + 1;
       next.updated_at = new Date().toISOString();
       next.updated_by = holder;
-      try { await ref.set(next); }
-      catch (e) { return { status: "error", code: e && e.code || "unavailable", message: e && e.message }; }
+      try { await ref.set(next); } catch (e) { return { status: "error", code: e && e.code || "unavailable" }; }
       return { status: "saved", doc: next, attempts: attempt + 1 };
     }
   }
-
-  // What the page shows for a job: Hunter's state, overlaid by a page action Hunter has not read yet.
   function effective(job, action) {
     const s = (job && job.state) || {};
     const base = { favorite: !!s.favorited, saved: !!s.saved, applied_at: s.applied_at || null, dismissed: !!s.dismissed, note: s.note ? { text: s.note, rev: 0 } : null, rev: 0 };
     if (!action || !(Number(action.rev) > Number(s.synced_rev || 0))) return Object.assign(base, { pending: false });
     return { favorite: !!action.favorite, saved: !!action.saved, applied_at: action.applied_at || null, dismissed: !!action.dismissed,
-      note: action.note && action.note.text ? action.note : base.note, rev: Number(action.rev) || 0, pending: true };
+      note: action.note && action.note.text ? action.note : (action.note && action.note.deleted ? null : base.note), rev: Number(action.rev) || 0, pending: true };
   }
-  // Mutators start from what the student sees (effective state), so a first page action never drops Hunter's flags.
+  const seenToAction = (seen) => seen ? { favorite: !!seen.favorite, saved: !!seen.saved, applied_at: seen.applied_at || null, dismissed: !!seen.dismissed, note: seen.note && seen.note.text ? { text: seen.note.text, rev: Number(seen.note.rev) || 0 } : null } : {};
   const setFlag = (jobKey, field, value, seen) => (cur) => {
     const d = Object.assign(blankAction(jobKey), seenToAction(seen), cur);
     if (field === "applied") d.applied_at = value ? new Date().toISOString() : null;
@@ -200,33 +229,44 @@ const Core = (() => {
     const d = Object.assign(blankAction(jobKey), seenToAction(seen), cur);
     const stored = d.note && Number(d.note.rev) || 0;
     if (stored !== baseNoteRev) return { conflict: true };
-    d.note = { text: String(text), rev: stored + 1, updated_at: new Date().toISOString() };
+    d.note = text === null ? { text: "", rev: stored + 1, deleted: true, updated_at: new Date().toISOString() } : { text: String(text), rev: stored + 1, updated_at: new Date().toISOString() };
     return { doc: d };
   };
-  const seenToAction = (seen) => seen ? { favorite: !!seen.favorite, saved: !!seen.saved, applied_at: seen.applied_at || null, dismissed: !!seen.dismissed, note: seen.note && seen.note.text ? { text: seen.note.text, rev: Number(seen.note.rev) || 0 } : null } : {};
+  const setPrefs = (fields) => (cur) => ({ doc: Object.assign({ job_key: "_prefs" }, cur, fields) });
 
   function tabsFor(jobs, actions, run) {
     const eff = (k) => effective(jobs.get(k), actions.get(k));
     const all = [...jobs.keys()];
-    const rec = ((run && run.recommended) || []).filter((k) => jobs.has(k)).filter((k) => { const e = eff(k); return !e.dismissed && !e.applied_at; });
+    const open = (k) => { const e = eff(k); return !e.dismissed && !e.applied_at; };
+    const rec = ((run && run.recommended) || []).filter((k) => jobs.has(k)).filter(open);
+    const byGroup = (g) => rec.filter((k) => (jobs.get(k) || {}).group === g);
     return {
-      recommended: rec,
-      uncertain: all.filter((k) => (jobs.get(k) || {}).list === "uncertain" && !eff(k).dismissed && !eff(k).applied_at),
-      old: all.filter((k) => (jobs.get(k) || {}).list === "old" && !eff(k).dismissed && !eff(k).applied_at),
-      favorites: all.filter((k) => eff(k).favorite),
-      saved: all.filter((k) => eff(k).saved),
-      applied: all.filter((k) => !!eff(k).applied_at),
-      dismissed: all.filter((k) => eff(k).dismissed),
-      all,
+      recommended: rec, good: byGroup("good"), worth_a_shot: byGroup("worth_a_shot"), backup: byGroup("backup"),
+      uncertain: all.filter((k) => (jobs.get(k) || {}).list === "uncertain" && open(k)),
+      old: all.filter((k) => (jobs.get(k) || {}).list === "old" && open(k)),
+      favorites: all.filter((k) => eff(k).favorite), saved: all.filter((k) => eff(k).saved),
+      applied: all.filter((k) => !!eff(k).applied_at), dismissed: all.filter((k) => eff(k).dismissed), all,
     };
   }
-  // Page actions Hunter has not read yet.
-  function pendingCount(jobs, actions) {
+  // Up to n picks, best first, one per employer before any employer repeats.
+  function topPicks(keys, jobs, n = 5) {
+    const seen = new Set(); const first = []; const rest = [];
+    for (const k of keys) { const e = ((jobs.get(k) || {}).employer || "").toLowerCase(); if (!seen.has(e)) { seen.add(e); first.push(k); } else rest.push(k); }
+    return first.concat(rest).slice(0, n);
+  }
+  function pendingCount(jobs, actions, profile) {
     let n = 0;
-    for (const [k, a] of actions) { const s = ((jobs.get(k) || {}).state) || {}; if (Number(a.rev) > Number(s.synced_rev || 0)) n++; }
+    for (const [k, a] of actions) {
+      if (k === "_prefs") { if (Number(a.rev) > Number((profile && profile.prefs_synced_rev) || 0)) n++; continue; }
+      const s = ((jobs.get(k) || {}).state) || {}; if (Number(a.rev) > Number(s.synced_rev || 0)) n++;
+    }
     return n;
   }
-  return { commit, effective, setFlag, saveNote, tabsFor, pendingCount, blankAction, clone, sleep };
+  function matches(job, q) {
+    if (!q) return true; const s = q.toLowerCase();
+    return [job.title, job.employer, job.location].some((x) => (x || "").toLowerCase().includes(s));
+  }
+  return { commit, effective, setFlag, saveNote, setPrefs, tabsFor, topPicks, pendingCount, matches, blankAction, clone, sleep };
 })();
 /* ===CORE-END=== */
 
@@ -234,11 +274,11 @@ const Core = (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const TAB_ID = "tab-" + Math.random().toString(36).slice(2, 10);
-  const TABS = [["recommended", "Recommended"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["uncertain", "Needs checking"], ["old", "Older"], ["dismissed", "Not interested"], ["all", "All jobs"]];
+  const CHIPS = [["recommended", "All recommended"], ["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"], ["uncertain", "Needs checking"], ["old", "Older"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Not interested"], ["all", "Everything"]];
   const GROUPS = [["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"]];
   const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null,
-    tab: "recommended", sel: null, saving: {}, noteBase: {}, conflicts: {}, loaded: { board: false, actions: false, run: false }, dbError: null };
-  try { const t = localStorage.getItem("hunter.tab"); if (t && TABS.some((x) => x[0] === t)) st.tab = t; } catch {}
+    tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, conflicts: {}, loaded: { board: false, actions: false, run: false }, dbError: null, prefsOpen: false, prefsStatus: null };
+  try { const t = localStorage.getItem("hunter.tab"); if (t && CHIPS.some((x) => x[0] === t)) st.tab = t; } catch {}
 
   const el = (tag, attrs = {}, ...kids) => {
     const n = document.createElement(tag);
@@ -257,94 +297,147 @@ const Core = (() => {
     if (s < 86400) return Math.round(s / 3600) + " h ago"; return Math.round(s / 86400) + " d ago";
   };
   const safeUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : null; } catch { return null; } };
-  const groupClass = (g) => ["good", "worth_a_shot", "backup"].includes(g) ? "g-" + g : "g-other";
+  const groupClass = (g) => ["good", "worth_a_shot", "backup", "uncertain"].includes(g) ? "g-" + g : "g-other";
   const eff = (k) => Core.effective(st.jobs.get(k), st.actions.get(k));
+  const can = () => !!st.db && st.owner !== false;
+  const remoteWords = (j) => [j.remote_label, j.remote_restriction].filter(Boolean).join(", ");
+  const where = (j) => [j.location, remoteWords(j)].filter(Boolean).join(" · ");
 
-  function setStatus(kind, text) { $("dot").className = "dot " + kind; $("statusText").textContent = text; }
-  function renderStatus() {
-    if (st.dbError) return setStatus("bad", "Can’t reach your data (" + st.dbError + ")");
-    if (!st.db) return setStatus("warn", "Sign in to see your jobs");
-    if (st.owner === false) return setStatus("bad", "This dashboard belongs to someone else");
-    if (!st.loaded.run) return setStatus("warn", "Loading…");
-    if (!st.run) return setStatus("warn", "Hunter hasn’t synced yet");
-    const h = st.run.last_hunt;
-    const pending = Core.pendingCount(st.jobs, st.actions);
-    setStatus(pending ? "warn" : "ok", "Synced " + rel(st.run.at) + (pending ? " · " + pending + " change" + (pending === 1 ? "" : "s") + " waiting for Hunter" : ""));
-    if (h) $("statusText").append(el("span", { class: "long" }, " · last hunt " + rel(h.finished_at || h.started_at) + (h.failures && h.failures.length ? " · " + h.failures.length + " source(s) couldn’t be checked" : "")));
+  /* ---------- header ---------- */
+  function renderBar() {
+    const r = $("barRight"); const h = st.run && st.run.hunter;
+    const pending = Core.pendingCount(st.jobs, st.actions, st.profile);
+    const items = [];
+    if (st.dbError) items.push(el("span", { class: "stat" }, el("span", { class: "dot bad" }), "Can’t reach your data"));
+    else if (!st.db) items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), "Sign in to see your jobs"));
+    else if (st.owner === false) items.push(el("span", { class: "stat" }, el("span", { class: "dot bad" }), "Not your dashboard"));
+    else if (st.loaded.run && st.run) {
+      const lastHunt = h && h.last_successful_hunt_at;
+      items.push(el("span", { class: "stat", title: "The last search that finished" }, el("span", { class: "dot " + (lastHunt ? "ok" : "warn") }), "Last search " + rel(lastHunt)));
+      items.push(el("span", { class: "stat", title: "When Hunter last updated this page" }, el("span", { class: "dot " + (pending ? "warn" : "ok") }), "Synced " + rel(st.run.at) + (pending ? " · " + pending + " waiting" : "")));
+      if (h && h.automatic_hunting === "running" && h.next_hunt_at) items.push(el("span", { class: "stat" }, el("span", { class: "dot ok" }), "Next search " + rel(h.next_hunt_at).replace(" ago", "")));
+      if (h && h.email && h.email.enabled) items.push(el("span", { class: "stat", title: "Job emails go to " + (h.email.address_hint || "your address") }, el("span", { class: "dot ok" }), "Email on"));
+    } else items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), st.loaded.run ? "Hunter hasn’t synced yet" : "Loading…"));
+    if (st.profile) {
+      items.push(el("button", { class: "btn", onclick: () => { const d = $("whoMore"); if (d) { d.open = !d.open; d.scrollIntoView({ block: "nearest" }); } } }, "Profile"));
+      items.push(el("button", { class: "btn", onclick: () => { st.prefsOpen = true; renderOverlay(); } }, "Preferences"));
+    }
+    r.replaceChildren(...items);
   }
   function renderNotice() {
-    const box = $("notice");
-    let msg = null;
+    const box = $("notice"); let msg = null;
     if (!st.db && !st.dbError) msg = ["Sign in to claude.ai to see your jobs", "This page shows your private Hunter data. It opens only for you, signed in."];
-    else if (st.owner === false) msg = ["This is someone else’s dashboard", "Ask Hunter in your own Claude account to publish yours: type /jobhunter dashboard."];
-    else if (st.loaded.run && !st.run) msg = ["Nothing here yet", "Hunter fills this page from your computer or from a nightly hunt. In Claude Code, type /jobhunter dashboard."];
+    else if (st.owner === false) msg = ["This is someone else’s dashboard", "Ask Hunter in your own Claude account to make yours: type /jobhunter."];
+    else if (st.loaded.run && !st.run) msg = ["Nothing here yet", "Hunter fills this page after your first search. In Claude Code, type /jobhunter."];
     box.hidden = !msg;
     box.replaceChildren(...(msg ? [el("div", { class: "notice" }, el("h2", {}, msg[0]), el("p", {}, msg[1]))] : []));
   }
-  function renderProfile() {
-    const p = st.profile; const box = $("profile");
-    box.hidden = !p;
-    if (!p) return;
-    const facts = [];
-    if (p.direction && p.direction.length) facts.push(["Aiming for", p.direction.join(", ")]);
-    if (p.location) facts.push(["Based in", p.location]);
-    if (p.countries) facts.push(["Can work in", p.countries]);
-    if (p.remote) facts.push(["Remote", p.remote]);
-    if (p.salary) facts.push(["Minimum pay", p.salary]);
+  /* ---------- profile line ---------- */
+  function renderWho() {
+    const p = st.profile; const box = $("who"); box.hidden = !p; if (!p) return;
+    const pr = p.prefs || {};
+    const arrangement = { required: "Remote only", preferred: "Remote preferred", no_preference: "Remote, hybrid or office" }[pr.remote] || null;
+    const modes = (pr.work_modes || []).length && (pr.work_modes || []).length < 3 ? (pr.work_modes || []).map((m) => ({ remote: "remote", hybrid: "hybrid", onsite: "office" }[m] || m)).join(" or ") : null;
+    const line = [pr.location, pr.countries_text ? "can work in " + pr.countries_text : null, modes || arrangement, p.years_text].filter(Boolean).join(" · ");
+    const pendingPrefs = st.actions.get("_prefs") && Number(st.actions.get("_prefs").rev) > Number(p.prefs_synced_rev || 0);
     box.replaceChildren(
-      el("div", {}, el("h2", {}, "Your profile"), el("p", {}, p.summary || ""),
-        el("div", { class: "facts" }, facts.map(([k, v]) => el("span", {}, el("b", {}, k + ": "), v))),
-        p.skills && p.skills.length ? el("div", { class: "chips" }, p.skills.map((s) => el("span", { class: "chip" }, s))) : null),
-      el("div", { class: "sub" }, p.approved_at ? "Profile approved " + rel(p.approved_at) : ""));
+      el("div", { style: "min-width:0" }, el("h1", {}, p.headline || "Your profile"), el("div", { class: "line" }, line, pendingPrefs ? el("span", { class: "pill p-pending", style: "margin-left:8px" }, "new preferences: Hunter next run") : null)),
+      el("div", { class: "acts" }, el("button", { class: "btn sm", onclick: () => { const d = $("whoMore"); d.open = !d.open; } }, "View profile"), el("button", { class: "btn sm", onclick: () => { st.prefsOpen = true; renderOverlay(); } }, "Edit preferences")),
+      el("details", { id: "whoMore" }, el("summary", {}, "Profile"), el("div", { class: "more" },
+        p.summary ? el("p", {}, p.summary) : null,
+        (p.roles || []).length ? [el("div", {}, el("b", {}, "Paid work: "), p.roles.join(" · "))] : null,
+        (p.projects || []).length ? [el("div", {}, el("b", {}, "Projects (not paid work): "), p.projects.join(" · "))] : null,
+        (p.certifications || []).length ? [el("div", {}, el("b", {}, "Certifications and courses: "), p.certifications.join(" · "))] : null,
+        (p.skills || []).length ? el("div", { class: "chips" }, p.skills.map((s) => el("span", { class: "chip" }, s))) : null,
+        el("div", { class: "foot" }, "Every fact comes from your CV, your LinkedIn PDF or your own words. To correct it, tell Hunter in Claude Code: /jobhunter profile." + (p.approved_at ? " Approved " + rel(p.approved_at) + "." : "")))));
   }
+  /* ---------- metrics ---------- */
   function renderMetrics() {
     const t = Core.tabsFor(st.jobs, st.actions, st.run);
-    const m = [["Recommended", t.recommended.length], ["Favorites", t.favorites.length], ["Saved", t.saved.length], ["Applied", t.applied.length]];
-    $("metrics").replaceChildren(...m.map(([l, v]) => el("div", { class: "metric" }, el("b", {}, st.loaded.board ? v : "–"), el("span", {}, l))));
+    const m = [["recommended", "Recommended", t.recommended.length], ["favorites", "Favorites", t.favorites.length], ["saved", "Saved", t.saved.length], ["applied", "Applied", t.applied.length]];
+    $("metrics").replaceChildren(...m.map(([k, l, v]) => el("button", { class: "metric", onclick: () => setTab(k, true) }, el("b", {}, st.loaded.board ? v : "–"), el("span", {}, l))));
   }
-  function renderTabs() {
+  /* ---------- top picks ---------- */
+  function pickCard(k) {
+    const j = st.jobs.get(k) || {}; const e = eff(k);
+    return el("article", { class: "pick" },
+      el("div", { class: "t" }, j.title || "Untitled job"),
+      el("div", { class: "s" }, [j.employer, where(j)].filter(Boolean).join(" · ")),
+      el("div", { class: "s" }, [j.salary || "Salary not listed", j.freshness_label].filter(Boolean).join(" · "), " ", el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "")),
+      j.why ? el("div", { class: "why" }, el("b", {}, "Why: "), j.why) : null,
+      j.check ? el("div", { class: "why" }, el("b", {}, "Check: "), j.check) : null,
+      el("div", { class: "acts" },
+        el("button", { class: "btn sm primary", onclick: () => select(k) }, "View job"),
+        el("button", { class: "btn sm" + (e.favorite ? " on" : ""), disabled: !can(), "aria-pressed": String(e.favorite), onclick: () => doFlag(k, "favorite", !e.favorite) }, e.favorite ? "★ Favorite" : "☆ Favorite"),
+        el("button", { class: "btn sm" + (e.saved ? " on" : ""), disabled: !can(), "aria-pressed": String(e.saved), onclick: () => doFlag(k, "saved", !e.saved) }, e.saved ? "Saved" : "Save")));
+  }
+  function renderPicks() {
+    const sec = $("picks"); if (!st.loaded.board || !st.run) { sec.hidden = true; return; }
     const t = Core.tabsFor(st.jobs, st.actions, st.run);
-    $("tabs").replaceChildren(...TABS.map(([k, label]) => el("button", { class: "tab", role: "tab", "aria-selected": String(st.tab === k), onclick: () => { st.tab = k; try { localStorage.setItem("hunter.tab", k); } catch {} render(); } }, label, el("span", { class: "n" }, t[k].length))));
+    const picks = Core.topPicks(t.recommended, st.jobs, 5);
+    sec.hidden = !picks.length;
+    $("picksNote").textContent = picks.length ? "best " + picks.length + " of " + t.recommended.length + ", different employers first" : "";
+    $("picksList").replaceChildren(...picks.map(pickCard));
+  }
+  /* ---------- attention ---------- */
+  function renderAttention() {
+    const sec = $("attn"); const items = [];
+    const pending = Core.pendingCount(st.jobs, st.actions, st.profile);
+    if (pending) items.push({ kind: "pending", text: pending + " change" + (pending === 1 ? "" : "s") + " you made here " + (pending === 1 ? "waits" : "wait") + " for Hunter’s next run." });
+    for (const a of ((st.run && st.run.attention) || [])) items.push(a);
+    sec.hidden = !items.length || !st.run;
+    $("attnList").replaceChildren(...items.map((a) => {
+      const cls = a.kind === "new_good" ? "good" : (a.kind === "hunt_failed" || a.kind === "digest_failed" ? "bad" : "");
+      const target = a.key && st.jobs.has(a.key) ? a.key : (a.keys && a.keys.find((k) => st.jobs.has(k)));
+      return el("div", { class: "item " + cls }, a.text, target ? el("button", { class: "btn sm", onclick: () => (a.kind === "new_good" ? setTab("good", true) : select(target)) }, a.kind === "new_good" ? "See them" : "Open") : null);
+    }));
+  }
+  /* ---------- list ---------- */
+  function setTab(k, scroll) { st.tab = k; try { localStorage.setItem("hunter.tab", k); } catch {} render(); if (scroll) $("all").scrollIntoView({ behavior: "smooth", block: "start" }); }
+  function renderTools() {
+    const t = Core.tabsFor(st.jobs, st.actions, st.run);
+    $("chips").replaceChildren(...CHIPS.map(([k, label]) => el("button", { class: "fchip", role: "tab", "aria-selected": String(st.tab === k), onclick: () => setTab(k) }, label, el("span", { class: "n" }, t[k].length))));
+    const sel = $("fsel"); sel.replaceChildren(...CHIPS.map(([k, label]) => el("option", { value: k, selected: st.tab === k }, label + " (" + t[k].length + ")")));
+    sel.onchange = () => setTab(sel.value);
+    $("q").oninput = (ev) => { st.q = ev.target.value; renderList(); };
   }
   function rowFor(k) {
     const j = st.jobs.get(k) || {}; const e = eff(k);
     const marks = el("div", { class: "marks" });
-    if (e.favorite) marks.append(el("span", { class: "star", title: "Favorite", "aria-label": "Favorite" }, "★"));
+    if (e.favorite) marks.append(el("span", { class: "star", title: "Favorite" }, "★"));
     if (e.applied_at) marks.append(el("span", { class: "pill p-applied" }, "Applied"));
     if (e.dismissed && st.tab !== "dismissed") marks.append(el("span", { class: "pill p-dismissed" }, "Not interested"));
-    if (e.pending) marks.append(el("span", { class: "pill p-pending", title: "Hunter reads this on its next run" }, "Hunter: next run"));
+    if (e.pending) marks.append(el("span", { class: "pill p-pending", title: "Hunter reads this on its next run" }, "next run"));
     if (j.freshness_label && /last 2 days|today|yesterday/i.test(j.freshness_label)) marks.append(el("span", { class: "pill p-fresh" }, "New"));
     marks.append(el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"));
-    const why = j.explanation || (j.reasons && j.reasons[0]) || "";
     return el("button", { class: "row", role: "listitem", "aria-current": String(st.sel === k), onclick: () => select(k) },
       el("div", { style: "min-width:0" }, el("div", { class: "t" }, j.title || "Untitled job"),
-        el("div", { class: "s" }, [j.employer, j.location, j.salary ? j.salary : null, j.freshness_label].filter(Boolean).join(" · ")),
-        why ? el("div", { class: "why" }, why) : null),
+        el("div", { class: "s" }, [j.employer, where(j), j.salary || null, j.freshness_label].filter(Boolean).join(" · ")),
+        j.why ? el("div", { class: "why" }, el("b", {}, "Why: "), j.why) : null),
       marks);
   }
   function renderList() {
     const box = $("list");
-    if (!st.db || st.owner === false) { box.replaceChildren(el("div", { class: "empty" }, "Your jobs appear here once you are signed in to your own account.")); return; }
+    if (!can()) { box.replaceChildren(el("div", { class: "empty" }, "Your jobs appear here once you are signed in to your own account.")); return; }
     if (!st.loaded.board) return;
-    const keys = Core.tabsFor(st.jobs, st.actions, st.run)[st.tab];
+    const t = Core.tabsFor(st.jobs, st.actions, st.run);
+    let keys = t[st.tab] || [];
+    if (st.q) keys = keys.filter((k) => Core.matches(st.jobs.get(k) || {}, st.q));
+    $("allNote").textContent = keys.length ? keys.length + " job" + (keys.length === 1 ? "" : "s") : "";
     if (!keys.length) {
-      const msg = { recommended: st.run ? "Nothing to recommend right now. Hunter adds jobs after each hunt." : "Hunter hasn’t synced yet.", favorites: "No favorites yet. Star a job you like.", saved: "Nothing saved yet.", applied: "No applications recorded yet. Press “Mark applied” on a job after you applied.", uncertain: "Nothing needs checking. Jobs land here when Hunter can’t tell where they allow you to be.", old: "No older matches. Jobs posted more than 14 days ago land here.", dismissed: "Nothing marked as not interested.", all: "No jobs yet." }[st.tab];
+      const msg = st.q ? "Nothing matches your search." : { recommended: st.run ? "Nothing to recommend right now. Hunter adds jobs after each search." : "Hunter hasn’t synced yet.", good: "No good matches right now.", worth_a_shot: "Nothing worth a shot right now.", backup: "No backup options right now.", favorites: "No favorites yet. Star a job you like.", saved: "Nothing saved yet.", applied: "No applications recorded yet. Press “Mark applied” on a job after you applied.", uncertain: "Nothing needs checking. Jobs land here when Hunter can’t tell where they allow you to be.", old: "No older matches. Jobs posted more than 14 days ago land here.", dismissed: "Nothing marked as not interested.", all: "No jobs yet." }[st.tab];
       box.replaceChildren(el("div", { class: "empty" }, msg)); return;
     }
     if (st.tab === "recommended") {
       const out = [];
-      for (const [g, label] of GROUPS) {
-        const ks = keys.filter((k) => (st.jobs.get(k) || {}).group === g);
-        if (!ks.length) continue;
-        out.push(el("div", { class: "grouph" }, label + " · " + ks.length));
-        out.push(...ks.map(rowFor));
-      }
+      for (const [g, label] of GROUPS) { const ks = keys.filter((k) => (st.jobs.get(k) || {}).group === g); if (!ks.length) continue; out.push(el("div", { class: "grouph" }, label + " · " + ks.length)); out.push(...ks.map(rowFor)); }
       const rest = keys.filter((k) => !GROUPS.some(([g]) => (st.jobs.get(k) || {}).group === g));
       if (rest.length) { out.push(el("div", { class: "grouph" }, "Other")); out.push(...rest.map(rowFor)); }
       box.replaceChildren(...out); return;
     }
     box.replaceChildren(...keys.map(rowFor));
   }
+  /* ---------- drawer (job page) ---------- */
   function saveLine(k) {
     const s = st.saving[k];
     if (!s) { const e = eff(k); return el("div", { class: "save" }, e.pending ? "Saved here. Hunter reads it on its next run." : ""); }
@@ -352,85 +445,104 @@ const Core = (() => {
     const txt = { saving: "Saving…", saved: "Saved. Hunter reads it on its next run.", conflict: "Changed in another tab or device. Nothing was overwritten.", busy: "Another tab is saving. Try again in a moment.", error: "Not saved (" + (s.code || "error") + "). Your change is still on screen." }[s.status];
     return el("div", { class: "save " + cls, role: "status" }, txt);
   }
-  function renderDetail() {
-    const box = $("detail");
-    const k = st.sel; const j = k && st.jobs.get(k);
-    if (!j) { box.hidden = window.matchMedia("(max-width:900px)").matches; box.replaceChildren(el("div", { class: "empty" }, "Pick a job to see why it fits and what to do next.")); return; }
-    box.hidden = false;
-    const e = eff(k); const busy = st.saving[k] && st.saving[k].status === "saving"; const can = !!st.db && st.owner !== false;
-    const flag = (field, on, labelOn, labelOff) => el("button", { class: "btn" + (on ? " on" : ""), disabled: busy || !can, "aria-pressed": String(on), onclick: () => doFlag(k, field, !on) }, on ? labelOn : labelOff);
+  function renderDrawer() {
+    const k = st.sel; const j = k && st.jobs.get(k); if (!j) return null;
+    const e = eff(k); const busy = st.saving[k] && st.saving[k].status === "saving";
+    const flag = (field, on, labelOn, labelOff) => el("button", { class: "btn" + (on ? " on" : ""), disabled: busy || !can(), "aria-pressed": String(on), onclick: () => doFlag(k, field, !on) }, on ? labelOn : labelOff);
+    const links = j.links || {}; const direct = safeUrl(links.direct) || safeUrl(links.apply) || safeUrl(links.discovery);
     const ta = el("textarea", { id: "note", "aria-label": "Private note", placeholder: "A private note, only for you", onfocus: () => { if (!(k in st.noteBase)) st.noteBase[k] = (e.note && Number(e.note.rev)) || 0; } });
     ta.value = st.conflicts[k] ? st.conflicts[k].mine : ((e.note && e.note.text) || "");
-    const conflict = st.conflicts[k] ? el("div", { class: "conflict", role: "alert" },
-      "This note changed somewhere else after you started editing. Nothing was overwritten.",
+    const conflict = st.conflicts[k] ? el("div", { class: "conflict", role: "alert" }, "This note changed somewhere else after you started editing. Nothing was overwritten.",
       el("div", { class: "theirs" }, "Saved version: " + (st.conflicts[k].theirs || "(empty)")),
-      el("div", { class: "actions" },
-        el("button", { class: "btn", onclick: () => { const c = st.conflicts[k]; delete st.conflicts[k]; st.noteBase[k] = c.theirsRev; doNote(k, c.mine); } }, "Keep mine"),
-        el("button", { class: "btn", onclick: () => { delete st.conflicts[k]; delete st.noteBase[k]; renderDetail(); } }, "Use saved version"))) : null;
-    const links = j.links || {};
-    const linkRows = [];
-    if (safeUrl(links.direct)) linkRows.push(el("a", { href: safeUrl(links.direct), target: "_blank", rel: "noopener noreferrer" }, "Open the employer’s listing"));
-    if (safeUrl(links.apply) && links.apply !== links.direct) linkRows.push(el("a", { href: safeUrl(links.apply), target: "_blank", rel: "noopener noreferrer" }, "Open the apply page"));
-    if (safeUrl(links.discovery) && links.discovery !== links.apply && links.discovery !== links.direct) linkRows.push(el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it"));
-    box.replaceChildren(
-      el("button", { class: "btn closebtn", onclick: () => { st.sel = null; render(); } }, "Close"),
-      el("h2", {}, j.title || "Untitled job"),
-      el("div", { class: "sub" }, [j.employer, j.location, j.remote_restriction, j.salary || "Salary not listed", j.freshness_label, j.verification].filter(Boolean).join(" · ")),
-      el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"),
-      el("div", { class: "actions" },
-        flag("favorite", e.favorite, "★ Favorite", "☆ Favorite"), flag("saved", e.saved, "Saved", "Save for later"),
-        flag("applied", !!e.applied_at, "Applied ✓", "Mark applied"), flag("dismissed", e.dismissed, "Not interested", "Not interested?")),
-      saveLine(k),
-      el("h3", {}, "Your note"), conflict, ta,
-      el("div", { class: "actions" }, el("button", { class: "btn primary", disabled: busy || !can, onclick: () => doNote(k, $("note").value) }, "Save note")),
-      el("h3", {}, "Why it fits"),
-      j.explanation ? el("div", { class: "sub" }, j.explanation) : null,
-      el("ul", { class: "r" }, (j.reasons || []).map((r) => el("li", {}, r))),
-      (j.gaps || []).length ? [el("h3", {}, "Check before you apply"), el("ul", { class: "r" }, j.gaps.map((g) => el("li", {}, g)))] : null,
-      j.next_step ? [el("h3", {}, "Next step"), el("div", {}, j.next_step)] : null,
-      linkRows.length ? [el("h3", {}, "Links"), el("div", { class: "links" }, linkRows)] : null,
-      el("h3", {}, "Description"), el("div", { class: "desc" }, j.description || "No description. Open the listing."),
-      el("div", { class: "foot" }, "To prepare an application, ask Hunter in Claude Code: /jobhunter apply."));
+      el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => { const c = st.conflicts[k]; delete st.conflicts[k]; st.noteBase[k] = c.theirsRev; doNote(k, c.mine); } }, "Keep mine"),
+        el("button", { class: "btn", onclick: () => { delete st.conflicts[k]; delete st.noteBase[k]; renderOverlay(); } }, "Use saved version"))) : null;
+    const secs = [["opp", "Opportunity"], ["why", "Why it fits"], ["next", "Next actions"], ["notes", "My notes"], ["desc", "Description"]];
+    const body = el("div", { class: "dbody", id: "dbody" },
+      el("div", { class: "sec", id: "sec-opp" }, el("h3", {}, "Opportunity"),
+        el("div", { class: "kv" }, el("span", {}, "Where"), el("span", {}, where(j) || "Not stated"), el("span", {}, "Pay"), el("span", {}, j.salary || "Not listed"), el("span", {}, "Posted"), el("span", {}, [j.freshness_label, j.verification].filter(Boolean).join(" · ")), el("span", {}, "Type"), el("span", {}, j.employment_type || "Not stated")),
+        direct ? el("p", { style: "margin:8px 0 0" }, el("a", { href: direct, target: "_blank", rel: "noopener noreferrer" }, safeUrl(links.direct) ? "Open the employer’s listing" : "Open the listing")) : null),
+      el("div", { class: "sec", id: "sec-why" }, el("h3", {}, "Why it fits"),
+        el("ul", { class: "r" }, (j.reasons || []).map((r) => el("li", {}, r))),
+        (j.gaps || []).length ? [el("h3", { style: "margin-top:10px" }, "Check before you apply"), el("ul", { class: "r" }, j.gaps.map((g) => el("li", {}, g)))] : null,
+        j.next_step ? el("p", { class: "s", style: "margin:8px 0 0;color:var(--ink-2)" }, el("b", {}, "Next step: "), j.next_step) : null),
+      el("div", { class: "sec", id: "sec-next" }, el("h3", {}, "Next actions"),
+        el("div", { class: "actions" },
+          direct ? el("a", { class: "btn primary", style: "text-align:center;text-decoration:none", href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application") : el("span", { class: "btn", disabled: true }, "No link available"),
+          el("button", { class: "btn", onclick: () => copyText("/jobhunter apply " + (j.title || "")) }, "Help me apply (copy for Claude Code)"),
+          flag("favorite", e.favorite, "★ Favorite", "☆ Favorite"), flag("saved", e.saved, "Saved", "Save for later"),
+          flag("applied", !!e.applied_at, "Applied ✓", "Mark applied"), flag("dismissed", e.dismissed, "Not interested", "Not interested?")),
+        saveLine(k)),
+      el("div", { class: "sec", id: "sec-notes" }, el("h3", {}, "My notes"), conflict, ta,
+        el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn primary", disabled: busy || !can(), onclick: () => doNote(k, $("note").value) }, "Save note"),
+          el("button", { class: "btn", disabled: busy || !can() || !(e.note && e.note.text), onclick: () => doNote(k, null) }, "Delete note")),
+        el("div", { class: "foot" }, "Notes stay with the job through every search and update.")),
+      el("div", { class: "sec", id: "sec-desc" }, el("h3", {}, "Description"), el("div", { class: "desc" }, j.description || "No description. Open the listing."),
+        el("div", { class: "links", style: "margin-top:10px" },
+          safeUrl(links.direct) ? el("a", { href: safeUrl(links.direct), target: "_blank", rel: "noopener noreferrer" }, "Employer’s listing") : null,
+          safeUrl(links.apply) && links.apply !== links.direct ? el("a", { href: safeUrl(links.apply), target: "_blank", rel: "noopener noreferrer" }, "Apply page") : null,
+          safeUrl(links.discovery) && links.discovery !== links.apply && links.discovery !== links.direct ? el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it") : null)));
+    const drawer = el("aside", { class: "drawer", role: "dialog", "aria-label": j.title || "Job" },
+      el("header", {}, el("div", { style: "min-width:0;flex:1" }, el("h2", {}, j.title || "Untitled job"), el("div", { class: "sub" }, [j.employer, where(j)].filter(Boolean).join(" · ")), el("div", { style: "margin-top:6px" }, el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"), e.applied_at ? el("span", { class: "pill p-applied", style: "margin-left:6px" }, "Applied") : null)),
+        el("button", { class: "btn sm", "aria-label": "Close", onclick: () => { st.sel = null; render(); } }, "Close")),
+      el("nav", { class: "secnav" }, secs.map(([id, label]) => el("button", { onclick: () => { const s = $("sec-" + id); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); } }, label))),
+      body);
+    return [el("div", { class: "scrim", onclick: () => { st.sel = null; render(); } }), drawer];
   }
-  function render() { renderStatus(); renderNotice(); renderProfile(); renderMetrics(); renderTabs(); renderList(); renderDetail(); }
-  function select(k) { st.sel = k; render(); }
+  function renderPrefs() {
+    const p = st.profile || {}; const pr = p.prefs || {}; const cur = st.actions.get("_prefs") || {};
+    const val = (k, fallback) => (cur[k] != null ? cur[k] : fallback);
+    const modeText = (pr.remote === "required") ? "remote only" : (pr.work_modes && pr.work_modes.length === 2 && !pr.work_modes.includes("onsite")) ? "remote preferred, hybrid ok, never fully on-site" : (pr.remote === "preferred") ? "remote preferred" : (pr.remote === "no_preference") ? "don't mind" : "";
+    const form = el("form", { onsubmit: (ev) => { ev.preventDefault(); doPrefs(new FormData(ev.target)); } },
+      el("div", { class: "box" }, el("h2", {}, "Preferences"),
+        el("p", { class: "s", style: "margin:0;color:var(--muted)" }, "Hunter applies these on its next run and re-checks every job."),
+        el("label", {}, "Where you live", el("input", { type: "text", name: "location", id: "pf-location", value: val("location", pr.location || "") })),
+        el("label", {}, "Countries you can work in", el("input", { type: "text", name: "countries", id: "pf-countries", placeholder: "for example: Netherlands, Germany or EU", value: val("countries", pr.countries_text || "") })),
+        el("label", {}, "Lowest pay you’d be happy with (leave empty to skip)", el("input", { type: "text", name: "salary", id: "pf-salary", placeholder: "for example: 55000 EUR a year", value: val("salary", pr.salary_text || "") })),
+        el("label", {}, "Remote work", (() => { const s = el("select", { name: "remote", id: "pf-remote" }); for (const o of ["remote only", "remote preferred, hybrid ok, never fully on-site", "remote preferred", "hybrid ok, never fully on-site", "don't mind"]) s.append(el("option", { value: o, selected: val("remote", modeText) === o }, o)); return s; })()),
+        st.prefsStatus ? el("div", { class: "save " + (st.prefsStatus.ok ? "ok" : "err"), role: "status" }, st.prefsStatus.text) : null,
+        el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Save"), el("button", { class: "btn", type: "button", onclick: () => { st.prefsOpen = false; st.prefsStatus = null; renderOverlay(); } }, "Close"))));
+    return [el("div", { class: "modal" }, form)];
+  }
+  function renderOverlay() {
+    const o = $("overlay");
+    const parts = st.prefsOpen ? renderPrefs() : (renderDrawer() || []);
+    o.replaceChildren(...parts);
+    document.body.style.overflow = parts.length ? "hidden" : "";
+  }
+  function render() { renderBar(); renderNotice(); renderWho(); renderMetrics(); renderPicks(); renderAttention(); renderTools(); renderList(); renderOverlay(); }
+  function select(k) { st.sel = k; st.prefsOpen = false; render(); }
+  async function copyText(text) { try { await navigator.clipboard.writeText(text); } catch {} }
 
+  /* ---------- writes ---------- */
   async function doFlag(k, field, value) {
-    st.saving[k] = { status: "saving" }; renderDetail();
+    st.saving[k] = { status: "saving" }; renderOverlay();
     const res = await Core.commit(st.db, "actions/" + k, Core.setFlag(k, field, value, eff(k)), TAB_ID, { blank: Core.blankAction(k) });
-    st.saving[k] = { status: res.status, code: res.code };
-    render();
+    st.saving[k] = { status: res.status, code: res.code }; render();
   }
   async function doNote(k, text) {
-    const e = eff(k);
-    const base = k in st.noteBase ? st.noteBase[k] : ((e.note && Number(e.note.rev)) || 0);
-    st.saving[k] = { status: "saving" }; renderDetail();
+    const e = eff(k); const base = k in st.noteBase ? st.noteBase[k] : ((e.note && Number(e.note.rev)) || 0);
+    st.saving[k] = { status: "saving" }; renderOverlay();
     const res = await Core.commit(st.db, "actions/" + k, Core.saveNote(k, base, text, e), TAB_ID, { blank: Core.blankAction(k) });
-    if (res.status === "conflict") {
-      const n = (res.current && res.current.note) || null;
-      st.conflicts[k] = { mine: text, theirs: n && n.text, theirsRev: (n && n.rev) || 0 };
-    } else if (res.status === "saved") { delete st.noteBase[k]; delete st.conflicts[k]; }
-    st.saving[k] = { status: res.status, code: res.code };
+    if (res.status === "conflict") { const n = (res.current && res.current.note) || null; st.conflicts[k] = { mine: text || "", theirs: n && n.text, theirsRev: (n && n.rev) || 0 }; }
+    else if (res.status === "saved") { delete st.noteBase[k]; delete st.conflicts[k]; }
+    st.saving[k] = { status: res.status, code: res.code }; render();
+  }
+  async function doPrefs(fd) {
+    const fields = { location: String(fd.get("location") || "").slice(0, 200), countries: String(fd.get("countries") || "").slice(0, 200), salary: String(fd.get("salary") || "").slice(0, 100), remote: String(fd.get("remote") || "").slice(0, 100) };
+    const res = await Core.commit(st.db, "actions/_prefs", Core.setPrefs(fields), TAB_ID, { blank: { job_key: "_prefs", rev: 0 } });
+    st.prefsStatus = res.status === "saved" ? { ok: true, text: "Saved. Hunter applies this on its next run." } : { ok: false, text: "Not saved (" + (res.code || res.status) + "). Try again." };
     render();
   }
-
   function rebuildJobs() {
-    const n = st.run ? Number(st.run.shards) : Infinity;
-    const jobs = new Map();
-    for (const [id, doc] of st.shards) {
-      const m = /^jobs-(\d+)$/.exec(id);
-      if (!m || Number(m[1]) >= n) continue;
-      for (const [k, j] of Object.entries(doc.jobs || {})) jobs.set(k, j);
-    }
+    const n = st.run ? Number(st.run.shards) : Infinity; const jobs = new Map();
+    for (const [id, doc] of st.shards) { const m = /^jobs-(\d+)$/.exec(id); if (!m || Number(m[1]) >= n) continue; for (const [k, j] of Object.entries(doc.jobs || {})) jobs.set(k, j); }
     st.jobs = jobs;
   }
-
   async function boot() {
     render();
     if (!window.claude || typeof window.claude.use !== "function") { render(); return; }
     const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
-    st.db = db;
-    st.owner = user ? await user.isOwner().catch(() => null) : null;
+    st.db = db; st.owner = user ? await user.isOwner().catch(() => null) : null;
     if (!db) { render(); return; }
     const fail = (e) => { st.dbError = (e && e.code) || "unavailable"; render(); };
     db.doc("meta/run").onSnapshot((d) => { st.run = d.exists ? d.data() : null; st.loaded.run = true; rebuildJobs(); render(); }, fail);

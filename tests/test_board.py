@@ -157,3 +157,43 @@ def test_cloud_state_carries_the_dashboard_link_and_applied_revisions(ctx, db, t
     cdb.close()
     cloudstate.import_bundle(ctx, db, back, inputs=False, results=True)
     assert db.fetchone("SELECT synced_rev FROM board_sync WHERE job_key = ?", (nw,))["synced_rev"] == 4
+
+
+def test_page_notes_can_be_deleted_and_preferences_edited_from_the_page(ctx, db, tmp_path):
+    approve_profile(db, ctx, countries="Netherlands")
+    _seed_jobs(ctx, db)
+    nw = _key_for(db, "Northwind Cloud")
+    inbox = tmp_path / "in"
+    _action(inbox, nw, 1, note={"text": "First note", "rev": 1})
+    board.import_actions(ctx, db, inbox)
+    nw_id = db.fetchone("SELECT id FROM jobs WHERE employer_name = 'Northwind Cloud'")["id"]
+    assert notes.latest_for_job(db, nw_id)["body"] == "First note"
+    # Delete on the page: the note goes, nothing else changes, and a re-run does not bring it back.
+    _action(inbox, nw, 2, note={"text": "", "rev": 2, "deleted": True})
+    res = board.import_actions(ctx, db, inbox)
+    assert {a["job_key"]: a["changes"] for a in res["applied"]}[nw] == ["note_deleted"]
+    assert notes.latest_for_job(db, nw_id) is None
+    assert board.import_actions(ctx, db, inbox)["applied"] == []
+    # Preferences edited on the page travel through the same parser as setup, once.
+    (inbox / "actions").mkdir(exist_ok=True)
+    (inbox / "actions" / "_prefs.json").write_text(json.dumps({"job_key": "_prefs", "location": "Utrecht, Netherlands", "countries": "Netherlands, Germany", "salary": "60000 EUR a year", "remote": "remote preferred, hybrid ok, never fully on-site", "rev": 1}))
+    res = board.import_actions(ctx, db, inbox)
+    assert {a["job_key"]: a["changes"] for a in res["applied"]}["_prefs"] == ["location", "countries", "salary", "remote"]
+    from jobhunter.services import preferences as prefs_svc
+
+    p = prefs_svc.get(db)
+    assert p.current_location == "Utrecht, Netherlands" and set(p.work_countries) == {"NL", "DE"} and p.salary_min == 60000 and p.remote == "preferred" and p.work_modes == ["remote", "hybrid"]
+    assert board.import_actions(ctx, db, inbox)["applied"] == []
+    # A bad edit is reported, not applied.
+    (inbox / "actions" / "_prefs.json").write_text(json.dumps({"job_key": "_prefs", "countries": "Narnia", "rev": 2}))
+    res = board.import_actions(ctx, db, inbox)
+    assert res["applied"][0]["changes"][0].startswith("rejected:") and set(prefs_svc.get(db).work_countries) == {"NL", "DE"}
+    # The export tells the page which preference edit was applied, and carries the compact profile and status.
+    manifest = board.export(ctx, db, tmp_path / "out")
+    profile = json.loads(Path(manifest["writes"][0]["file"]).read_text())
+    assert profile["prefs_synced_rev"] == 2 and profile["headline"].endswith("Engineer") and profile["prefs"]["work_modes"] == ["remote", "hybrid"]
+    run = json.loads(Path(manifest["writes"][-1]["file"]).read_text())
+    assert run["hunter"]["automatic_hunting"] == "off" and run["hunter"]["email"]["enabled"] is False and isinstance(run["attention"], list)
+    shard = json.loads(Path(manifest["writes"][1]["file"]).read_text())["jobs"]
+    first = next(iter(shard.values()))
+    assert first["why"] and not first["why"].startswith(("Good match", "Worth a shot")) and "list" in first

@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import timedelta
 from pathlib import Path
 
 from jobhunter.config import POLICY_VERSION, AppContext
@@ -28,7 +29,7 @@ from jobhunter.services import actions, hunt, notes, views
 from jobhunter.services import preferences as prefs_svc
 from jobhunter.services import profile as profile_svc
 from jobhunter.services.normalize import country_names
-from jobhunter.util import now_iso, truncate
+from jobhunter.util import now, now_iso, truncate
 
 SCHEMA = "hunter-board/1"
 URL_SETTING = "board.url"
@@ -177,6 +178,8 @@ def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[
         "reasons": [truncate(r.get("text") or "", 220) for r in (it.get("reasons") or [])[:3] if r.get("text")],
         "gaps": [truncate(g if isinstance(g, str) else str(g), 220) for g in (it.get("gaps") or [])[:3]],
         "next_step": it.get("next_step"),
+        "why": _why_line(it),
+        "check": _check_line(it),
         "recommended": key in recommended_keys,
         "state": {
             "favorited": bool(it.get("favorited")),
@@ -192,6 +195,45 @@ def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[
     }
 
 
+_ASK = re.compile(r"^They ask for (?P<asked>.+?)\. Your CV shows (?P<have>.+?)(?: \((?P<n>\d+ of \d+)\))?\.$")
+
+
+def _why_line(it: dict) -> str:
+    """One short, specific sentence for the list: the evidence, never the group word."""
+    reasons = [r.get("text") or "" for r in (it.get("reasons") or []) if r.get("text")]
+    lead = it.get("explanation") or (reasons[0] if reasons else "")
+    lead = lead.split(": ", 1)[1] if lead.startswith(("Good match: ", "Worth a shot: ", "Backup option: ", "Needs checking: ", "Not recommended: ")) else lead
+    if not lead and reasons:
+        lead = reasons[0]
+    m = _ASK.match(lead)
+    if m:
+        have = m.group("have")
+        if have in {"all of them", "it"}:
+            return f"Your {m.group('asked')} experience matches what they ask for."
+        return f"Your {have} experience matches part of what they ask for ({m.group('n')})." if m.group("n") else f"Your {have} experience matches what they ask for."
+    return truncate(lead, 140)
+
+
+def _check_line(it: dict) -> str | None:
+    gaps = [g if isinstance(g, str) else str(g) for g in (it.get("gaps") or [])]
+    for g in gaps:
+        if g.startswith("The posting has almost no text"):
+            continue
+        return truncate(g, 150)
+    return None
+
+
+LEVEL_WORDS = {"entry": "Entry-level", "junior": "Junior", "mid": "Mid-level", "senior": "Senior", "staff": "Staff"}
+DIRECTION_WORDS = {"devops": "DevOps", "platform": "Platform", "sre": "SRE", "cloud": "Cloud", "infrastructure": "Infrastructure", "systems": "Systems"}
+
+
+def _headline(targets: dict) -> str:
+    dirs = [DIRECTION_WORDS.get(d, d.title()) for d in (targets.get("direction") or [])][:3]
+    role = (" / ".join(dirs) + " Engineer") if dirs else "Infrastructure Engineer"
+    level = LEVEL_WORDS.get(targets.get("level") or "")
+    return f"{level} {role}" if level else role
+
+
 def _profile_doc(db: Database) -> dict:
     prof = profile_svc.approved(db)
     if not prof:
@@ -199,11 +241,24 @@ def _profile_doc(db: Database) -> dict:
     targets = json.loads(prof.get("targets_json") or "{}")
     facts = json.loads(prof.get("facts_json") or "[]")
     prefs = prefs_svc.get(db)
-    skills = [f.get("text") for f in facts if f.get("category") == "skill" and f.get("status") != "rejected" and f.get("text")][:14]
+    live = [f for f in facts if f.get("status") != "rejected" and f.get("text")]
+    skills = [f["text"] for f in live if f.get("category") == "skill"][:16]
+    roles = [f["text"] for f in live if f.get("category") == "role"][:8]
+    projects = [f["text"] for f in live if f.get("category") == "project"][:6]
+    certs = [f["text"] for f in live if f.get("category") in {"certification", "course"}][:8]
+    years = targets.get("professional_years_relevant")
     salary = f"{prefs.salary_min:,.0f} {prefs.salary_currency} per {prefs.salary_period or 'year'}" if prefs.salary_min else None
+    prefs_sync = db.fetchone("SELECT synced_rev FROM board_sync WHERE job_key = '_prefs'")
     return {
         "schema": SCHEMA,
         "at": now_iso(),
+        "headline": _headline(targets),
+        "years_text": (f"about {float(years):g} years of relevant paid work" if years else "no paid infrastructure work yet"),
+        "roles": roles,
+        "projects": projects,
+        "certifications": certs,
+        "prefs_synced_rev": int(prefs_sync["synced_rev"]) if prefs_sync else 0,
+        "prefs": {"location": prefs.current_location, "countries_text": country_names(sorted(prefs.work_countries or [])) if prefs.work_countries else "", "countries": sorted(prefs.work_countries or []), "salary_text": salary, "remote": prefs.remote, "work_modes": prefs.work_modes},
         "summary": prof.get("summary_text"),
         "direction": targets.get("direction") or [],
         "level": targets.get("level"),
@@ -238,6 +293,8 @@ def _run_doc(db: Database, recommended: list[str], docs: list[dict], shards: int
         "shards": shards,
         "counts": counts,
         "sync": {"actions_read_at": imp.get("at"), "actions_seen": imp.get("seen"), "actions_applied": imp.get("applied")},
+        "hunter": _hunter_status(db),
+        "attention": _attention(db, docs),
         "last_hunt": None
         if not last
         else {
@@ -252,6 +309,55 @@ def _run_doc(db: Database, recommended: list[str], docs: list[dict], shards: int
             "failures": [f.get("source") for f in (stats.get("failures") or [])][:5],
         },
     }
+
+
+def _hunter_status(db: Database) -> dict:
+    """Only what the data supports: no "running" because a schedule preference exists."""
+    from jobhunter.services import notifications, schedule
+
+    ok = hunt.last_successful_run(db)
+    sched = schedule.describe(db)
+    worker = str(sched.get("worker") or "")
+    running = worker.startswith("running")
+    address = notifications.recipient(db)
+    return {
+        "last_successful_hunt_at": ok.get("finished_at") if ok else None,
+        "automatic_hunting": "running" if (sched.get("enabled") and running) else ("set up, not running now" if sched.get("enabled") else "off"),
+        "next_hunt_at": sched.get("next_run_at") if (sched.get("enabled") and running) else None,
+        "email": {"enabled": bool(address) and db.get_setting("digest.transport") in {"claude", "gmail", "smtp"}, "address_hint": (address[:2] + "…@" + address.split("@", 1)[1]) if address and "@" in address else None},
+    }
+
+
+def _attention(db: Database, docs: list[dict]) -> list[dict]:
+    """Outstanding things the data really shows. Never invented urgency."""
+    from jobhunter.services import drafts as drafts_svc
+    from jobhunter.services import notifications
+
+    items: list[dict] = []
+    last = hunt.last_run(db)
+    if last and last.get("status") in {"failed", "no_sources", "aborted"}:
+        items.append({"kind": "hunt_failed", "text": "Your last search stopped before it finished. Your results are saved. Hunter tries again on the next search."})
+    for f in drafts_svc.due_followups(db)[:3]:
+        items.append({"kind": "followup", "text": f"Follow-up due: {f['title']} at {f['employer_name']}.", "job_id": f["job_id"]})
+    by_id = {}
+    for d in docs:
+        by_id[d["key"]] = d
+    for r in db.fetchall(
+        "SELECT j.id, j.canonical_key, j.title, j.employer_name, e.occurred_at FROM events e JOIN jobs j ON j.id = e.job_id "
+        "WHERE e.kind = 'saved' AND e.reverted_by IS NULL AND e.occurred_at < datetime('now', '-7 days') "
+        "AND NOT EXISTS (SELECT 1 FROM events u WHERE u.job_id = j.id AND u.kind = 'unsaved' AND u.id > e.id) "
+        "AND NOT EXISTS (SELECT 1 FROM applications a WHERE a.job_id = j.id AND a.stage != 'prepared') ORDER BY e.occurred_at LIMIT 3"
+    ):
+        items.append({"kind": "saved_waiting", "text": f"You saved {r['title']} at {r['employer_name'] or 'an employer'} more than a week ago. Still interested?", "key": job_key(r["canonical_key"])})
+    fresh_good = [d for d in docs if d.get("recommended") and d.get("group") == "good" and (d.get("first_seen_at") or "") >= (now() - timedelta(days=2)).isoformat()]
+    if fresh_good:
+        items.append({"kind": "new_good", "text": f"{len(fresh_good)} new good match{'es' if len(fresh_good) != 1 else ''} since the last two days.", "keys": [d["key"] for d in fresh_good[:5]]})
+    failed = notifications.failed_digest(db)
+    if failed:
+        items.append({"kind": "digest_failed", "text": "The last job email could not be sent. Hunter will try again, or ask Hunter to send it."})
+    if notifications.unresolved(db):
+        items.append({"kind": "digest_uncertain", "text": "A job email may not have arrived. Check your inbox and tell Hunter."})
+    return items[:6]
 
 
 def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECOMMENDED_LIMIT, require_actions: bool = True) -> dict:
@@ -370,6 +476,16 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path) -> dict:
         if rev <= int(prev.get("synced_rev") or 0):
             skipped += 1
             continue
+        if key == PREFS_KEY:
+            with db.tx():
+                changes = _apply_prefs(db, a)
+                values = {"synced_rev": rev, "synced_at": now_iso()}
+                if prev:
+                    db.update("board_sync", values, "job_key = ?", (key,))
+                else:
+                    db.insert("board_sync", {"job_key": key, **values})
+            applied.append({"job_key": key, "rev": rev, "changes": changes})
+            continue
         jid = by_key.get(key)
         if jid is None:
             orphans.append(key)
@@ -386,6 +502,24 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path) -> dict:
     summary = {"seen": len(docs), "applied": applied, "already_applied": skipped, "orphans": orphans, "at": now_iso()}
     db.set_setting("board.last_import", {"at": summary["at"], "seq": _next_seq(db), "seen": len(docs), "applied": len(applied), "orphans": len(orphans)})
     return summary
+
+
+PREFS_KEY = "_prefs"
+
+
+def _apply_prefs(db: Database, a: dict) -> list[str]:
+    """The page's preference edits (location, countries, salary, remote/work modes), applied through the same
+    parser the setup uses. Untrusted input: only these four strings are read, bounded in length."""
+    changes: list[str] = []
+    fields = {k: str(a.get(k) or "")[:200] for k in ("location", "countries", "salary", "remote")}
+    try:
+        prefs_svc.update_basics(db, location=fields["location"] or None, countries=fields["countries"] or None, salary=fields["salary"] if a.get("salary") is not None else None, remote_text=fields["remote"] or None, reason="dashboard")
+    except ValueError as exc:
+        return [f"rejected: {exc}"]
+    changes += [k for k, v in fields.items() if v]
+    if a.get("salary") == "":
+        changes.append("salary cleared")
+    return changes
 
 
 def _apply_one(db: Database, jid: int, a: dict, prev: dict) -> dict:
@@ -418,7 +552,13 @@ def _apply_one(db: Database, jid: int, a: dict, prev: dict) -> dict:
     note = a.get("note")
     text = (note.get("text") if isinstance(note, dict) else None) or ""
     text = str(text).strip()[: notes.MAX_NOTE_CHARS]
-    if text:
+    if isinstance(note, dict) and (note.get("deleted") or (not text and int(note.get("rev") or 0) > 0)):
+        note_id = prev.get("note_id")
+        if note_id and db.fetchone("SELECT id FROM job_notes WHERE id = ? AND deleted_at IS NULL", (note_id,)):
+            notes.delete(db, note_id)
+            changes.append("note_deleted")
+        out["_note_id"] = None
+    elif text:
         latest = notes.latest_for_job(db, jid)
         if not latest or latest["body"] != text:
             note_id = prev.get("note_id")

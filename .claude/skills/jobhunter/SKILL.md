@@ -15,7 +15,7 @@ Everything you do goes through the `jobhunter` command line (run it as `uv run j
 2. If `setup_next` is not null, continue setup with that step (see [onboarding.md](onboarding.md)). Setup is four steps: finished? → two files → "does this look right?" → six quick basics in one go. Never ask for anything already answered. Never ask about visas or moving.
 3. The moment setup finishes (the basics are saved): run the first hunt ([hunting.md](hunting.md)), then create their personal dashboard and fill it ([board.md](board.md)), and give them the link. That is the "All set" moment: "Your dashboard is ready: <link>. Only you can open it."
 4. If setup was already done, read `attention.items` and tell the person the most useful thing first, then offer: find jobs now, show the best matches, open the dashboard, email them the digest (if you have the Gmail connector), switch on nightly hunting, or help with an application. After the first hunt with results, offer the email once: "Shall I email you these? Which address?" and follow [cloud.md](cloud.md). Offer nightly hunting once, after the email works.
-5. After every hunt you run, sync the dashboard ([board.md](board.md)): what they did on the page counts, and the new jobs appear there.
+5. Around every hunt or digest, sync the dashboard ([board.md](board.md)): read what they did on the page first (favorites, saves, notes, "applied", "not interested", and preference edits), then hunt or email, then write the new jobs to the page. Hunter refuses to hunt or email while the page is unread, so this is never optional. Report the page's changes in one line, never the sync mechanics.
 
 Argument handling (`$ARGUMENTS`):
 - `setup` → onboarding flow.
