@@ -149,7 +149,7 @@ def test_decoy_titles_are_out_but_unusual_infra_titles_stay_as_uncertain(ctx, db
         m = _m(db, jobs[k])
         assert m["relevance"] == "irrelevant" and m["match_group"] in {None, "excluded"}, (k, m)
     b = _m(db, jobs["backend"])
-    assert b["relevance"] == "uncertain" and b["match_group"] in {"worth_a_shot", "backup", "good"}
+    assert b["relevance"] == "uncertain" and b["match_group"] == "uncertain"  # shown under Needs checking, never as a sure match
     assert job_tools("We run digital products under local laws", "") == set()
     assert "git" not in _m(db, jobs["laws"])["reasons"][0].lower() or "aws" in _m(db, jobs["laws"])["reasons"][0].lower()
     e = _m(db, jobs["empty"])
@@ -306,7 +306,7 @@ def test_software_roles_on_platform_teams_and_ml_platform_jobs_are_never_good_ma
         "no_overlap": _job(ctx, db, "nov", title="Platform Engineer", description_text="About the role\nYou run our Windows fleet with SCCM and PowerShell, Citrix and Exchange. Five years with Microsoft products."),
     }
     fs = _m(db, jobs["fullstack"])
-    assert fs["relevance"] == "uncertain" and fs["match_group"] != "good", fs
+    assert fs["relevance"] == "uncertain" and fs["match_group"] == "uncertain", fs
     swc = _m(db, jobs["swe_cloud"])
     assert swc["relevance"] == "uncertain" and swc["match_group"] != "good", swc
     ml = _m(db, jobs["ml_platform"])

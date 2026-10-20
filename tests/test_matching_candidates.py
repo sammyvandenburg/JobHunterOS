@@ -123,9 +123,14 @@ def test_each_candidate_gets_a_defensible_result_on_the_same_vacancies(ctx, db, 
     assert "Germany" in _match(db, jobs["berlin_hybrid"])["exclusion_reason"]
     assert "office" in _match(db, jobs["office_only"])["exclusion_reason"].lower()
     # Security operations and "platform title, software work" are shown as needs-checking at most, never Good.
+    # Ambiguous work (security operations, an infrastructure title with a software description) is never
+    # recommended as if sure: it is "needs checking" when the fit is there, otherwise left out with the reason.
+    rec_ids = {i["id"] for i in views.current_recommended(db)}
+    checking = {i["id"] for i in views.list_jobs(db, view="uncertain", per_page=50)["items"]}
     for key in ("secops", "platform_title_software_work"):
         m = _match(db, jobs[key])
-        assert m["relevance"] == "uncertain" and m["match_group"] != "good", (name, key, m)
+        assert m["relevance"] == "uncertain" and m["match_group"] in {"uncertain", "excluded"}, (name, key, m)
+        assert jobs[key] not in rec_ids and (jobs[key] in checking or m["match_group"] == "excluded")
     # Explanations name the requirement and the evidence for a recommended job.
     rec = {i["id"]: i for i in views.current_recommended(db)}
     assert rec, name

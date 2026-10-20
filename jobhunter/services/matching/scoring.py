@@ -105,10 +105,12 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
 
     # 1. Role relevance -----------------------------------------------------
     relevance = job.get("relevance") or "unknown"
+    leadership_stretch = False
     if relevance == "uncertain" and MANAGEMENT.search(primary_role(title)):
         # A leadership role is a credible stretch only with leadership evidence in paid work.
         if not (cand_level in {"senior", "staff"} and any(LEADERSHIP.search(f.text) for f in professional_roles)):
             return _exclude(res, "A leadership role. Your approved profile has no paid experience leading a team yet.")
+        leadership_stretch = True
     direction = _direction_match(title, targets) if relevance == "relevant" else None
     if relevance == "relevant":
         rel = 25.0
@@ -297,6 +299,14 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
     # for), never a title alone. Without that overlap it is at most worth a shot.
     if res.group == "good" and (thin_text or not have):
         res.group = "worth_a_shot"
+    if relevance == "uncertain" and not leadership_stretch:
+        # The title says one thing and the text another: shown under Needs checking, never recommended as if sure.
+        res.group = "uncertain"
+        res.exclusion_reason = job.get("relevance_reason") or "The title and the description do not agree on what the work is."
+        res.gaps.insert(0, res.exclusion_reason)
+        res.next_step = "Open the job and check what the work really is. If it is infrastructure work, press Help me apply."
+        res.reasons = res.reasons[:3]
+        return res
     if res.group == "worth_a_shot" and thin_text and not have and not professional_roles:
         res.group = "backup"
     # Unresolved location: shown under "Location needs checking", never as a main recommendation.
