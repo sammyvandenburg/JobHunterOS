@@ -574,6 +574,31 @@ def cmd_cloud(args):
         db.close()
 
 
+def cmd_board(args):
+    from jobhunter.services import board
+
+    ctx, db = _open(args)
+    try:
+        c = args.board_cmd
+        if c == "link":
+            emit(args, board.link(db, args.url))
+        elif c == "unlink":
+            emit(args, board.unlink(db))
+        elif c == "status":
+            emit(args, board.status(db))
+        elif c == "page":
+            p = board.page_path()
+            emit(args, {"page": str(p), "exists": p.exists(), "title": "Hunter by KubeCraft", "capabilities": {"db": {"rules": [{"path": "", "read": "owner", "write": "owner"}]}, "user": {}}}, text=str(p))
+        elif c == "export":
+            emit(args, board.export(ctx, db, args.out, limit=args.limit))
+        elif c == "import":
+            emit(args, board.import_actions(ctx, db, args.src))
+    except board.BoardError as exc:
+        raise CliError(str(exc)) from exc
+    finally:
+        db.close()
+
+
 def cmd_schedule(args):
     from jobhunter.services import schedule, worker
 
@@ -1086,6 +1111,20 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--restore", action="store_true")
     cls.add_parser("status")
     cl.set_defaults(fn=cmd_cloud)
+
+    bd = sub.add_parser("board", help="your personal dashboard: a private Claude artifact page Claude publishes and keeps in sync")
+    bds = bd.add_subparsers(dest="board_cmd", required=True)
+    x = bds.add_parser("link", help="remember the published page (https://claude.ai/artifact/<id>)")
+    x.add_argument("url")
+    bds.add_parser("unlink", help="forget the page")
+    bds.add_parser("status")
+    bds.add_parser("page", help="where the page file is (Claude publishes it once per student)")
+    x = bds.add_parser("export", help="write the documents for the page into a folder, plus a manifest Claude follows")
+    x.add_argument("--out", required=True)
+    x.add_argument("--limit", type=int, default=150, help="how many recommended jobs to show (default 150)")
+    x = bds.add_parser("import", help="apply the actions the page recorded (a folder with actions/*.json)")
+    x.add_argument("--in", dest="src", required=True)
+    bd.set_defaults(fn=cmd_board)
 
     sc = sub.add_parser("schedule", help="how often Hunter looks and when it tells you")
     scs = sc.add_subparsers(dest="schedule_cmd", required=True)

@@ -77,7 +77,9 @@ def _export_inputs(db: Database) -> dict:
     consents = {k: consent.details(db, k) for k in CONSENTS if consent.is_granted(db, k)}
     excl = {"dismissed": _keys(db, "SELECT j.canonical_key AS k FROM jobs j WHERE (SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('dismissed','undismissed') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) = 'dismissed'"),
             "applied": _keys(db, "SELECT j.canonical_key AS k FROM jobs j JOIN applications a ON a.job_id = j.id WHERE a.stage != 'prepared'")}
-    return {"profile": profile, "preferences": prefs_svc.get(db).model_dump(mode="json"), "consents": consents, "exclusions": excl, "digest_transport": "claude"}
+    from jobhunter.services import board
+
+    return {"profile": profile, "preferences": prefs_svc.get(db).model_dump(mode="json"), "consents": consents, "exclusions": excl, "digest_transport": "claude", "board": board.export_sync_state(db)}
 
 
 def _keys(db: Database, sql: str) -> list[str]:
@@ -177,6 +179,11 @@ def import_bundle(ctx: AppContext, db: Database, bundle: dict, inputs: bool, res
         summary["results"] = _import_results(db, bundle["results"])
     if inputs and bundle.get("inputs", {}).get("exclusions"):
         summary["exclusions_applied"] = _apply_exclusions(db, bundle["inputs"]["exclusions"])
+    if not inputs and (bundle.get("inputs") or {}).get("board"):
+        # Laptop side: learn which dashboard actions the cloud run already applied, so they are not applied twice.
+        from jobhunter.services import board
+
+        summary["board"] = board.import_sync_state(db, bundle["inputs"]["board"])
     if results or inputs:
         from jobhunter.services.matching import engine
 
@@ -205,6 +212,10 @@ def _import_inputs(db: Database, inputs: dict) -> dict:
             changed["consents"].append(kind)
     if inputs.get("digest_transport") == "claude":
         db.set_setting("digest.transport", "claude")
+    if inputs.get("board"):
+        from jobhunter.services import board
+
+        changed["board"] = board.import_sync_state(db, inputs["board"])
     db.set_setting("cloud.role", "cloud")
     return changed
 

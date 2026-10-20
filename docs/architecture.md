@@ -46,3 +46,16 @@ Dedupe (`dedupe.py`): tracking parameters are dropped from links but requisition
 
 ## Security boundaries
 See docs/privacy.md. In short: loopback-only dashboard with host/origin/CSRF checks; recipient allowlist enforced in the transport; SSRF-safe fetcher; no file paths from the web; schema-validated model output; secrets in keyring or an encrypted file; untrusted content treated as data.
+
+## The personal dashboard (a private Claude artifact page)
+`jobhunter/board/hunter-board.html` is one page, published once per student by Claude with the Artifact tool and
+owner-only database rules. Python never talks to the artifact: `jobhunter board export` writes the documents
+(`meta/profile`, `meta/run`, `board/jobs-N` shards of up to 50 jobs with posting, match and the student's state)
+into a folder, and Claude writes them with the Artifact data tool, acting as the student. The page writes
+`actions/<key>` (favorite, saved, dismissed, applied, note, with a revision) under a short lease so two tabs
+never overwrite each other; `jobhunter board import` applies each revision once and the next export tells the
+page which revision Hunter has seen (`state.synced_rev`), so the page shows Hunter's view as soon as it is in
+step. Every document is rewritten whole on each sync, so a failed sync needs no repair. The state file for
+nightly runs carries the page link and the applied revisions, so a cloud run and the laptop never apply the
+same action twice. Job keys are `"j" + sha1(canonical_key)[:20]`, identical on every machine. The local FastAPI
+dashboard (`jobhunter dashboard`) is unchanged and remains the path without Claude.

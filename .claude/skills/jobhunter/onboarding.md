@@ -11,6 +11,8 @@ Run `uv run jobhunter setup next --json`. It returns one step. Ask it in simple 
 
 Never ask about visas, sponsorship, or moving. Never ask for the LinkedIn link; it is optional (`--linkedin`).
 
+When the basics are saved, do not stop at "All set": run the first hunt (`uv run jobhunter hunt run --json`, see [hunting.md](hunting.md)), then create their dashboard and fill it ([board.md](board.md)), and hand over the link with the best two or three matches in one short message. Email and nightly hunting come later, one offer at a time.
+
 ## Refining the profile (you are the model here)
 
 1. `uv run jobhunter profile show --json` shows the rule-based draft, warnings, and open questions. `uv run jobhunter docs text <id>` shows the text of a document. Read the CV and LinkedIn text yourself.

@@ -241,18 +241,38 @@ def seniority_of(title: str, description: str) -> tuple[str, int | None]:
     return "mid", years
 
 
+TITLE_SPLIT = re.compile(r"\s+[-–—|/]\s+|\s*\|\s*|,\s+|\s*\(|\s+(?:at|@|for)\s+", re.I)
+# A primary role that is clearly software development, whatever team name follows it.
+SOFTWARE_PRIMARY = re.compile(r"\b(software|developer|programmer|full[- ]?stack|back[- ]?end|front[- ]?end|web engineer|application engineer|mobile|ios|android|data engineer|data scientist|machine learning engineer|ml engineer|qa|test engineer|security engineer)\b", re.I)
+# "Machine Learning Platform Engineer", "AI Infrastructure Engineer": platform work with a data flavour, shown but never a Good match by title alone.
+DATA_FLAVOUR = re.compile(r"\b(machine learning|ml|ai|artificial intelligence|genai|data|analytics)\b", re.I)
+
+
+def primary_role(title: str) -> str:
+    """The role before any team name or qualifier: "Full-Stack Engineer - Platform Engineering" → "Full-Stack Engineer"."""
+    t = (title or "").strip()
+    head = TITLE_SPLIT.split(t, 1)[0].strip()
+    return head or t
+
+
 def classify_relevance(title: str, description: str) -> tuple[str, str]:
     """Is this infrastructure / platform / cloud / SRE / DevOps work?
 
     The title must name the work (an infrastructure noun), not merely contain "platform" or "systems".
-    Unusual titles are resolved by what the description says the work involves, and land in
-    "uncertain" (shown, with a note) rather than being thrown away. Clear non-IT roles are irrelevant.
+    The role before a dash, comma, or bracket is what counts: "Full-Stack Engineer - Platform Engineering"
+    is a software job on a platform team. Unusual titles are resolved by what the description says the
+    work involves, and land in "uncertain" (shown, with a note) rather than being thrown away.
     """
     from jobhunter.services.matching.skills import infra_signal_count
 
     t = title or ""
     hits = infra_signal_count(description or "")
     title_infra = bool(TITLE_INFRA.search(t))
+    primary = primary_role(t)
+    if title_infra and SOFTWARE_PRIMARY.search(primary) and not TITLE_INFRA.search(primary):
+        title_infra = False  # the infrastructure word names the team, the role is software development
+    if title_infra and TITLE_INFRA.search(primary) and DATA_FLAVOUR.search(primary) and not re.search(r"\b(devops|sre|site reliability|mlops|kubernetes|cloud)\b", primary, re.I):
+        return "uncertain", "This is a data or machine-learning platform job. Part of the work may be infrastructure work; check the description."
     if title_infra and TITLE_NOT_IT.search(t) and re.search(r"systems? (engineer|administrator)|infrastructure|platform", t, re.I):
         title_infra = False  # "RF Communication Systems Engineer" is not a sysadmin
     if title_infra and TITLE_PLATFORM_NOT_INFRA.search(t) and not re.search(r"\b(devops|sre|kubernetes|infrastructure|cloud)\b", t, re.I):

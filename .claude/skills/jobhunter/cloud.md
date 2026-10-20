@@ -46,8 +46,11 @@ At most one digest per local day; the history travels in the state file, so a se
 5. `uv run jobhunter cloud save --branch main --json` (commits `state/` and pushes it to their copy's `main`; pulls
    and rebases first if they saved meanwhile). If the push fails, say so plainly: the email may have gone
    out but the history did not reach the repository.
-6. Report in three lines: jobs found (and sources that failed), email sent or not and why, state saved
-   (commit) or not.
+6. Dashboard: `uv run jobhunter board status --json`. If `linked` is true and you have the Artifact tools,
+   do the Sync in [board.md](board.md) (their page actions first, then the new jobs); then `cloud save` once more
+   if the import applied anything. If not linked, skip this step.
+7. Report in four lines: jobs found (and sources that failed), email sent or not and why, state saved
+   (commit) or not, dashboard synced or not.
 
 ## Updating Hunter (`/jobhunter update`)
 `uv run jobhunter cloud update --json` fetches KubeCraft's repository as `upstream` and merges it into
@@ -56,14 +59,22 @@ their copy; `state/` is never touched by KubeCraft, so personal state survives e
 KubeCraft for help rather than resolving it yourself.
 
 ## Helping them switch nightly hunting on (`/jobhunter nightly`)
-You cannot create the routine for them from inside this session; it needs their claude.ai account page.
-Say, in this order, and offer to show it again:
-1. Open https://claude.ai/code/routines and press New routine.
-2. Repository: their own private copy of Hunter, branch main. Connector: Gmail. Nothing else.
-3. Schedule: once a day, early morning, their timezone.
-4. Prompt: the text in `docs/cloud-routine.md` under "Prompt" (show it to them to paste).
-5. Press "Run now" once; the run's report says whether it restored the state, hunted, emailed, and saved.
-Routines need a paid Claude plan and draw on its usage like a normal session.
+Two ways. Both need their private copy on GitHub with state saved (`cloud save`), and the Gmail connector.
+
+A. **You create it, from a Claude Code session on claude.ai (the web or app)** that holds their private copy
+and their Gmail connector. Use the Routine tool (`create_trigger`) in its default mode: no `connectors`
+parameter (this organisation refuses it), no `create_new_session_on_fire`, a daily cron in their timezone
+(for example `CRON_TZ=Europe/Amsterdam 56 6 * * *`), and the prompt from `docs/cloud-routine.md`. The routine
+then fires back into that same session, which has the repository and the connector; verified on
+2026-10-20 with a cold container. Say plainly: the routine lives in this session; if they archive this
+session, it stops. Ask before creating it; it is their account and their usage.
+
+B. **They create it on the routines page.** Open https://claude.ai/code/routines, New routine; repository:
+their private copy, branch main; connector: Gmail; schedule: once a day, early morning, their timezone;
+prompt: the text in `docs/cloud-routine.md`. Then "Run now" once.
+
+Either way, the first run's report says whether it restored the state, hunted, emailed, saved, and synced the
+dashboard. Routines need a paid Claude plan and draw on its usage like a normal session.
 
 ## Sync on their computer (`/jobhunter sync`, also when they open Hunter after a night)
 `uv run jobhunter cloud load --json` (results only: adds the cloud's jobs and email history; never touches

@@ -49,6 +49,7 @@ def run_matching(ctx: AppContext, db: Database, hunt_run_id: int | None = None, 
     flags = feedback.active_flags(db)
     facts: list[Fact] = profile["facts"]
     targets = profile["targets"]
+    reclassified = _reclassify_relevance_if_rules_changed(db)
     if job_ids:
         marks = ",".join("?" for _ in job_ids)
         rows = db.fetchall(f"SELECT * FROM jobs WHERE id IN ({marks})", tuple(job_ids))
@@ -104,7 +105,28 @@ def run_matching(ctx: AppContext, db: Database, hunt_run_id: int | None = None, 
             if not already:
                 db.insert("recommendations", {"job_id": job_id, "match_id": match_id, "hunt_run_id": hunt_run_id, "channel": "dashboard", "match_group": group, "presented_at": now_iso()})
     model_result = maybe_model_explanations(ctx, db, use_model=use_model)
-    return {"status": "ok", "profile_version": profile["version"], "scored": scored, "computed": computed, "reused": reused, "presented": len(presented), "model": model_result}
+    return {"status": "ok", "profile_version": profile["version"], "scored": scored, "computed": computed, "reused": reused, "presented": len(presented), "reclassified": reclassified, "model": model_result}
+
+
+RELEVANCE_RULES_SETTING = "matching.relevance_rules"
+
+
+def _reclassify_relevance_if_rules_changed(db: Database) -> int:
+    """Title rules live in code. After an update, jobs already in the database keep their old
+    classification until they are seen again, so re-run the rules once per policy version."""
+    if db.get_setting(RELEVANCE_RULES_SETTING) == POLICY_VERSION:
+        return 0
+    from jobhunter.services.normalize import classify_relevance
+
+    changed = 0
+    with db.tx():
+        for j in db.fetchall("SELECT id, title, description_text, relevance FROM jobs WHERE availability != 'closed'"):
+            rel, reason = classify_relevance(j.get("title") or "", j.get("description_text") or "")
+            if rel != j.get("relevance"):
+                db.update("jobs", {"relevance": rel, "relevance_reason": reason, "updated_at": now_iso()}, "id = ?", (j["id"],))
+                changed += 1
+        db.set_setting(RELEVANCE_RULES_SETTING, POLICY_VERSION)
+    return changed
 
 
 def rules_explanation(job: dict, result) -> MatchExplanation:

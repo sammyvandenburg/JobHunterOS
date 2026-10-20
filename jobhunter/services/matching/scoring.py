@@ -64,11 +64,20 @@ def candidate_skills(facts: list[Fact]) -> dict[str, Fact]:
     return out
 
 
-def _direction_match(title: str, targets: dict) -> bool:
-    dirs = targets.get("direction") or []
-    t = title.lower()
-    keys = {"devops": ["devops", "dev ops"], "platform": ["platform"], "sre": ["sre", "reliability"], "cloud": ["cloud"], "infrastructure": ["infrastructure", "infra"], "systems": ["systems", "linux", "sysadmin"]}
-    return any(any(k in t for k in keys.get(d, [d])) for d in dirs)
+DIRECTION_WORDS = {"devops": ["devops", "dev ops"], "platform": ["platform"], "sre": ["sre", "reliability"], "cloud": ["cloud"], "infrastructure": ["infrastructure", "infra"], "systems": ["systems", "linux", "sysadmin"]}
+DIRECTION_LABELS = {"devops": "DevOps", "platform": "platform engineering", "sre": "SRE", "cloud": "cloud", "infrastructure": "infrastructure", "systems": "systems"}
+
+
+def _direction_match(title: str, targets: dict) -> str | None:
+    """Which chosen direction the role itself names. Only the role before a dash, comma or bracket counts,
+    so "Full-Stack Engineer - Platform Engineering" does not pass as a platform job."""
+    from jobhunter.services.normalize import primary_role
+
+    t = primary_role(title).lower()
+    for d in targets.get("direction") or []:
+        if any(k in t for k in DIRECTION_WORDS.get(d, [d])):
+            return d
+    return None
 
 
 def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, feedback_flags: dict | None = None) -> ScoreResult:
@@ -90,16 +99,17 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
 
     # 1. Role relevance -----------------------------------------------------
     relevance = job.get("relevance") or "unknown"
+    direction = _direction_match(title, targets) if relevance == "relevant" else None
     if relevance == "relevant":
         rel = 25.0
-        if _direction_match(title, targets):
+        if direction:
             rel += 5.0
-            res.reasons.append({"text": "This is the kind of job you said you want.", "fact_ids": []})
+            res.reasons.append({"text": f"A {DIRECTION_LABELS.get(direction, direction)} role: the direction you chose.", "fact_ids": []})
         else:
             res.reasons.append({"text": "This is infrastructure work, the kind you are looking for.", "fact_ids": []})
     elif relevance == "uncertain":
         rel = 12.0
-        res.reasons.append({"text": "The title is a bit different, but the work is infrastructure work.", "fact_ids": []})
+        res.reasons.append({"text": job.get("relevance_reason") or "The title is a bit different, but the work described is infrastructure work.", "fact_ids": []})
     else:
         return _exclude(res, "This is not an infrastructure, platform, cloud, SRE, or DevOps job.")
     res.components["relevance"] = rel
@@ -116,7 +126,8 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
     res.components["skills"] = skill_score
     if have:
         ids = [skills[t].id for t in have[:3]]
-        res.reasons.append({"text": "Your CV shows " + ", ".join(tool_label(t) for t in have[:5]) + (" and more" if len(have) > 5 else "") + ", which they ask for.", "fact_ids": ids})
+        # The concrete evidence leads: what the CV proves and the job asks for, before the direction sentence.
+        res.reasons.insert(0, {"text": "Your CV shows " + ", ".join(tool_label(t) for t in have[:5]) + (" and more" if len(have) > 5 else "") + ", which they ask for.", "fact_ids": ids})
     for want, got in related[:2]:
         res.gaps.append(f"They ask for {tool_label(want)}. Your CV shows {tool_label(got)}, which is related but not the same.")
     if missing:
@@ -258,8 +269,9 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
         res.group = "backup"
     else:
         return _exclude(res, "Not a good fit: " + (res.gaps[0] if res.gaps else "little of what they ask for shows in your CV."), elig)
-    # Confidence caps: a Good match needs real text and real evidence, not a title and a guess.
-    if res.group == "good" and (thin_text or (not have and not professional_roles)):
+    # Confidence caps: a Good match needs real text and real evidence (a tool the CV proves and the job asks
+    # for), never a title alone. Without that overlap it is at most worth a shot.
+    if res.group == "good" and (thin_text or not have):
         res.group = "worth_a_shot"
     if res.group == "worth_a_shot" and thin_text and not have and not professional_roles:
         res.group = "backup"

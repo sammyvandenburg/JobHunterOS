@@ -6,17 +6,25 @@ The experience: **Learn about me. Find suitable jobs. Show me the best options. 
 
 Hunter starts from your finished CV and LinkedIn profile. It does not rewrite, score, or tailor them. It builds a factual profile you approve, then runs a broad, explainable job hunt, keeps a dashboard and application tracker, and prepares (never submits) applications.
 
-## What you need
+## For KubeCraft students: seven steps
 
-- A computer you control (Linux, macOS, or Windows) that stays on when you want scheduled hunts.
-- Python 3.11 or newer and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-- [Claude Code](https://code.claude.com/) for the conversational experience. The dashboard and CLI work without it.
+1. **Make your own private copy of Hunter.** On GitHub, open KubeCraft's Hunter repository and press **Use this template** → **Create a new repository**; choose **Private** and a name like `hunter-yourname`. With the GitHub CLI it is one line: `gh repo create hunter-yourname --template <kubecraft>/JobHunterOS --private --clone`. Your copy holds the software and, later, one small state file. Nothing personal ever goes to KubeCraft's repository, and Hunter refuses to save state to a public one.
+2. **Open your copy in Claude Code.** On claude.ai/code pick your repository (nothing to install), or clone it on your computer and open the folder in Claude Code.
+3. **Type `/jobhunter`.** Hunter asks one thing at a time, in plain words.
+4. **Give it your finished CV and your LinkedIn profile as a PDF** (on LinkedIn: More → Save to PDF). Drag both files into the chat. Hunter never rewrites them.
+5. **Check your profile and answer the basics:** where you live, which countries you can work in, pay, remote, how often to look.
+6. **Open your dashboard.** Hunter runs the first hunt, creates your private dashboard at claude.ai and gives you the link. Only you can open it, and it works on your phone. Favorites, saved jobs, private notes and "I applied" live there and are remembered.
+7. **Optional: daily email and nightly hunting.** Say "email me the jobs": Hunter sends today's digest to the one address you confirm, through your own Gmail connector. Say "hunt every night": Hunter sets up a routine in your Claude account that hunts, emails and updates your dashboard while you sleep.
+
+You need a Claude account with Claude Code, and the Gmail connector connected in claude.ai if you want email. Hunter never applies for you and never emails anyone but you.
+
+## Without Claude Code (developers, or just looking)
+
+- A computer you control (Linux, macOS, or Windows), Python 3.11 or newer and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 - Internet access to the public job boards (no paid search service needed).
 
-## Start (three commands)
-
 ```bash
-git clone <this repository> && cd JobHunterOS
+git clone <your private copy> && cd <it>
 uv sync                      # installs locked dependencies into .venv
 uv run jobhunter doctor      # checks your environment and explains any fix
 ```
@@ -52,7 +60,8 @@ uv run jobhunter apply prepare <id>   # application package (nothing is submitte
 uv run jobhunter act applied <id>     # you applied; Hunter records it
 uv run jobhunter prefs set remote "remote preferred, hybrid ok, no office"   # or: prefs set work_modes remote,hybrid
 uv run jobhunter act favorite <id>    # star a job (act save <id> bookmarks it; act note <id> your words here keeps a private note)
-uv run jobhunter dashboard            # local dashboard
+uv run jobhunter dashboard            # local dashboard (no Claude needed)
+uv run jobhunter board status         # your private dashboard page at claude.ai (Claude publishes and syncs it)
 uv run jobhunter email connect gmail-send   # Connect Gmail (the dashboard button does the same)
 uv run jobhunter digest test                # a test email to your confirmed address
 uv run jobhunter schedule automatic on      # automatic hunting (--keep-running-when-closed adds a login task)

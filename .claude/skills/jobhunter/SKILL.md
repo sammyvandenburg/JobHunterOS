@@ -13,13 +13,15 @@ Everything you do goes through the `jobhunter` command line (run it as `uv run j
 
 1. Run `uv run jobhunter next --json`.
 2. If `setup_next` is not null, continue setup with that step (see [onboarding.md](onboarding.md)). Setup is four steps: finished? → two files → "does this look right?" → six quick basics in one go. Never ask for anything already answered. Never ask about visas or moving.
-3. If setup is done, read `attention.items` and tell the person the most useful thing first, then offer: find jobs now, show the best matches, email them the digest (if you have the Gmail connector), switch on nightly hunting, open the dashboard, or help with an application. After the first hunt with results, offer the email once: "Shall I email you these? Which address?" and follow [cloud.md](cloud.md).
+3. The moment setup finishes (the basics are saved): run the first hunt ([hunting.md](hunting.md)), then create their personal dashboard and fill it ([board.md](board.md)), and give them the link. That is the "All set" moment: "Your dashboard is ready: <link>. Only you can open it."
+4. If setup was already done, read `attention.items` and tell the person the most useful thing first, then offer: find jobs now, show the best matches, open the dashboard, email them the digest (if you have the Gmail connector), switch on nightly hunting, or help with an application. After the first hunt with results, offer the email once: "Shall I email you these? Which address?" and follow [cloud.md](cloud.md). Offer nightly hunting once, after the email works.
+5. After every hunt you run, sync the dashboard ([board.md](board.md)): what they did on the page counts, and the new jobs appear there.
 
 Argument handling (`$ARGUMENTS`):
 - `setup` → onboarding flow.
 - `hunt` → `uv run jobhunter hunt run`, then summarize per [hunting.md](hunting.md).
 - `next` → attention items and the best new matches.
-- `dashboard` → tell them to run `uv run jobhunter dashboard` in a separate terminal (it stays open), then open http://127.0.0.1:8765/.
+- `dashboard` → create or sync their personal page and give them the link ([board.md](board.md)). Only if the Artifact tool is missing in this session: the local dashboard, `uv run jobhunter dashboard` in a separate terminal (it stays open), then http://127.0.0.1:8765/.
 - `profile` → `uv run jobhunter profile show --json` and present it for approval or correction.
 - `apply <id>` → [applying.md](applying.md).
 - `status` → `uv run jobhunter status`.
@@ -44,4 +46,4 @@ Use `uv run jobhunter jobs list --json` (views: new, favorites, saved, applied, 
 
 Explanations: `jobs list` carries rule-based explanations. To write better ones yourself (you are the model in this session), run `uv run jobhunter match pending --json`, write explanations only from the listed facts with fact ids, save them as JSON matching the given schema, then `uv run jobhunter match submit --file <path>`. Rejected items stay rule-based; say so.
 
-See [hunting.md](hunting.md), [applying.md](applying.md), [onboarding.md](onboarding.md), [cloud.md](cloud.md) (digest through your Gmail connector, nightly runs in the person's own Claude account, state in the `state/` folder of their own private copy), and [troubleshooting.md](troubleshooting.md) for the detailed flows and exact commands.
+See [onboarding.md](onboarding.md), [hunting.md](hunting.md), [board.md](board.md) (their personal dashboard: a private page at claude.ai you publish once and keep in sync), [applying.md](applying.md), [cloud.md](cloud.md) (digest through your Gmail connector, nightly runs in the person's own Claude account, state in the `state/` folder of their own private copy), and [troubleshooting.md](troubleshooting.md) for the detailed flows and exact commands.

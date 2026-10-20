@@ -291,3 +291,33 @@ def test_dashboard_cli_digest_and_recommended_count_agree(ctx, db):
     dash2 = {i["id"] for i in views.list_jobs(db, view="new", per_page=100)["items"]}
     digest2 = {r["id"] for r in notifications.pending_jobs(db, limit=100)}
     assert digest2 <= dash2 and stats.totals(db)["recommended"] == len(dash2)
+
+
+# ---------------------------------------------------------------- obvious matching errors seen on real postings
+def test_software_roles_on_platform_teams_and_ml_platform_jobs_are_never_good_matches(ctx, db):
+    approve_profile(db, ctx, cv_text=MID_CV, countries="Netherlands")
+    infra = FULL_DESC + "\nKubernetes, Terraform, AWS, Linux, Prometheus, Grafana, CI/CD, Docker, Ansible."
+    jobs = {
+        "fullstack": _job(ctx, db, "fs", title="Full-Stack Engineer (Backend Leaning) - Platform Engineering", description_text=infra),
+        "swe_cloud": _job(ctx, db, "swc", title="Software Engineer, Cloud", description_text=infra),
+        "ml_platform": _job(ctx, db, "mlp", title="Machine Learning Platform Engineer I", description_text=infra),
+        "platform": _job(ctx, db, "pe", title="Platform Engineer - Developer Experience", description_text=infra),
+        "devops_team": _job(ctx, db, "dv", title="DevOps Engineer (Payments team)", description_text=infra),
+        "no_overlap": _job(ctx, db, "nov", title="Platform Engineer", description_text="About the role\nYou run our Windows fleet with SCCM and PowerShell, Citrix and Exchange. Five years with Microsoft products."),
+    }
+    fs = _m(db, jobs["fullstack"])
+    assert fs["relevance"] == "uncertain" and fs["match_group"] != "good", fs
+    swc = _m(db, jobs["swe_cloud"])
+    assert swc["relevance"] == "uncertain" and swc["match_group"] != "good", swc
+    ml = _m(db, jobs["ml_platform"])
+    assert ml["relevance"] == "uncertain" and ml["match_group"] != "good" and "machine-learning" in ml["reasons"][0] + str(ml), ml
+    for k in ("platform", "devops_team"):
+        m = _m(db, jobs[k])
+        assert m["relevance"] == "relevant" and m["match_group"] == "good", (k, m)
+        assert m["reasons"][0].startswith("Your CV shows") and "which they ask for" in m["reasons"][0], m["reasons"]
+        assert any("direction you chose" in r for r in m["reasons"]), m["reasons"]
+    weak = _m(db, jobs["no_overlap"])
+    assert weak["relevance"] == "relevant" and weak["match_group"] != "good", weak
+    # The one selection every surface uses agrees: software titles are not among the Good matches.
+    good = {i["id"] for i in views.list_jobs(db, view="new", group="good", per_page=50)["items"]}
+    assert jobs["platform"] in good and jobs["fullstack"] not in good and jobs["ml_platform"] not in good

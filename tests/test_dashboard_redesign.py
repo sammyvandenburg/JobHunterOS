@@ -184,9 +184,12 @@ def test_applied_page_lists_company_title_date_status_notes_and_link(ctx, db):
 
 def test_new_jobs_filters_sort_and_pagination(ctx, db):
     approve_profile(db, ctx)
-    nl_remote = _seed(ctx, db, "f1", remote_type="remote", posted_at="2026-10-17T20:00:00+00:00")
-    nl_onsite = _seed(ctx, db, "f2", remote_type="onsite", posted_at="2026-10-05T09:00:00+00:00", title="DevOps Engineer")
-    de_hybrid = _seed(ctx, db, "f3", location_text="Berlin, Germany", country_codes=["DE"], remote_type="hybrid", description_text="Kubernetes, Terraform, AWS, Linux, Prometheus.", posted_at="2026-10-16T09:00:00+00:00")
+    from datetime import UTC, datetime, timedelta
+
+    days_ago = lambda n: (datetime.now(UTC) - timedelta(days=n)).isoformat()  # noqa: E731
+    nl_remote = _seed(ctx, db, "f1", remote_type="remote", posted_at=days_ago(3))
+    nl_onsite = _seed(ctx, db, "f2", remote_type="onsite", posted_at=days_ago(10), title="DevOps Engineer")
+    de_hybrid = _seed(ctx, db, "f3", location_text="Berlin, Germany", country_codes=["DE"], remote_type="hybrid", description_text="Kubernetes, Terraform, AWS, Linux, Prometheus.", posted_at=days_ago(4))
     actions.favorite_job(db, nl_onsite)
     actions.save_job(db, de_hybrid)
     ids = lambda **kw: {i["id"] for i in views.list_jobs(db, view="new", per_page=50, **kw)["items"]}  # noqa: E731
@@ -198,7 +201,7 @@ def test_new_jobs_filters_sort_and_pagination(ctx, db):
     assert ids(query="prometheus") == {de_hybrid}
     assert ids(query="DevOps") == {nl_onsite}
     assert ids(query="Employer f1") == {nl_remote}
-    # Age filters are relative to now; the 2026-10-05 job falls outside 7 days as long as "now" is after Oct 12 2026.
+    # Age filters are relative to now: the ten-day-old job falls outside 7 days, the three-day-old one is inside.
     assert nl_onsite not in ids(age="7") and nl_remote in ids(age="7")
     newest = [i["id"] for i in views.list_jobs(db, view="new", sort="newest")["items"]]
     assert newest[0] == nl_remote and newest[-1] == nl_onsite

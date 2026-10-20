@@ -119,3 +119,12 @@ and the client JSON published at `https://jobhunter.kubecraft.nl/google-oauth-cl
 | Login task install and removal | yes, with a recorded command runner, for launchd, systemd user, schtasks | no (`launchctl`, `systemctl --user`, `schtasks` never executed on a real machine) |
 | Browsers | headless Chromium | Safari, Edge, Firefox not tried |
 | Google consent-screen text, verification warning, Keychain/Credential Locker prompts | not testable here | no |
+
+## F. The personal dashboard and the nightly routine (a Claude account with the Gmail connector)
+- [ ] From a fresh private copy, `/jobhunter` through setup; after the basics Hunter runs a hunt, publishes the dashboard and gives the link without being asked.
+- [ ] The link opens on a phone and on a laptop, signed in; signed out it shows "Sign in to see your jobs"; another account sees no jobs.
+- [ ] Favorite, Save, Mark applied, Not interested and a note each show "Saved. Hunter reads it on its next run"; closing and reopening keeps them.
+- [ ] `/jobhunter hunt` (or the nightly run) applies them: `board import` reports the changes, the applied job leaves Recommended, the note is on the job in `jobs show`.
+- [ ] A second hunt shows new jobs on the same page; no second page is created (`board status` keeps one link).
+- [ ] Nightly: the routine's report names the restored commit, the hunt numbers, the Gmail message id, the saved commit and "dashboard synced"; the next morning's email repeats none of the jobs from the day before.
+- [ ] After `cloud update` to a newer Hunter, the dashboard still opens and a sync still works (export rematches with the new rules).

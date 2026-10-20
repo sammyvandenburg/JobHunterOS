@@ -24,3 +24,20 @@ See `.env.example`. `JOBHUNTER_HOME`, `JOBHUNTER_DEMO`, `JOBHUNTER_DASHBOARD_HOS
 
 ## Browser smoke test
 `uv sync --extra browser`, then `uv run playwright install chromium` (downloads a browser) or point `JOBHUNTER_CHROMIUM` at an existing Chrome/Chromium binary, then `uv run pytest tests/test_browser.py`. The test starts the demo dashboard on a free local port, clicks through the main pages, saves a job, and checks keyboard focus.
+
+## Your own private copy (students) and how KubeCraft hands it out
+Each student runs Hunter from their own **private** GitHub repository: it holds the software, the `/jobhunter`
+skill, and (after `jobhunter cloud save`) one small state file under `state/`. KubeCraft's repository never
+holds a student's data, and `cloud save` refuses a public repository or KubeCraft's own.
+
+What KubeCraft does once: on the shared repository's GitHub settings, tick **Template repository**. From then
+on a student presses **Use this template** → **Create a new repository** → **Private**, or runs
+`gh repo create hunter-<name> --template <kubecraft>/JobHunterOS --private --clone`. That is the whole
+installation on GitHub; no second repository, no cloud project, no keys.
+
+What cannot be automated from inside a Claude session: creating the repository itself. A Claude Code session's
+GitHub access is limited to the repositories attached to it, so Hunter cannot create a repository for the
+student (verified 2026-10-19). Everything after that step is done by Hunter: attaching the copy to the
+session, checking it is private, saving state, creating the dashboard, and (on request) the nightly routine.
+
+Updates: `uv run jobhunter cloud update` merges KubeCraft's newer Hunter into the copy; `state/` is never touched.

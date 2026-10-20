@@ -61,10 +61,21 @@ to their computer); persistent hosting would need authentication the dashboard d
 separate decision, not part of this design.
 
 ## The routine
-Create it on https://claude.ai/code/routines (or with `/schedule` in Claude Code); that is where the
-repository and the connector are attached. A routine created through the remote-control API from a
-cloud session got neither on this account (verified 2026-10-19), so the agent gives the student these
-settings instead of creating it:
+Two ways to create it, verified on this account:
+
+1. **Hunter creates it** from a Claude Code session on claude.ai that holds the student's private copy
+   and their Gmail connector, with the Routine tool in its default, self-bound mode (no `connectors`
+   parameter, which this organisation refuses; no fresh session per run). The routine fires back into
+   that session, which has the repository and the connectors. Verified 2026-10-20: a one-time routine
+   created this way fired at 05:57 UTC into a cold container (new boot id, 23 s uptime), restored the state
+   from the private repository's `main`, hunted 72 sources, sent one digest through the Gmail connector
+   with none of the 15 previously emailed jobs, and saved the state (commit 38f4f9d). Limits: the routine
+   lives in that session (archiving the session stops it); a fresh-session routine created through the
+   API gets no repository and no connectors, so that mode is not used.
+2. **The student creates it on https://claude.ai/code/routines**, where the repository and the connector are
+   attached by the page itself.
+
+Settings either way:
 - Repository: the student's own private copy of Hunter, branch main.
 - Connector: Gmail. Nothing else.
 - Schedule: once a day, early morning, the student's timezone (minimum interval is hourly).
@@ -72,11 +83,13 @@ settings instead of creating it:
 
 ```
 You are Hunter (JobHunterOS). Do the "Nightly run" in .claude/skills/jobhunter/cloud.md, step by step,
-in this repository, with `--branch main` on `cloud load` and `cloud save`. Use only the Gmail connector.
-Send email only to the address `uv run jobhunter digest prepare --json` prints, and only when its
-status is "ready". Commit and push nothing except what `uv run jobhunter cloud save` does. Finish with
-the three-line report the file asks for: which commit and branch you started on, state restored (commit),
-hunt numbers, email sent (Gmail message id) or why not, state saved (commit, branch).
+in this repository, with `--branch main` on `cloud load` and `cloud save`. Use only the Gmail connector
+and the Artifact tools. Send email only to the address `uv run jobhunter digest prepare --json` prints,
+and only when its status is "ready". Commit and push nothing except what `uv run jobhunter cloud save`
+does. If `uv run jobhunter board status --json` says the dashboard is linked, sync it as
+.claude/skills/jobhunter/board.md describes. Finish with the four-line report the file asks for: state
+restored (commit), hunt numbers, email sent (Gmail message id) or why not, state saved (commit) and
+dashboard synced or not.
 ```
 
 `cloud save` and `cloud load` take `--branch`; the routine uses `main` explicitly, so it does not
