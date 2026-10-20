@@ -75,6 +75,11 @@ def test_clean_install_student_journey(home, fake_sources, tmp_path, capsys):
     assert Path(page["page"]).exists() and page["capabilities"]["db"]["rules"][0]["read"] == "owner"
     run("board", "link", "https://claude.ai/artifact/testpage0001")
     out = tmp_path / "out"
+    # The page's actions are always read first; before the first write there are none.
+    assert run("board", "status")["actions_stale"]
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert run("board", "import", "--in", str(empty))["seen"] == 0
     manifest = run("board", "export", "--out", str(out))
     shard = json.loads(Path(manifest["writes"][1]["file"]).read_text())["jobs"]
     by_emp = {d["employer"]: d for d in shard.values()}
@@ -103,12 +108,6 @@ def test_clean_install_student_journey(home, fake_sources, tmp_path, capsys):
     favs = run("jobs", "list", "--view", "favorites")["items"]
     assert [j["employer"] for j in favs] == ["Northwind Cloud"] and favs[0]["notes_count"] == 1
     assert [j["employer"] for j in run("jobs", "list", "--view", "applied")["items"]] == ["Contoso Payments"]
-    manifest = run("board", "export", "--out", str(out))
-    shard = json.loads(Path(manifest["writes"][1]["file"]).read_text())["jobs"]
-    assert shard[northwind]["state"]["favorited"] and shard[northwind]["state"]["note"].startswith("Great team") and shard[northwind]["state"]["synced_rev"] == 1
-    assert shard[contoso]["state"]["stage"] == "applied" and not shard[contoso]["recommended"]
-    assert json.loads(Path(manifest["writes"][-1]["file"]).read_text())["counts"] == {"recommended": 1, "jobs": 2, "favorites": 1, "saved": 1, "dismissed": 0, "applied": 1}
-
     # Enable email: one confirmed address, Claude's Gmail connector as the transport, and the first digest is ready
     # for Claude to send; it contains the recommended job and not the one already applied to.
     run("digest", "address", "student@example.invalid")
@@ -117,6 +116,25 @@ def test_clean_install_student_journey(home, fake_sources, tmp_path, capsys):
     assert prepared["status"] == "ready" and prepared["to"] == "student@example.invalid"
     assert "Northwind Cloud" in prepared["text"] and "Contoso Payments" not in prepared["text"]
     run("digest", "record", str(prepared["notification_id"]), "failed", "--error", "test: not sent")
+
+    # Write the page, and check that progress and the applied state travel with it.
+    manifest = run("board", "export", "--out", str(out))
+    shard = json.loads(Path(manifest["writes"][1]["file"]).read_text())["jobs"]
+    assert shard[northwind]["state"]["favorited"] and shard[northwind]["state"]["note"].startswith("Great team") and shard[northwind]["state"]["synced_rev"] == 1
+    assert shard[contoso]["state"]["stage"] == "applied" and not shard[contoso]["recommended"] and shard[contoso]["list"] == "acted"
+    run_doc = json.loads(Path(manifest["writes"][-1]["file"]).read_text())
+    assert run_doc["counts"] == {"recommended": 1, "jobs": 2, "favorites": 1, "saved": 1, "dismissed": 0, "applied": 1, "old": 0, "uncertain": 0}
+    assert run_doc["sync"]["actions_read_at"] and run_doc["sync"]["actions_seen"] == 2
+
+    # After Hunter wrote the page, nothing recommends or emails again until the page's actions are read:
+    # the student may have pressed Applied in between.
+    assert run("digest", "prepare")["status"] == "blocked"
+    assert cli.main(["--json", "hunt", "run"]) == 1 and "read" in json.loads(capsys.readouterr().out)["error"].lower()
+    assert cli.main(["--json", "board", "export", "--out", str(out)]) == 1 and capsys.readouterr()
+    run("board", "import", "--in", str(inbox))
+    assert run("board", "status")["actions_stale"] is None
+    run("digest", "record", str(run("digest", "prepare")["notification_id"]), "failed", "--error", "test: not sent")
+
     # The cloud state file (for nightly runs) carries the dashboard link and nothing private.
     bundle_path = tmp_path / "state.json"
     run("cloud", "export", "--out", str(bundle_path))

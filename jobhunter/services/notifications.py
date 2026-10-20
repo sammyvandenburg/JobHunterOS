@@ -314,6 +314,12 @@ def prepare_handoff(ctx: AppContext, db: Database) -> dict:
         raise DigestError("No confirmed digest address. Confirm one first (`jobhunter digest address you@example.com`).")
     if sent_today(db):
         return {"status": "skipped", "note": "Already emailed today. One digest a day; the rest waits for tomorrow."}
+    from jobhunter.services import board
+
+    stale = board.stale_reason(db)
+    if stale:
+        # Never email a job the person marked applied or not interested on their dashboard.
+        return {"status": "blocked", "note": stale}
     jobs = pending_jobs(db)
     if not jobs:
         return {"status": "skipped", "note": "Nothing new worth emailing."}

@@ -106,7 +106,7 @@ def coverage(tools: set[str], candidate: set[str]) -> tuple[list[str], list[tupl
 
 
 def tool_label(key: str) -> str:
-    return TOOL_LABELS.get(key, key)
+    return TOOL_LABELS.get(key, key.capitalize() if key.islower() and " " not in key else key)
 
 
 def infra_signal_count(text: str | None) -> int:

@@ -67,7 +67,7 @@ def test_acc11_related_titles_and_missing_tool_not_rejected(ctx, db):
     j = _job(db, jid)
     assert j["relevance"] == "relevant"
     assert j["match_group"] in {"good", "worth_a_shot", "backup"}
-    assert any("not in your profile" in g for g in j["gaps"])
+    assert any("not in your CV" in g or "not in your approved profile" in g for g in j["gaps"]), j["gaps"]
     jid2 = _import(ctx, db, external_id="t2", title="Backend Engineer", location_text="Amsterdam, Netherlands", description_text="You will own Kubernetes clusters, Terraform modules, AWS accounts, CI/CD pipelines and on-call for the platform.")
     assert _job(db, jid2)["relevance"] == "uncertain"
 

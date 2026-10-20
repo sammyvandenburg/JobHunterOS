@@ -80,8 +80,12 @@ def _direction_match(title: str, targets: dict) -> str | None:
     return None
 
 
-def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, feedback_flags: dict | None = None) -> ScoreResult:
+def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, feedback_flags: dict | None = None, cv_skills: set[str] | None = None, rejected_skills: set[str] | None = None) -> ScoreResult:
+    """`cv_skills`: tools named anywhere in the CV text (not only in approved facts). They tell missing
+    evidence ("it is in your CV, not in your profile yet") from missing experience ("it is not in your CV")."""
     feedback_flags = feedback_flags or {}
+    cv_skills = cv_skills or set()
+    rejected_skills = rejected_skills or set()
     res = ScoreResult(score=0.0, group="excluded")
     desc = job.get("description_text") or ""
     title = job.get("title") or ""
@@ -126,12 +130,26 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
     res.components["skills"] = skill_score
     if have:
         ids = [skills[t].id for t in have[:3]]
-        # The concrete evidence leads: what the CV proves and the job asks for, before the direction sentence.
-        res.reasons.insert(0, {"text": "Your CV shows " + ", ".join(tool_label(t) for t in have[:5]) + (" and more" if len(have) > 5 else "") + ", which they ask for.", "fact_ids": ids})
+        asked = sorted(tools)
+        # The concrete evidence leads: the requirement, then what the CV proves, before the direction sentence.
+        if len(have) == len(asked):
+            text = "They ask for " + _join(asked) + ". Your CV shows " + ("all of them" if len(asked) > 1 else "it") + "."
+        else:
+            text = f"They ask for {_join(asked)}. Your CV shows {_join(have)} ({len(have)} of {len(asked)})."
+        res.reasons.insert(0, {"text": text, "fact_ids": ids})
     for want, got in related[:2]:
         res.gaps.append(f"They ask for {tool_label(want)}. Your CV shows {tool_label(got)}, which is related but not the same.")
     if missing:
-        res.gaps.append("They mention " + ", ".join(tool_label(t) for t in missing[:5]) + ". " + ("It is" if len(missing) == 1 else "These are") + " not in your profile yet.")
+        # Missing evidence (in the CV, not yet in the approved profile) is a different problem from missing experience.
+        said_no = [t for t in missing if t in rejected_skills]
+        in_cv = [t for t in missing if t in cv_skills and t not in rejected_skills]
+        not_in_cv = [t for t in missing if t not in cv_skills and t not in rejected_skills]
+        if said_no:
+            res.gaps.append("They ask for " + _join(said_no[:4]) + ". You told Hunter you do not have " + ("it" if len(said_no) == 1 else "these") + ".")
+        if in_cv:
+            res.gaps.append("Your CV mentions " + _join(in_cv[:4]) + ", but " + ("it is" if len(in_cv) == 1 else "they are") + " not in your approved profile yet. Add " + ("it" if len(in_cv) == 1 else "them") + " under Profile so Hunter can count " + ("it" if len(in_cv) == 1 else "them") + ".")
+        if not_in_cv:
+            res.gaps.append("They also ask for " + _join(not_in_cv[:5]) + ". " + ("It is" if len(not_in_cv) == 1 else "These are") + " not in your CV.")
     if thin_text:
         res.gaps.append("The posting has almost no text, so this is a guess from the title. Open it to check.")
 
@@ -286,6 +304,16 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
     res.next_step = _next_step(res, job)
     res.reasons = res.reasons[:3]
     return res
+
+
+def _join(keys: list[str], limit: int = 5) -> str:
+    labels = [tool_label(k) for k in keys[:limit]]
+    more = len(keys) - len(labels)
+    if more > 0:
+        labels.append(f"{more} more")
+    if len(labels) <= 1:
+        return labels[0] if labels else ""
+    return ", ".join(labels[:-1]) + " and " + labels[-1]
 
 
 def _exclude(res: ScoreResult, reason: str, elig: dict | None = None) -> ScoreResult:

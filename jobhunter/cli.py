@@ -342,7 +342,7 @@ def cmd_hunt(args):
         if ctx.demo:
             raise CliError("Demo mode uses synthetic data only (`jobhunter --demo demo seed`). Live hunts run without --demo.")
         try:
-            stats = hunt.run_hunt(ctx, db, trigger=args.trigger, source_ids=args.source or None, progress=(None if args.json else lambda sid, st: print(f"  {sid}: {st}", file=sys.stderr)))
+            stats = hunt.run_hunt(ctx, db, trigger=args.trigger, source_ids=args.source or None, progress=(None if args.json else lambda sid, st: print(f"  {sid}: {st}", file=sys.stderr)), allow_stale_board=bool(getattr(args, "without_dashboard", False)))
         except (hunt.HuntInProgress, hunt.HuntNotAllowed) as exc:
             raise CliError(str(exc)) from exc
         emit(args, stats, text=None if args.json else _hunt_text(stats))
@@ -590,7 +590,7 @@ def cmd_board(args):
             p = board.page_path()
             emit(args, {"page": str(p), "exists": p.exists(), "title": "Hunter by KubeCraft", "capabilities": {"db": {"rules": [{"path": "", "read": "owner", "write": "owner"}]}, "user": {}}}, text=str(p))
         elif c == "export":
-            emit(args, board.export(ctx, db, args.out, limit=args.limit))
+            emit(args, board.export(ctx, db, args.out, limit=args.limit, require_actions=not args.without_actions))
         elif c == "import":
             emit(args, board.import_actions(ctx, db, args.src))
     except board.BoardError as exc:
@@ -984,6 +984,7 @@ def build_parser() -> argparse.ArgumentParser:
     x = hs.add_parser("run")
     x.add_argument("--source", action="append")
     x.add_argument("--trigger", default="manual")
+    x.add_argument("--without-dashboard", action="store_true", help="search even though the dashboard page's actions were not read first (the local dashboard and the worker do this on their own)")
     hs.add_parser("status")
     x = hs.add_parser("history")
     x.add_argument("--limit", type=int, default=10)
@@ -1122,6 +1123,7 @@ def build_parser() -> argparse.ArgumentParser:
     x = bds.add_parser("export", help="write the documents for the page into a folder, plus a manifest Claude follows")
     x.add_argument("--out", required=True)
     x.add_argument("--limit", type=int, default=150, help="how many recommended jobs to show (default 150)")
+    x.add_argument("--without-actions", action="store_true", help="write even though the page's actions were not read first (not recommended)")
     x = bds.add_parser("import", help="apply the actions the page recorded (a folder with actions/*.json)")
     x.add_argument("--in", dest="src", required=True)
     bd.set_defaults(fn=cmd_board)

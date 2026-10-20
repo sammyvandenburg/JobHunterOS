@@ -248,6 +248,11 @@ SOFTWARE_PRIMARY = re.compile(r"\b(software|developer|programmer|full[- ]?stack|
 DATA_FLAVOUR = re.compile(r"\b(machine learning|ml|ai|artificial intelligence|genai|data|analytics)\b", re.I)
 
 
+MANAGEMENT = re.compile(r"\b(head of|director|vp|vice president|chief|cto|cio|ciso|manager|management)\b", re.I)
+SECURITY_OPS = re.compile(r"\b(security operations|secops|soc|cyber ?security|cyber|penetration|pentest(er|ing)?|appsec|application security|security (analyst|engineer|architect|specialist|consultant)|information security|infosec|threat|incident responder|forensics)\b", re.I)
+DESC_SOFTWARE = re.compile(r"\b(java|kotlin|c#|\.net|typescript|react|angular|vue|node\.?js|spring boot|django|rails|php|laravel|swift|flutter|graphql|rest apis?|microservices|unit tests?|front-?end|back-?end)\b", re.I)
+
+
 def primary_role(title: str) -> str:
     """The role before any team name or qualifier: "Full-Stack Engineer - Platform Engineering" → "Full-Stack Engineer"."""
     t = (title or "").strip()
@@ -273,6 +278,14 @@ def classify_relevance(title: str, description: str) -> tuple[str, str]:
         title_infra = False  # the infrastructure word names the team, the role is software development
     if title_infra and TITLE_INFRA.search(primary) and DATA_FLAVOUR.search(primary) and not re.search(r"\b(devops|sre|site reliability|mlops|kubernetes|cloud)\b", primary, re.I):
         return "uncertain", "This is a data or machine-learning platform job. Part of the work may be infrastructure work; check the description."
+    if MANAGEMENT.search(primary) and not re.search(r"\blead\b", primary, re.I):
+        return "irrelevant", "This is a management role (people and budget), not an engineering job."
+    if SECURITY_OPS.search(t) and not re.search(r"\bdevsecops\b", t, re.I):
+        if hits >= 3:
+            return "uncertain", "This is a security job. Part of the work may be infrastructure work; check what they expect day to day."
+        return "irrelevant", "This is a security job, not infrastructure work."
+    if title_infra and hits == 0 and len(DESC_SOFTWARE.findall(description or "")) >= 3 and len(description or "") >= 150:
+        return "uncertain", "The title says infrastructure, but the description reads like software development. Check what the work really is."
     if title_infra and TITLE_NOT_IT.search(t) and re.search(r"systems? (engineer|administrator)|infrastructure|platform", t, re.I):
         title_infra = False  # "RF Communication Systems Engineer" is not a sysadmin
     if title_infra and TITLE_PLATFORM_NOT_INFRA.search(t) and not re.search(r"\b(devops|sre|kubernetes|infrastructure|cloud)\b", t, re.I):

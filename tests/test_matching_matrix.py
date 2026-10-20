@@ -221,7 +221,7 @@ def test_profile_correction_supersedes_facts_and_refreshes_matches_without_a_scr
     assert all(f.status == "rejected" for f in v2["facts"] if f.category == "skill" and f.text == "aws")
     engine.run_matching(ctx, db)
     after = _m(db, jid)
-    assert not any("AWS" in r for r in after["reasons"]) and any("AWS" in g for g in after["gaps"])
+    assert not any("AWS" in r.split("Your CV shows")[-1] for r in after["reasons"]) and any("AWS" in g for g in after["gaps"]), (after["reasons"], after["gaps"])
     # Adding a skill works too, and is evidenced by the person's words.
     res2 = profile_svc.correct(db, "I also use Pulumi at work")
     assert "pulumi" in res2["added"]
@@ -314,7 +314,7 @@ def test_software_roles_on_platform_teams_and_ml_platform_jobs_are_never_good_ma
     for k in ("platform", "devops_team"):
         m = _m(db, jobs[k])
         assert m["relevance"] == "relevant" and m["match_group"] == "good", (k, m)
-        assert m["reasons"][0].startswith("Your CV shows") and "which they ask for" in m["reasons"][0], m["reasons"]
+        assert m["reasons"][0].startswith("They ask for") and "Your CV shows" in m["reasons"][0], m["reasons"]
         assert any("direction you chose" in r for r in m["reasons"]), m["reasons"]
     weak = _m(db, jobs["no_overlap"])
     assert weak["relevance"] == "relevant" and weak["match_group"] != "good", weak

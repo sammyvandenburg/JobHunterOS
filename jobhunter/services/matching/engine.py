@@ -50,6 +50,10 @@ def run_matching(ctx: AppContext, db: Database, hunt_run_id: int | None = None, 
     facts: list[Fact] = profile["facts"]
     targets = profile["targets"]
     reclassified = _reclassify_relevance_if_rules_changed(db)
+    cv_skills = _cv_skills(db)
+    from jobhunter.services.matching.skills import canonical_skill_keys
+
+    rejected_skills = {k for f in facts if f.category == "skill" and f.status == "rejected" for k in canonical_skill_keys(f.text)}
     if job_ids:
         marks = ",".join("?" for _ in job_ids)
         rows = db.fetchall(f"SELECT * FROM jobs WHERE id IN ({marks})", tuple(job_ids))
@@ -71,7 +75,7 @@ def run_matching(ctx: AppContext, db: Database, hunt_run_id: int | None = None, 
             if existing and existing["cache_key"] == ck:
                 reused += 1
                 continue
-            result = score_job(job, facts, targets, prefs, flags)
+            result = score_job(job, facts, targets, prefs, flags, cv_skills=cv_skills, rejected_skills=rejected_skills)
             expl = rules_explanation(job, result)
             values = {
                 "job_id": job["id"],
@@ -106,6 +110,21 @@ def run_matching(ctx: AppContext, db: Database, hunt_run_id: int | None = None, 
                 db.insert("recommendations", {"job_id": job_id, "match_id": match_id, "hunt_run_id": hunt_run_id, "channel": "dashboard", "match_group": group, "presented_at": now_iso()})
     model_result = maybe_model_explanations(ctx, db, use_model=use_model)
     return {"status": "ok", "profile_version": profile["version"], "scored": scored, "computed": computed, "reused": reused, "presented": len(presented), "reclassified": reclassified, "model": model_result}
+
+
+def _cv_skills(db: Database) -> set[str]:
+    """Tools named anywhere in the latest CV text. Used only to word gaps (missing evidence versus missing
+    experience); scoring itself counts approved facts, never raw text."""
+    from jobhunter.services import documents as docs
+    from jobhunter.services.matching.skills import extract_skills
+
+    row = db.fetchone("SELECT id FROM source_documents WHERE kind = 'cv' ORDER BY version DESC, id DESC LIMIT 1")
+    if not row:
+        return set()
+    try:
+        return extract_skills(docs.document_text(db, row["id"]))
+    except Exception:
+        return set()
 
 
 RELEVANCE_RULES_SETTING = "matching.relevance_rules"

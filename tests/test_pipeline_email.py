@@ -192,6 +192,6 @@ def test_help_me_apply_explains_fit_in_plain_words(ctx, db):
     fit = pkg["fit"]
     assert fit["fit_line"].startswith("Tools they name that your CV shows:")
     assert any("Tools they name" in w for w in fit["what_they_need"]) and any("They say:" in w for w in fit["what_they_need"])
-    assert any("kubernetes" in m for m in fit["your_proof"])
-    assert any("pulumi" in m for m in fit["what_to_check"])
+    assert any("kubernetes" in m.lower() for m in fit["your_proof"])
+    assert any("pulumi" in m.lower() for m in fit["what_to_check"])
     assert fit["next_step"] and all(len(p) < 220 for p in fit["next_step"])

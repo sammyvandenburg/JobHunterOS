@@ -225,6 +225,7 @@ def _record_without_watch_source_update(db, run_id, source, res, stats):
     from jobhunter.services import jobs as jobs_svc
 
     new = relevant_new = 0
+    new_ids = []
     with db.tx():
         for p in res.postings:
             job_id, is_new, _changed = jobs_svc.upsert_from_posting(db, p, run_id, True)
@@ -233,10 +234,15 @@ def _record_without_watch_source_update(db, run_id, source, res, stats):
                 row = db.fetchone("SELECT relevance FROM jobs WHERE id = ?", (job_id,))
                 if row and row["relevance"] in {"relevant", "uncertain"}:
                     relevant_new += 1
+                    new_ids.append(job_id)
     stats["postings_fetched"] += len(res.postings)
     stats["jobs_new"] += new
     stats["jobs_relevant_new"] += relevant_new
-    stats["sources_ok"] += 1
+    key = {"ok": "sources_ok", "partial": "sources_partial", "failed": "sources_failed", "skipped": "sources_skipped"}[res.status]
+    stats[key] += 1
+    if res.status in {"failed", "partial"} and res.error:
+        stats["failures"].append({"source": source["id"], "status": res.status, "error": res.error})
+    return new_ids
 
 
 @pytest.fixture

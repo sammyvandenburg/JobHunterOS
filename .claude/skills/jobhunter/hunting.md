@@ -1,12 +1,19 @@
 # Hunting and presenting results
 
 ## Run a hunt
-`uv run jobhunter hunt run --json` (can take a minute or two; it reads every enabled employer board and feed). Then say, in this order:
-1. What worked and what did not: "I checked N sources; M could not be checked (name them). Your other searches still worked."
-2. How many new jobs, how many relevant, how many recommended.
-3. The best few matches (see below). Offer the rest, the older/undated list, and "what I left out and why" (`jobs list --view excluded`).
+If a dashboard is linked, read its actions first ([board.md](board.md)); `hunt run` refuses otherwise.
+`uv run jobhunter hunt run --json` reads every enabled employer board and feed; the first matches are
+compared as soon as each site answers, so you can show results while it is still running (a slow site is
+given up on after the time budget and counted as "couldn't check"). Then say, in this order, in very few words:
+1. The best three matches (see below): title, company, where, why it fits, next step. That is the news.
+2. One line of totals: "N new jobs, M worth a look." No source statistics unless they ask.
+3. Only if something failed: "I couldn't check X and Y this time; the rest worked." If `status` is `failed`,
+   say the search failed and why (for example the comparison step failed: the jobs are saved; `uv run jobhunter match run` or search again).
+Offer the rest, the older list and "what I left out and why" (`jobs list --view excluded`) only as a question.
+Then sync the dashboard ([board.md](board.md)).
 
-Never say "no new jobs" when `status` is `failed`; say the search failed and why.
+Never say "no new jobs" when `status` is `failed`. If `hunt run` says a search is already running, it is
+alive (Hunter clears dead ones itself); say so and try again in a minute.
 
 ## Show matches
 `uv run jobhunter jobs list --json` (default view `new`, 10 per page; `--page`, `--group good|worth_a_shot|backup`, `--query`, `--sort newest`). Present each job with:

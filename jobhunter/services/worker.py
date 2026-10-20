@@ -44,7 +44,7 @@ def tick(ctx: AppContext, db: Database) -> dict:
     out = {"ran_hunt": False, "sent_digest": False, "decision": decision}
     if decision["run"]:
         try:
-            stats = hunt.run_hunt(ctx, db, trigger="scheduled")
+            stats = hunt.run_hunt(ctx, db, trigger="scheduled", allow_stale_board=True)
         except (hunt.HuntInProgress, hunt.HuntNotAllowed) as exc:
             # Nothing ran (another hunt holds the lock, or setup is not finished). Leave the slot due so the next tick tries again.
             out["hunt"] = {"skipped": str(exc)}

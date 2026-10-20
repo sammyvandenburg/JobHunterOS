@@ -211,6 +211,8 @@ const Core = (() => {
     const rec = ((run && run.recommended) || []).filter((k) => jobs.has(k)).filter((k) => { const e = eff(k); return !e.dismissed && !e.applied_at; });
     return {
       recommended: rec,
+      uncertain: all.filter((k) => (jobs.get(k) || {}).list === "uncertain" && !eff(k).dismissed && !eff(k).applied_at),
+      old: all.filter((k) => (jobs.get(k) || {}).list === "old" && !eff(k).dismissed && !eff(k).applied_at),
       favorites: all.filter((k) => eff(k).favorite),
       saved: all.filter((k) => eff(k).saved),
       applied: all.filter((k) => !!eff(k).applied_at),
@@ -218,7 +220,13 @@ const Core = (() => {
       all,
     };
   }
-  return { commit, effective, setFlag, saveNote, tabsFor, blankAction, clone, sleep };
+  // Page actions Hunter has not read yet.
+  function pendingCount(jobs, actions) {
+    let n = 0;
+    for (const [k, a] of actions) { const s = ((jobs.get(k) || {}).state) || {}; if (Number(a.rev) > Number(s.synced_rev || 0)) n++; }
+    return n;
+  }
+  return { commit, effective, setFlag, saveNote, tabsFor, pendingCount, blankAction, clone, sleep };
 })();
 /* ===CORE-END=== */
 
@@ -226,7 +234,7 @@ const Core = (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const TAB_ID = "tab-" + Math.random().toString(36).slice(2, 10);
-  const TABS = [["recommended", "Recommended"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Not interested"], ["all", "All jobs"]];
+  const TABS = [["recommended", "Recommended"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["uncertain", "Needs checking"], ["old", "Older"], ["dismissed", "Not interested"], ["all", "All jobs"]];
   const GROUPS = [["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"]];
   const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null,
     tab: "recommended", sel: null, saving: {}, noteBase: {}, conflicts: {}, loaded: { board: false, actions: false, run: false }, dbError: null };
@@ -260,7 +268,8 @@ const Core = (() => {
     if (!st.loaded.run) return setStatus("warn", "Loading…");
     if (!st.run) return setStatus("warn", "Hunter hasn’t synced yet");
     const h = st.run.last_hunt;
-    setStatus("ok", "Synced " + rel(st.run.at));
+    const pending = Core.pendingCount(st.jobs, st.actions);
+    setStatus(pending ? "warn" : "ok", "Synced " + rel(st.run.at) + (pending ? " · " + pending + " change" + (pending === 1 ? "" : "s") + " waiting for Hunter" : ""));
     if (h) $("statusText").append(el("span", { class: "long" }, " · last hunt " + rel(h.finished_at || h.started_at) + (h.failures && h.failures.length ? " · " + h.failures.length + " source(s) couldn’t be checked" : "")));
   }
   function renderNotice() {
@@ -319,7 +328,7 @@ const Core = (() => {
     if (!st.loaded.board) return;
     const keys = Core.tabsFor(st.jobs, st.actions, st.run)[st.tab];
     if (!keys.length) {
-      const msg = { recommended: st.run ? "Nothing to recommend right now. Hunter adds jobs after each hunt." : "Hunter hasn’t synced yet.", favorites: "No favorites yet. Star a job you like.", saved: "Nothing saved yet.", applied: "No applications recorded yet. Press “Mark applied” on a job after you applied.", dismissed: "Nothing marked as not interested.", all: "No jobs yet." }[st.tab];
+      const msg = { recommended: st.run ? "Nothing to recommend right now. Hunter adds jobs after each hunt." : "Hunter hasn’t synced yet.", favorites: "No favorites yet. Star a job you like.", saved: "Nothing saved yet.", applied: "No applications recorded yet. Press “Mark applied” on a job after you applied.", uncertain: "Nothing needs checking. Jobs land here when Hunter can’t tell where they allow you to be.", old: "No older matches. Jobs posted more than 14 days ago land here.", dismissed: "Nothing marked as not interested.", all: "No jobs yet." }[st.tab];
       box.replaceChildren(el("div", { class: "empty" }, msg)); return;
     }
     if (st.tab === "recommended") {

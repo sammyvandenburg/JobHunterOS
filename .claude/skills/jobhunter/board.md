@@ -22,12 +22,19 @@ it appears as the Artifact tool's `read_db` / `write_db`).
 If the Artifact tool is not available in this session, say so and offer the local dashboard instead
 (`uv run jobhunter dashboard`, http://127.0.0.1:8765/). Never pretend a page exists.
 
-## Sync (after every hunt, when they ask for the dashboard, and in every nightly run)
-A sync is three steps. Do them in this order so what they did on the page counts before you rewrite it.
+## Sync (around every hunt and digest, when they ask for the dashboard, and in every nightly run)
+Order matters: **read their actions, then hunt or email, then write the page.** Hunter enforces it: once a
+dashboard is linked, `hunt run`, `digest prepare` and `board export` refuse (status `blocked`, or an error
+that says so) until the actions have been read since Hunter last wrote to the page. That is what keeps a
+job they marked applied or not interested from being recommended or emailed again. If the actions cannot
+be read (tool missing, error), say so and stop; never pass `--without-actions` or `--without-dashboard` to
+get past it on their behalf.
 1. **Read their actions.** `ArtifactData` list, collection `actions`, `query.limit` 1000, `out_dir`
    `<DIR>/in` (follow `next_cursor` until it is gone). Then `uv run jobhunter board import --in <DIR>/in --json`.
-   It applies favorites, saves, "not interested", "applied" and notes that are new since last time, once.
+   It applies favorites, saves, "not interested", "applied" and notes that are new since last time, once,
+   each together with the revision that records it. An empty collection is fine (first time).
    Tell them in one line what came in ("I saw 2 favorites and a note from your dashboard.").
+   Then run the hunt and/or prepare the digest if that is what this sync is for.
 2. **Write what Hunter knows.** `uv run jobhunter board export --out <DIR>/out --json`. The result is a
    manifest: `writes` (files to `set`, in order), `delete_if_present` (leftover shard names). Documents
    that already exist need their current version: `ArtifactData` list collection `meta` (limit 10) and
@@ -42,7 +49,10 @@ Never write under `actions/` (that is the page's), never republish the page with
 never put the CV, notes, drafts or tokens in any document (the export command refuses that on its own).
 
 ## What the page does on its own
-- Shows profile, recommended jobs grouped, Favorites, Saved, Applied, Not interested, All.
+- Shows profile, recommended jobs grouped, Favorites, Saved, Applied, Needs checking (unclear location),
+  Older (posted more than 14 days ago), Not interested, All. Each job has the description (up to 3,000
+  characters) and links to the employer's listing, the apply page, and where Hunter found it.
+- Its status line says when Hunter last synced and how many changes are waiting for Hunter.
 - Favorite, Save, Mark applied, Not interested, and a private note per job: saved immediately, marked
   "Hunter: next run" until the next sync applies them.
 - Survives closing and reopening: the data lives in the page's database, not in the browser.

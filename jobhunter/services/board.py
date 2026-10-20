@@ -32,9 +32,10 @@ from jobhunter.util import now_iso, truncate
 
 SCHEMA = "hunter-board/1"
 URL_SETTING = "board.url"
-SHARD_SIZE = 50
+SHARD_SIZE = 30
 RECOMMENDED_LIMIT = 150
-DESCRIPTION_CHARS = 1500
+EXTRA_LIST_LIMIT = 40  # "Older" and "Needs checking" lists on the page
+DESCRIPTION_CHARS = 3000
 URL_RE = re.compile(r"^https://claude\.ai/(?:code/)?artifact/[A-Za-z0-9_-]{6,}/?$")
 ACTED_VIEWS = ("favorites", "saved", "applied", "interviews", "finished", "dismissed")
 REMOTE_WORDS = {"required": "Remote only", "preferred": "Remote preferred", "no_preference": "Remote, hybrid or office", "unset": "Not set"}
@@ -78,6 +79,29 @@ def unlink(db: Database) -> dict:
     return status(db)
 
 
+def stale_reason(db: Database) -> str | None:
+    """Why the page's actions must be read before Hunter recommends again, or None when they are current.
+    Current means: read at least once, and after Hunter last wrote to the page. Between a write and the
+    next read the student may have pressed Applied or Not interested on a job Hunter would otherwise show
+    or email again."""
+    if not db.get_setting(URL_SETTING):
+        return None
+    imp = db.get_setting("board.last_import") or {}
+    exp = db.get_setting("board.last_export") or {}
+    if not imp:
+        return "Your dashboard is linked but its actions have never been read. Read them first: list the `actions` collection, then `jobhunter board import --in <folder>`."
+    if exp and _is_before(imp, exp):
+        return f"Your dashboard's actions have not been read since Hunter last wrote to it ({exp.get('at', '')[:16]}). Read them first: list the `actions` collection, then `jobhunter board import --in <folder>`."
+    return None
+
+
+def _is_before(a: dict, b: dict) -> bool:
+    """Was record `a` made before record `b`? By sequence number when both have one (clock-proof), else by time."""
+    if a.get("seq") is not None and b.get("seq") is not None:
+        return int(a["seq"]) < int(b["seq"])
+    return (a.get("at") or "") < (b.get("at") or "")
+
+
 def status(db: Database) -> dict:
     url = db.get_setting(URL_SETTING)
     synced = db.fetchone("SELECT COUNT(*) AS n FROM board_sync WHERE synced_rev > 0")["n"]
@@ -88,6 +112,7 @@ def status(db: Database) -> dict:
         "last_export": db.get_setting("board.last_export"),
         "last_import": db.get_setting("board.last_import"),
         "actions_applied": synced,
+        "actions_stale": stale_reason(db),
         "note": None if url else "No dashboard yet. Claude publishes the page once and links it with `jobhunter board link <url>`.",
     }
 
@@ -95,17 +120,27 @@ def status(db: Database) -> dict:
 # ---------------------------------------------------------------------------
 # Export: what the page shows
 # ---------------------------------------------------------------------------
-def _selected(db: Database, limit: int) -> tuple[list[dict], list[str]]:
-    """Recommended jobs first (best match first), then everything the student acted on."""
+def _selected(db: Database, limit: int) -> tuple[list[dict], list[str], dict[int, str]]:
+    """Recommended jobs first (best match first), then everything the student acted on, then the two
+    side lists the page keeps out of the shortlist: older postings and jobs whose location needs checking."""
     items: dict[int, dict] = {}
+    lists: dict[int, str] = {}
     recommended = views.current_recommended(db, limit=limit)
     for it in recommended:
         items[it["id"]] = it
+        lists[it["id"]] = "recommended"
     for view in ACTED_VIEWS:
         for it in views.list_jobs(db, view=view, per_page=500, sort="added")["items"]:
-            items.setdefault(it["id"], it)
+            if it["id"] not in items:
+                items[it["id"]] = it
+                lists[it["id"]] = "acted"
+    for view in ("old", "uncertain"):
+        for it in views.list_jobs(db, view=view, per_page=EXTRA_LIST_LIMIT)["items"]:
+            if it["id"] not in items:
+                items[it["id"]] = it
+                lists[it["id"]] = view
     keys = [job_key(_canonical(db, it["id"])) for it in recommended]
-    return list(items.values()), keys
+    return list(items.values()), keys, lists
 
 
 def _canonical(db: Database, job_id: int) -> str:
@@ -113,12 +148,13 @@ def _canonical(db: Database, job_id: int) -> str:
     return row["canonical_key"] if row else str(job_id)
 
 
-def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[str]) -> dict:
+def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[str], which: str = "recommended") -> dict:
     row = db.fetchone("SELECT canonical_key, description_text, country_codes_json, employment_type FROM jobs WHERE id = ?", (it["id"],))
     key = job_key(row["canonical_key"])
     note = notes.latest_for_job(db, it["id"])
     return {
         "key": key,
+        "list": which,
         "title": it["title"],
         "employer": it["employer"],
         "location": it["location"],
@@ -190,6 +226,9 @@ def _run_doc(db: Database, recommended: list[str], docs: list[dict], shards: int
     for name, flag in (("favorites", "favorited"), ("saved", "saved"), ("dismissed", "dismissed")):
         counts[name] = sum(1 for d in docs if d["state"].get(flag))
     counts["applied"] = sum(1 for d in docs if d["state"].get("stage") in {"applied", "replied", "interview", "offer", "rejected", "withdrawn"})
+    counts["old"] = sum(1 for d in docs if d.get("list") == "old")
+    counts["uncertain"] = sum(1 for d in docs if d.get("list") == "uncertain")
+    imp = db.get_setting("board.last_import") or {}
     return {
         "schema": SCHEMA,
         "at": now_iso(),
@@ -198,6 +237,7 @@ def _run_doc(db: Database, recommended: list[str], docs: list[dict], shards: int
         "recommended": recommended,
         "shards": shards,
         "counts": counts,
+        "sync": {"actions_read_at": imp.get("at"), "actions_seen": imp.get("seen"), "actions_applied": imp.get("applied")},
         "last_hunt": None
         if not last
         else {
@@ -214,14 +254,20 @@ def _run_doc(db: Database, recommended: list[str], docs: list[dict], shards: int
     }
 
 
-def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECOMMENDED_LIMIT) -> dict:
+def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECOMMENDED_LIMIT, require_actions: bool = True) -> dict:
     """Write the documents for one sync into `out_dir` and return the manifest Claude follows.
 
     Every document is rewritten whole, so a failed or skipped sync leaves nothing to repair: the next
     sync writes the truth again. The manifest lists, in order, the files to `set` and the shard names
-    that may be left over from a bigger earlier export (`delete_if_present`)."""
+    that may be left over from a bigger earlier export (`delete_if_present`). The page's actions must have
+    been read since Hunter last wrote (`require_actions`): otherwise a job the student applied to on the
+    page would be written back as recommended."""
     from jobhunter.services.matching import engine
 
+    if require_actions:
+        why = stale_reason(db)
+        if why:
+            raise BoardError(why)
     out = Path(out_dir)
     (out / "meta").mkdir(parents=True, exist_ok=True)
     (out / "board").mkdir(parents=True, exist_ok=True)
@@ -229,9 +275,9 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
     # After a Hunter update with new matching rules, the page would otherwise show nothing until the next hunt.
     engine.rematch_quietly(ctx, db)
     synced = {r["job_key"]: r for r in db.fetchall("SELECT * FROM board_sync")}
-    items, recommended = _selected(db, limit)
+    items, recommended, lists = _selected(db, limit)
     rec_set = set(recommended)
-    docs = [_doc(db, it, synced, rec_set) for it in items]
+    docs = [_doc(db, it, synced, rec_set, lists.get(it["id"], "acted")) for it in items]
     shards = [docs[i : i + SHARD_SIZE] for i in range(0, len(docs), SHARD_SIZE)] or [[]]
     run = _run_doc(db, recommended, docs, len(shards))
     writes = []
@@ -258,8 +304,15 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
         ],
     }
     _write(out / "manifest.json", manifest)
-    db.set_setting("board.last_export", {"at": run["at"], "jobs": len(docs), "recommended": len(recommended), "shards": len(shards)})
+    db.set_setting("board.last_export", {"at": run["at"], "seq": _next_seq(db), "jobs": len(docs), "recommended": len(recommended), "shards": len(shards)})
     return manifest
+
+
+def _next_seq(db: Database) -> int:
+    """Reads and writes are ordered by this counter, not by the clock (two steps can share a second)."""
+    seq = int(db.get_setting("board.seq") or 0) + 1
+    db.set_setting("board.seq", seq)
+    return seq
 
 
 def _write(path: Path, body: dict) -> None:
@@ -321,8 +374,9 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path) -> dict:
         if jid is None:
             orphans.append(key)
             continue
-        done = _apply_one(db, jid, a, prev)
+        # One transaction per action: the changes and the revision that records them land together or not at all.
         with db.tx():
+            done = _apply_one(db, jid, a, prev)
             values = {"canonical_key": _canonical(db, jid), "synced_rev": rev, "synced_at": now_iso(), "note_id": done.pop("_note_id", prev.get("note_id"))}
             if prev:
                 db.update("board_sync", values, "job_key = ?", (key,))
@@ -330,7 +384,7 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path) -> dict:
                 db.insert("board_sync", {"job_key": key, **values})
         applied.append({"job_key": key, "job_id": jid, "rev": rev, "changes": done["changes"]})
     summary = {"seen": len(docs), "applied": applied, "already_applied": skipped, "orphans": orphans, "at": now_iso()}
-    db.set_setting("board.last_import", {"at": summary["at"], "seen": len(docs), "applied": len(applied), "orphans": len(orphans)})
+    db.set_setting("board.last_import", {"at": summary["at"], "seq": _next_seq(db), "seen": len(docs), "applied": len(applied), "orphans": len(orphans)})
     return summary
 
 
