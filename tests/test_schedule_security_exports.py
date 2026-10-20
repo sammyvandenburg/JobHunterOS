@@ -77,7 +77,10 @@ def test_worker_tick_runs_due_hunt_once(ctx, db, client, seeded_sources, monkeyp
     schedule.set_timezone(db, "UTC")
     schedule.set_frequency(db, "every_2h")
     schedule.enable(db)
-    db.execute("UPDATE schedule SET next_run_at = ? WHERE id = 1", ("2026-10-18T00:00:00+00:00",))
+    from datetime import UTC, datetime, timedelta
+
+    # Ten minutes ago: due, inside the catch-up window whatever today's date is.
+    db.execute("UPDATE schedule SET next_run_at = ? WHERE id = 1", ((datetime.now(UTC) - timedelta(minutes=10)).isoformat(),))
     monkeypatch.setattr(hunt, "run_hunt", lambda c, d, trigger="scheduled", **k: hunt.run_hunt.__wrapped__(c, d, trigger=trigger, client=client) if hasattr(hunt.run_hunt, "__wrapped__") else {"run_id": 1, "status": "completed", "jobs_new": 0, "jobs_relevant_new": 0, "sources_failed": 0})
     out = worker.tick(ctx, db)
     assert out["ran_hunt"] is True
