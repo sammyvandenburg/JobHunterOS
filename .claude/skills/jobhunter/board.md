@@ -37,6 +37,7 @@ get past it on their behalf.
    that is a failed read, not an empty one, so list again rather than guessing. It applies favorites,
    saves, "not interested", "applied" and notes that are new since last time, once, each together with the
    revision that records it; replaying the same files is harmless.
+   If the command prints nothing at all (seen once while a search was running), run it again: applying is safe to repeat.
    Tell them in one line what came in ("I saw 2 favorites and a note from your dashboard.").
    Then run the hunt and/or prepare the digest if that is what this sync is for.
 2. **Write what Hunter knows.** `uv run jobhunter board export --out <DIR>/out --json`. The result is a
