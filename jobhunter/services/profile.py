@@ -716,19 +716,87 @@ def _apply_answer_to_draft(db: Database, key: str, answer: str) -> None:
 
 
 NEGATION = re.compile(r"\b(i do not|i don't|i dont|i have not|i haven't|i havent|i never|i have no|no longer|not|never|remove|delete|wrong|isn't|is not|incorrect|didn't|did not|haven't used|never used|no experience)\b", re.I)
+CLAUSE_SPLIT = re.compile(r"\s*(?:,\s*but\s+|;\s*|\s+but\s+|\s+although\s+|\s+though\s+|\.\s+|\s+however\s+)\s*", re.I)
 
 
-def correct(db: Database, text: str) -> dict:
-    """A correction in the person's own words becomes a new profile revision.
+def _label(key: str) -> str:
+    from jobhunter.services.matching.skills import tool_label
 
-    "I do not have AWS experience" retracts the AWS facts (they are kept, marked rejected, with the
-    person's words as evidence) instead of leaving the old claim active next to a note. "I also know
-    Pulumi" adds a skill. The person wrote it, so the revision is approved at once; if a new document
-    is waiting for review, the correction goes into that draft instead.
-    """
+    return tool_label(key)
+
+
+def _join_words(items: list[str]) -> str:
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def plan_correction(db: Database, text: str) -> dict:
+    """Turn a correction in the person's own words into a proposal they confirm before anything changes.
+
+    Each clause is read on its own, so "I do not use AWS, but I do use Kubernetes and Terraform" removes AWS
+    and keeps Kubernetes and Terraform, never all three. Known tools and certifications are recognised; a
+    sentence that names none becomes a note on the profile. Nothing is written here."""
     text = (text or "").strip()
     if not text:
         raise ProfileError("Tell me what is wrong in one sentence.")
+    base = current_draft(db) or approved(db)
+    if not base:
+        raise ProfileError("No profile to correct yet.")
+    active_skills = {k for f in base["facts"] if f.category == "skill" and f.status != "rejected" for k in extract_skills(f.text, implied=False)}
+    active_certs = [f for f in base["facts"] if f.category in {"certification", "course"} and f.status != "rejected"]
+    remove: list[str] = []
+    keep: list[str] = []
+    add: list[str] = []
+    remove_certs: list[str] = []
+    for clause in [c for c in CLAUSE_SPLIT.split(text) if c and c.strip()]:
+        negative = bool(NEGATION.search(clause))
+        keys = extract_skills(clause, implied=False)
+        certs = [label for pattern, label in CERT_PATTERNS if re.search(pattern, clause, re.I)]
+        for key in sorted(keys):
+            if negative:
+                if key in active_skills and key not in remove:
+                    remove.append(key)
+            elif key in active_skills:
+                if key not in keep:
+                    keep.append(key)
+            elif key not in add:
+                add.append(key)
+        for label in certs:
+            hit = [f.text for f in active_certs if label.lower() == f.text.lower() or label.split(" (")[0].lower() in f.text.lower()]
+            if negative:
+                remove_certs += [h for h in hit if h not in remove_certs]
+    remove = [k for k in remove if k not in keep]
+    parts = []
+    if remove or remove_certs:
+        parts.append("Remove " + _join_words([_label(k) for k in remove] + remove_certs) + ".")
+    if keep:
+        parts.append("Keep " + _join_words([_label(k) for k in keep]) + ".")
+    if add:
+        parts.append("Add " + _join_words([_label(k) for k in add]) + ".")
+    note = None
+    if not parts:
+        note = text[:300]
+        parts.append(f'Add this to your profile as a note: "{note}".')
+    return {
+        "text": text,
+        "remove": [_label(k) for k in remove] + remove_certs,
+        "remove_keys": remove,
+        "remove_certs": remove_certs,
+        "keep": [_label(k) for k in keep],
+        "add": [_label(k) for k in add],
+        "add_keys": add,
+        "note": note,
+        "confirmation": " ".join(parts) + " Correct?",
+        "needs_confirmation": True,
+    }
+
+
+def apply_correction(db: Database, plan: dict) -> dict:
+    """Write a confirmed proposal as a new profile revision. Retracted facts are kept, marked rejected, with the
+    person's words as evidence; additions carry the same evidence. The revision is approved at once (the person
+    wrote it); if a new document is waiting for review, the change goes into that draft instead."""
+    text = str(plan.get("text") or "").strip()
     draft_row = current_draft(db)
     base = draft_row or approved(db)
     if not base:
@@ -736,32 +804,30 @@ def correct(db: Database, text: str) -> dict:
     facts: list[Fact] = [Fact.model_validate(f.model_dump(mode="json")) for f in base["facts"]]
     today = now_iso()[:10]
     user_ev = EvidenceRef(type="user", ref=f"user:{today}", quote=text[:160])
-    keys = extract_skills(text)
-    cert_hits = [label for pattern, label in CERT_PATTERNS if re.search(pattern, text, re.I)]
+    remove_keys = set(plan.get("remove_keys") or [])
+    remove_certs = {c.lower() for c in plan.get("remove_certs") or []}
     retracted: list[str] = []
     added: list[str] = []
-    negative = bool(NEGATION.search(text))
-    if negative and (keys or cert_hits):
-        for f in facts:
-            if f.status == "rejected":
-                continue
-            if f.category == "skill" and extract_skills(f.text) & keys:
-                f.status = "rejected"
-                f.evidence.append(user_ev)
-                retracted.append(f.text)
-            elif f.category in {"certification", "course"} and any(label.lower() == f.text.lower() or label.split(" (")[0].lower() in f.text.lower() for label in cert_hits):
-                f.status = "rejected"
-                f.evidence.append(user_ev)
-                retracted.append(f.text)
-    if not retracted:
-        if keys and not negative:
-            existing = {k for f in facts if f.category == "skill" and f.status != "rejected" for k in extract_skills(f.text)}
-            for k in sorted(keys - existing):
-                facts.append(Fact(id=f"u{len(facts) + 1}", category="skill", text=k, confidence="asserted", evidence=[user_ev], tags=["skill"]))
-                added.append(k)
-        if not added:
-            facts.append(Fact(id=f"u{len(facts) + 1}", category="other", text=text[:300], confidence="asserted", evidence=[user_ev]))
-            added.append(text[:60])
+    for f in facts:
+        if f.status == "rejected":
+            continue
+        if f.category == "skill" and extract_skills(f.text, implied=False) & remove_keys:
+            f.status = "rejected"
+            f.evidence.append(user_ev)
+            retracted.append(f.text)
+        elif f.category in {"certification", "course"} and f.text.lower() in remove_certs:
+            f.status = "rejected"
+            f.evidence.append(user_ev)
+            retracted.append(f.text)
+    existing = {k for f in facts if f.category == "skill" and f.status != "rejected" for k in extract_skills(f.text, implied=False)}
+    for k in plan.get("add_keys") or []:
+        if k in existing:
+            continue
+        facts.append(Fact(id=f"u{len(facts) + 1}", category="skill", text=k, confidence="asserted", evidence=[user_ev], tags=["skill"]))
+        added.append(k)
+    if plan.get("note"):
+        facts.append(Fact(id=f"u{len(facts) + 1}", category="other", text=str(plan["note"])[:300], confidence="asserted", evidence=[user_ev]))
+        added.append(str(plan["note"])[:60])
     exp = derive_experience(facts)
     targets = ProfileTargets.model_validate({**base["targets"], **{k: v for k, v in exp.items() if k != "has_relevant_roles"}})
     draft = ProfileDraft(summary_text=_summary_text(facts, exp), facts=facts, targets=targets, questions=[], professional_years_relevant=exp["professional_years_relevant"])
@@ -774,6 +840,12 @@ def correct(db: Database, text: str) -> dict:
     approve(db, res["profile_version_id"])
     note = ("Removed: " + ", ".join(retracted) + "." if retracted else "") + (" Added: " + ", ".join(added) + "." if added else "")
     return {"profile_version_id": res["profile_version_id"], "version": res["version"], "retracted": retracted, "added": added, "approved": True, "note": note.strip() or "Noted."}
+
+
+def correct(db: Database, text: str) -> dict:
+    """Plan and apply a correction in one step (the local dashboard form and tests). The command line and the
+    skill plan first and apply only after the person confirms."""
+    return apply_correction(db, plan_correction(db, text))
 
 
 def add_user_fact(db: Database, text: str, category: str = "other", experience_kind: str = "unknown") -> dict:

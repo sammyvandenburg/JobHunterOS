@@ -38,20 +38,32 @@ tokens anywhere and never pretend Python can use your connectors.
 At most one digest per local day; the history travels in the state file, so a second run never repeats it.
 
 ## Nightly run (the Routine, a fresh cloud session every time, in their own copy)
+The same contract as every other run, in this order; `uv run jobhunter plan --nightly --json` shows which step
+is done and which comes next from the evidence in the database, so check it whenever you are unsure.
 1. `uv sync`, then `export JOBHUNTER_SECRETS_BACKEND=file`.
-2. `uv run jobhunter cloud load --restore --branch main --json` (pulls the state branch of their copy and restores it; a cloud session may sit on a session branch, the state still comes from and goes to `main`). If it says
-   there is no state file yet, stop: the person has to run `/jobhunter email` on their computer first.
-3. `uv run jobhunter hunt run --trigger cloud --json`, then `uv run jobhunter cloud tag-run cloud:$(date -u +%Y%m%dT%H%M%SZ)`.
+2. **Restore.** `uv run jobhunter cloud load --restore --branch main --json` (pulls the state branch of their
+   copy and restores it; a cloud session may sit on a session branch, the state still comes from and goes to
+   `main`). If it says there is no state file yet, stop: the person has to run `/jobhunter email` on their
+   computer first.
+3. **Read their dashboard.** `uv run jobhunter board status --json`. If `linked` is true, do step 1 of the Sync
+   in [board.md](board.md) (list the `actions` collection, `board import --listed <total>`): after a restore every
+   action on the page is read again, which is harmless. Hunter refuses to hunt or email before this. If the
+   page is linked and you have no Artifact tools, stop and say so: nothing is hunted or emailed blind.
+4. **Hunt.** `uv run jobhunter hunt run --trigger cloud --json`, then `uv run jobhunter cloud tag-run cloud:$(date -u +%Y%m%dT%H%M%SZ)`.
    One failing source is not a failed hunt; report it in one line.
-4. Send the digest as above (the Gmail connector must be attached to the routine).
-5. `uv run jobhunter cloud save --branch main --json` (commits `state/` and pushes it to their copy's `main`; pulls
-   and rebases first if they saved meanwhile). If the push fails, say so plainly: the email may have gone
-   out but the history did not reach the repository.
-6. Dashboard: `uv run jobhunter board status --json`. If `linked` is true and you have the Artifact tools,
-   do the Sync in [board.md](board.md) (their page actions first, then the new jobs); then `cloud save` once more
-   if the import applied anything. If not linked, skip this step.
-7. Report in four lines: jobs found (and sources that failed), email sent or not and why, state saved
-   (commit) or not, dashboard synced or not.
+5. **Digest.** `uv run jobhunter digest prepare --json`. When it is `ready`, first `uv run jobhunter cloud save --branch main --json`
+   (the reservation now lives in their copy: if this session dies, the next run sees an unrecorded digest
+   and never sends those jobs again blindly), then send as above, then `digest record`. When it is
+   `blocked` because an earlier digest was never recorded, record that one (`failed`, or `uncertain` if you
+   cannot tell) and say so; send nothing else.
+6. **Save.** `uv run jobhunter cloud save --branch main --json` (commits `state/` and pushes it to their copy's
+   `main`; pulls and rebases first if they saved meanwhile). If the push fails, say so plainly: the email may
+   have gone out but the history did not reach the repository.
+7. **Publish.** If the dashboard is linked, step 2 of the Sync in [board.md](board.md) (`board export`, then the
+   batch of writes).
+8. Report in four lines: jobs found (and sources that failed), email sent (Gmail message id) or why not, state
+   saved (commit) or not, dashboard read and written or not. Every line comes from a command's output, never
+   from memory.
 
 ## Updating Hunter (`/jobhunter update`)
 `uv run jobhunter cloud update --json` fetches KubeCraft's repository as `upstream` and merges it into

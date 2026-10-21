@@ -179,7 +179,7 @@ const Core = (() => {
 
   // Conditional write: the browser db API has no if_version, so take a short lease, read, check, write rev+1.
   async function commit(db, path, mutate, holder, opts = {}) {
-    const ttlMs = opts.ttlMs || 2000, retries = opts.retries ?? 3;
+    const ttlMs = opts.ttlMs || 2000, retries = opts.retries ?? 5;
     const ref = db.doc(path);
     for (let attempt = 0; ; attempt++) {
       let lease;
@@ -277,7 +277,7 @@ const Core = (() => {
   const CHIPS = [["recommended", "All recommended"], ["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"], ["uncertain", "Needs checking"], ["old", "Older"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Not interested"], ["all", "Everything"]];
   const GROUPS = [["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"]];
   const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null,
-    tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, conflicts: {}, loaded: { board: false, actions: false, run: false }, dbError: null, prefsOpen: false, prefsStatus: null };
+    tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, drafts: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false }, dbError: null, prefsOpen: false, prefsStatus: null };
   try { const t = localStorage.getItem("hunter.tab"); if (t && CHIPS.some((x) => x[0] === t)) st.tab = t; } catch {}
 
   const el = (tag, attrs = {}, ...kids) => {
@@ -293,6 +293,7 @@ const Core = (() => {
     if (!iso) return "never";
     const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
     if (!isFinite(s)) return "unknown";
+    if (s < -60) { const a = -s; return "in " + (a < 3600 ? Math.round(a / 60) + " min" : a < 86400 ? Math.round(a / 3600) + " h" : Math.round(a / 86400) + " d"); }
     if (s < 60) return "just now"; if (s < 3600) return Math.round(s / 60) + " min ago";
     if (s < 86400) return Math.round(s / 3600) + " h ago"; return Math.round(s / 86400) + " d ago";
   };
@@ -315,8 +316,8 @@ const Core = (() => {
       const lastHunt = h && h.last_successful_hunt_at;
       items.push(el("span", { class: "stat", title: "The last search that finished" }, el("span", { class: "dot " + (lastHunt ? "ok" : "warn") }), "Last search " + rel(lastHunt)));
       items.push(el("span", { class: "stat", title: "When Hunter last updated this page" }, el("span", { class: "dot " + (pending ? "warn" : "ok") }), "Synced " + rel(st.run.at) + (pending ? " · " + pending + " waiting" : "")));
-      if (h && h.automatic_hunting === "running" && h.next_hunt_at) items.push(el("span", { class: "stat" }, el("span", { class: "dot ok" }), "Next search " + rel(h.next_hunt_at).replace(" ago", "")));
-      if (h && h.email && h.email.enabled) items.push(el("span", { class: "stat", title: "Job emails go to " + (h.email.address_hint || "your address") }, el("span", { class: "dot ok" }), "Email on"));
+      if (h && h.automatic_hunting === "running" && h.next_hunt_at) items.push(el("span", { class: "stat" }, el("span", { class: "dot ok" }), "Next search " + rel(h.next_hunt_at)));
+      if (h && h.email && h.email.enabled) items.push(el("span", { class: "stat", title: "Job emails go to " + (h.email.address_hint || "your address") }, el("span", { class: "dot " + (h.email.last_status === "failed" || h.email.last_status === "uncertain" ? "warn" : "ok") }), h.email.last_sent_at ? "Last email " + rel(h.email.last_sent_at) : "Email on, none sent yet"));
     } else items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), st.loaded.run ? "Hunter hasn’t synced yet" : "Loading…"));
     if (st.profile) {
       items.push(el("button", { class: "btn", onclick: () => { const d = $("whoMore"); if (d) { d.open = !d.open; d.scrollIntoView({ block: "nearest" }); } } }, "Profile"));
@@ -407,10 +408,10 @@ const Core = (() => {
     if (e.favorite) marks.append(el("span", { class: "star", title: "Favorite" }, "★"));
     if (e.applied_at) marks.append(el("span", { class: "pill p-applied" }, "Applied"));
     if (e.dismissed && st.tab !== "dismissed") marks.append(el("span", { class: "pill p-dismissed" }, "Not interested"));
-    if (e.pending) marks.append(el("span", { class: "pill p-pending", title: "Hunter reads this on its next run" }, "next run"));
+    if (e.pending) marks.append(el("span", { class: "pill p-pending", title: "Hunter reads this on its next run" }, "waiting for Hunter"));
     if (j.freshness_label && /last 2 days|today|yesterday/i.test(j.freshness_label)) marks.append(el("span", { class: "pill p-fresh" }, "New"));
     marks.append(el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"));
-    return el("button", { class: "row", role: "listitem", "aria-current": String(st.sel === k), onclick: () => select(k) },
+    return el("button", { class: "row", role: "listitem", "data-key": k, "aria-current": String(st.sel === k), onclick: () => select(k) },
       el("div", { style: "min-width:0" }, el("div", { class: "t" }, j.title || "Untitled job"),
         el("div", { class: "s" }, [j.employer, where(j), j.salary || null, j.freshness_label].filter(Boolean).join(" · ")),
         j.why ? el("div", { class: "why" }, el("b", {}, "Why: "), j.why) : null),
@@ -439,19 +440,23 @@ const Core = (() => {
   }
   /* ---------- drawer (job page) ---------- */
   function saveLine(k) {
-    const s = st.saving[k];
-    if (!s) { const e = eff(k); return el("div", { class: "save" }, e.pending ? "Saved here. Hunter reads it on its next run." : ""); }
+    const s = st.saving[k]; const e = eff(k);
+    if (!s || (s.status === "saved" && !e.pending)) return el("div", { class: "save " + (e.pending ? "warn" : "ok"), role: "status" }, e.pending ? "Waiting for Hunter: it reads this on its next run." : (st.actions.has(k) ? "Synced with Hunter." : ""));
     const cls = { saving: "", saved: "ok", conflict: "warn", busy: "warn", error: "err" }[s.status] || "";
-    const txt = { saving: "Saving…", saved: "Saved. Hunter reads it on its next run.", conflict: "Changed in another tab or device. Nothing was overwritten.", busy: "Another tab is saving. Try again in a moment.", error: "Not saved (" + (s.code || "error") + "). Your change is still on screen." }[s.status];
-    return el("div", { class: "save " + cls, role: "status" }, txt);
+    const txt = { saving: "Saving…", saved: "Saved to your dashboard. Waiting for Hunter: it reads this on its next run.", conflict: "Changed in another tab or device. Nothing was overwritten.", busy: "Another tab is saving. Nothing was lost.", error: "Couldn't save (" + (s.code || "error") + "). Your change is still on screen." }[s.status];
+    const retry = (s.status === "error" || s.status === "busy") && s.retry ? el("button", { class: "btn sm", style: "margin-left:8px", onclick: () => s.retry() }, "Retry") : null;
+    return el("div", { class: "save " + cls, role: "status" }, txt, retry);
   }
   function renderDrawer() {
     const k = st.sel; const j = k && st.jobs.get(k); if (!j) return null;
     const e = eff(k); const busy = st.saving[k] && st.saving[k].status === "saving";
     const flag = (field, on, labelOn, labelOff) => el("button", { class: "btn" + (on ? " on" : ""), disabled: busy || !can(), "aria-pressed": String(on), onclick: () => doFlag(k, field, !on) }, on ? labelOn : labelOff);
     const links = j.links || {}; const direct = safeUrl(links.direct) || safeUrl(links.apply) || safeUrl(links.discovery);
-    const ta = el("textarea", { id: "note", "aria-label": "Private note", placeholder: "A private note, only for you", onfocus: () => { if (!(k in st.noteBase)) st.noteBase[k] = (e.note && Number(e.note.rev)) || 0; } });
-    ta.value = st.conflicts[k] ? st.conflicts[k].mine : ((e.note && e.note.text) || "");
+    const savedText = (e.note && e.note.text) || "";
+    const ta = el("textarea", { id: "note", "aria-label": "Private note", placeholder: "A private note, only for you",
+      onfocus: () => { if (!(k in st.noteBase)) st.noteBase[k] = (e.note && Number(e.note.rev)) || 0; },
+      oninput: (ev) => { if (ev.target.value === savedText) delete st.drafts[k]; else st.drafts[k] = ev.target.value; } });
+    ta.value = st.conflicts[k] ? st.conflicts[k].mine : (k in st.drafts ? st.drafts[k] : savedText);
     const conflict = st.conflicts[k] ? el("div", { class: "conflict", role: "alert" }, "This note changed somewhere else after you started editing. Nothing was overwritten.",
       el("div", { class: "theirs" }, "Saved version: " + (st.conflicts[k].theirs || "(empty)")),
       el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => { const c = st.conflicts[k]; delete st.conflicts[k]; st.noteBase[k] = c.theirsRev; doNote(k, c.mine); } }, "Keep mine"),
@@ -505,27 +510,41 @@ const Core = (() => {
   }
   function renderOverlay() {
     const o = $("overlay");
+    const active = document.activeElement; const keep = active && o.contains(active) && active.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
+    const body = $("dbody"); const scroll = body ? body.scrollTop : 0;
     const parts = st.prefsOpen ? renderPrefs() : (renderDrawer() || []);
     o.replaceChildren(...parts);
     document.body.style.overflow = parts.length ? "hidden" : "";
+    const nb = $("dbody"); if (nb && scroll) nb.scrollTop = scroll;
+    if (keep) { const n = $(keep.id); if (n) { n.focus({ preventScroll: true }); if (typeof keep.start === "number" && n.setSelectionRange) { try { n.setSelectionRange(keep.start, keep.end); } catch {} } } }
   }
+  window.addEventListener("beforeunload", (ev) => {
+    const dirty = Object.keys(st.drafts).length > 0 || Object.keys(st.conflicts).length > 0;
+    if (dirty) { ev.preventDefault(); ev.returnValue = "You have an unsaved note."; }
+  });
   function render() { renderBar(); renderNotice(); renderWho(); renderMetrics(); renderPicks(); renderAttention(); renderTools(); renderList(); renderOverlay(); }
   function select(k) { st.sel = k; st.prefsOpen = false; render(); }
   async function copyText(text) { try { await navigator.clipboard.writeText(text); } catch {} }
 
   /* ---------- writes ---------- */
+  const nextOp = (k) => (st.ops[k] = (st.ops[k] || 0) + 1);
   async function doFlag(k, field, value) {
+    const op = nextOp(k);
     st.saving[k] = { status: "saving" }; renderOverlay();
     const res = await Core.commit(st.db, "actions/" + k, Core.setFlag(k, field, value, eff(k)), TAB_ID, { blank: Core.blankAction(k) });
-    st.saving[k] = { status: res.status, code: res.code }; render();
+    if (st.ops[k] !== op) return;  // a newer operation owns the status line now
+    if (res.status === "saved") st.actions.set(k, res.doc);  // what the database now holds; the snapshot confirms it
+    st.saving[k] = { status: res.status, code: res.code, retry: () => doFlag(k, field, value) }; render();
   }
   async function doNote(k, text) {
+    const op = nextOp(k);
     const e = eff(k); const base = k in st.noteBase ? st.noteBase[k] : ((e.note && Number(e.note.rev)) || 0);
     st.saving[k] = { status: "saving" }; renderOverlay();
     const res = await Core.commit(st.db, "actions/" + k, Core.saveNote(k, base, text, e), TAB_ID, { blank: Core.blankAction(k) });
+    if (st.ops[k] !== op) return;
     if (res.status === "conflict") { const n = (res.current && res.current.note) || null; st.conflicts[k] = { mine: text || "", theirs: n && n.text, theirsRev: (n && n.rev) || 0 }; }
-    else if (res.status === "saved") { delete st.noteBase[k]; delete st.conflicts[k]; }
-    st.saving[k] = { status: res.status, code: res.code }; render();
+    else if (res.status === "saved") { delete st.noteBase[k]; delete st.conflicts[k]; delete st.drafts[k]; st.actions.set(k, res.doc); }
+    st.saving[k] = { status: res.status, code: res.code, retry: () => doNote(k, text) }; render();
   }
   async function doPrefs(fd) {
     const fields = { location: String(fd.get("location") || "").slice(0, 200), countries: String(fd.get("countries") || "").slice(0, 200), salary: String(fd.get("salary") || "").slice(0, 100), remote: String(fd.get("remote") || "").slice(0, 100) };

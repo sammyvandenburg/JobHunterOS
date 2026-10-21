@@ -56,6 +56,11 @@ into a folder, and Claude writes them with the Artifact data tool, acting as the
 never overwrite each other; `jobhunter board import` applies each revision once and the next export tells the
 page which revision Hunter has seen (`state.synced_rev`), so the page shows Hunter's view as soon as it is in
 step. Every document is rewritten whole on each sync, so a failed sync needs no repair. The state file for
-nightly runs carries the page link and the applied revisions, so a cloud run and the laptop never apply the
-same action twice. Job keys are `"j" + sha1(canonical_key)[:20]`, identical on every machine. The local FastAPI
+nightly runs carries the page link and, for every job the person acted on, the job and its flags; it never
+carries a note's text or which page revisions were applied. Each database acknowledges a revision only after
+applying its values itself, so a restored database reads the page again and replays what it has not applied
+(replay is safe: every flag is compared with the current state first). `board import --listed N` refuses a
+missing folder, an unreadable file or a count that differs from the finished listing: a failed read is never
+an empty one. `jobhunter plan` shows the one run contract every session, worker and routine follows
+(restore, read the dashboard, hunt, digest with a durable reservation, save, publish), judged from evidence. Job keys are `"j" + sha1(canonical_key)[:20]`, identical on every machine. The local FastAPI
 dashboard (`jobhunter dashboard`) is unchanged and remains the path without Claude.

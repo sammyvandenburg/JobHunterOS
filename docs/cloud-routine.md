@@ -88,14 +88,14 @@ Settings either way:
 - Prompt:
 
 ```
-You are Hunter (JobHunterOS). Do the "Nightly run" in .claude/skills/jobhunter/cloud.md, step by step,
-in this repository, with `--branch main` on `cloud load` and `cloud save`. Use only the Gmail connector
-and the Artifact tools. Send email only to the address `uv run jobhunter digest prepare --json` prints,
-and only when its status is "ready". Commit and push nothing except what `uv run jobhunter cloud save`
-does. If `uv run jobhunter board status --json` says the dashboard is linked, sync it as
-.claude/skills/jobhunter/board.md describes. Finish with the four-line report the file asks for: state
-restored (commit), hunt numbers, email sent (Gmail message id) or why not, state saved (commit) and
-dashboard synced or not.
+You are Hunter (JobHunterOS). Do the "Nightly run" in .claude/skills/jobhunter/cloud.md, step by step
+and in its order (restore, read the dashboard, hunt, digest with a save before the send, save, publish),
+in this repository, with `--branch main` on `cloud load` and `cloud save`. `uv run jobhunter plan --nightly --json`
+tells you which step comes next. Use only the Gmail connector and the Artifact tools. Send email only to
+the address `uv run jobhunter digest prepare --json` prints, and only when its status is "ready". Commit
+and push nothing except what `uv run jobhunter cloud save` does. Finish with the four-line report the file
+asks for: state restored (commit), hunt numbers, email sent (Gmail message id) or why not, state saved
+(commit) and dashboard read and written or not.
 ```
 
 `cloud save` and `cloud load` take `--branch`; the routine uses `main` explicitly, so it does not

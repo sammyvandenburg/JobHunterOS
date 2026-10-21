@@ -56,14 +56,18 @@ def server(home):
 def _browser(p):
     from playwright.sync_api import Error as PwError
 
-    try:
-        kwargs = {}
-        exe = os.environ.get("JOBHUNTER_CHROMIUM")
-        if exe:
-            kwargs["executable_path"] = exe
-        return p.chromium.launch(**kwargs)
-    except PwError as exc:
-        pytest.skip(f"no browser available: {exc}")
+    exe = os.environ.get("JOBHUNTER_CHROMIUM")
+    candidates = [exe] if exe else [None]
+    bundled = os.path.join(os.environ.get("PLAYWRIGHT_BROWSERS_PATH", ""), "chromium")
+    if not exe and os.environ.get("PLAYWRIGHT_BROWSERS_PATH") and os.access(bundled, os.X_OK) and os.path.isfile(bundled):
+        candidates.append(bundled)  # a pre-installed Chromium next to the Playwright-managed ones (cloud containers)
+    last: Exception | None = None
+    for cand in candidates:
+        try:
+            return p.chromium.launch(**({"executable_path": cand} if cand else {}))
+        except PwError as exc:
+            last = exc
+    pytest.skip(f"no browser available: {last}")
 
 
 def test_browser_smoke(server):

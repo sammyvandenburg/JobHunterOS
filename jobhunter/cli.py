@@ -66,7 +66,7 @@ def _open(args) -> tuple[AppContext, Database]:
 # Commands
 # ---------------------------------------------------------------------------
 def cmd_status(args):
-    from jobhunter.services import hunt, onboarding, schedule, stats
+    from jobhunter.services import hunt, onboarding, schedule, stats, workflow
     from jobhunter.services.email import gmail
 
     ctx, db = _open(args)
@@ -83,8 +83,16 @@ def cmd_status(args):
         "schedule": {"frequency": sched.get("frequency_label"), "next_run_at": sched.get("next_run_at"), "worker": sched.get("worker"), "notify": sched.get("notify_label")},
         "mailbox": gmail.describe(db)["read"],
         "source_failures": [s["id"] for s in hunt.source_health(db) if s.get("last_status") == "failed"],
+        "nightly": workflow.routine_status(db),
     }
     emit(args, payload)
+
+
+def cmd_plan(args):
+    from jobhunter.services import workflow
+
+    ctx, db = _open(args)
+    emit(args, workflow.plan(ctx, db, nightly=bool(args.nightly)))
 
 
 def cmd_doctor(args):
@@ -209,7 +217,12 @@ def cmd_profile(args):
         elif args.profile_cmd == "correct":
             from jobhunter.services.matching import engine
 
-            res = profile_svc.correct(db, " ".join(args.text))
+            plan = profile_svc.plan_correction(db, " ".join(args.text))
+            if not args.yes:
+                plan["note_for_hunter"] = "Nothing changed. Show the confirmation line, and run the same command with --yes only after a clear yes."
+                emit(args, plan)
+                return 0
+            res = profile_svc.apply_correction(db, plan)
             res["rematched"] = engine.rematch_quietly(ctx, db).get("status")
             emit(args, res)
         elif args.profile_cmd == "submit":
@@ -936,8 +949,9 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("answer", nargs="+")
     x = ps.add_parser("skip")
     x.add_argument("key")
-    x = ps.add_parser("correct")
+    x = ps.add_parser("correct", help="propose a change from your own words; --yes applies it as a new approved revision")
     x.add_argument("text", nargs="+")
+    x.add_argument("--yes", action="store_true", help="the person confirmed the proposal")
     x.add_argument("--category", default="other")
     x.add_argument("--kind", default="unknown")
     x = ps.add_parser("submit")
@@ -1112,6 +1126,10 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--restore", action="store_true")
     cls.add_parser("status")
     cl.set_defaults(fn=cmd_cloud)
+
+    pl = sub.add_parser("plan", help="the run contract: which step is done, which comes next, judged from evidence (read dashboard, hunt, digest, save, publish)")
+    pl.add_argument("--nightly", action="store_true", help="a nightly run starts by restoring the state from the private copy")
+    pl.set_defaults(fn=cmd_plan)
 
     bd = sub.add_parser("board", help="your personal dashboard: a private Claude artifact page Claude publishes and keeps in sync")
     bds = bd.add_subparsers(dest="board_cmd", required=True)

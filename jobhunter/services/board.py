@@ -320,11 +320,20 @@ def _hunter_status(db: Database) -> dict:
     worker = str(sched.get("worker") or "")
     running = worker.startswith("running")
     address = notifications.recipient(db)
+    last = hunt.last_run(db)
+    last_sent = db.fetchone("SELECT sent_at FROM notifications WHERE kind = 'digest' AND status = 'sent' ORDER BY sent_at DESC LIMIT 1")
+    last_digest = db.fetchone("SELECT status, sent_at, created_at FROM notifications WHERE kind = 'digest' AND channel = 'email' ORDER BY id DESC LIMIT 1")
     return {
         "last_successful_hunt_at": ok.get("finished_at") if ok else None,
+        "last_run": {"status": last["status"], "trigger": last.get("trigger"), "at": last.get("finished_at") or last.get("started_at")} if last else None,
         "automatic_hunting": "running" if (sched.get("enabled") and running) else ("set up, not running now" if sched.get("enabled") else "off"),
         "next_hunt_at": sched.get("next_run_at") if (sched.get("enabled") and running) else None,
-        "email": {"enabled": bool(address) and db.get_setting("digest.transport") in {"claude", "gmail", "smtp"}, "address_hint": (address[:2] + "…@" + address.split("@", 1)[1]) if address and "@" in address else None},
+        "email": {
+            "enabled": bool(address) and db.get_setting("digest.transport") in {"claude", "gmail", "smtp"},
+            "address_hint": (address[:2] + "…@" + address.split("@", 1)[1]) if address and "@" in address else None,
+            "last_sent_at": last_sent["sent_at"] if last_sent else None,
+            "last_status": last_digest["status"] if last_digest else None,
+        },
     }
 
 
