@@ -57,6 +57,11 @@ def test_the_dashboard_document_carries_a_running_hunt(ctx, db, tmp_path):
     prog = run_doc["hunt_in_progress"]
     assert prog["run_id"] == rid and prog["sources_done"] == 12 and prog["sources_total"] == 72 and prog["jobs_relevant_new"] == 3 and "12 of 72" in prog["message"]
     assert run_doc["hunter"]["last_run"]["status"] == "running"
+    from jobhunter.services import workflow
+
+    board.import_actions(ctx, db, tmp_path / "none", listed=0)
+    plan = workflow.plan(ctx, db)
+    assert plan["next"] == "hunt" and not plan["complete"]  # a running hunt is never "all done"
 
 
 def test_hunt_start_returns_at_once_and_status_follows_the_run(ctx, db, home, monkeypatch):

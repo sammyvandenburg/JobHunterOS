@@ -145,7 +145,7 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
         done = bool(t_written[0]) and t_written >= t_hunt and t_written >= t_read and (not t_digest[0] or t_written >= t_digest)
         add("publish_dashboard", "done" if done else ("next" if prev_done else "pending"), "The page shows this run." if done else "Write the page after the hunt and the digest.", "uv run jobhunter board export --out <DIR>/out --json, then the ArtifactData batch from the manifest", at=_iso(ev["dashboard_written"]))
 
-    nxt = next((s for s in steps if s["status"] in {"next", "blocked"}), None)
+    nxt = next((s for s in steps if s["status"] in {"next", "blocked"}), None) or next((s for s in steps if s["status"] == "pending"), None)
     return {"order": list(ORDER), "steps": steps, "next": nxt["step"] if nxt else None, "complete": nxt is None, "next_run_starts_with": "restore" if nightly else ("read_dashboard" if linked else "hunt"), "evidence": ev}
 
 
