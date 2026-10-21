@@ -64,6 +64,7 @@ def evidence(db: Database) -> dict:
         "last_digest": {k: last_digest.get(k) for k in ("id", "status", "created_at", "claimed_at", "sent_at", "error", "provider_message_id")} if last_digest else None,
         "last_email_sent_at": last_sent["sent_at"] if last_sent else None,
         "sent_today": notifications.sent_today(db) if notifications.recipient(db) else False,
+        "last_prepare": db.get_setting("digest.last_prepare"),
         "last_cloud_run": {"status": last_cloud["status"], "finished_at": last_cloud.get("finished_at"), "tag": last_cloud.get("owner")} if last_cloud else None,
     }
 
@@ -91,8 +92,8 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
 
     # 1. restore (a nightly run always starts from the private copy; a laptop session never restores)
     if nightly or role_cloud:
-        done = bool(t_restore[0]) and (not t_hunt[0] or t_restore >= t_hunt)
-        add("restore", "done" if done else "next", "State loaded from the private copy in this run." if done else "Load the state from the private copy first.", "uv run jobhunter cloud load --restore --branch main --json", at=_iso(ev["restored"]))
+        done = bool(t_restore[0])  # a restore starts the cycle; the hunt that follows it never undoes it
+        add("restore", "done" if done else "next", "State loaded from the private copy." if done else "Load the state from the private copy first.", "uv run jobhunter cloud load --restore --branch main --json", at=_iso(ev["restored"]))
     else:
         add("restore", "skipped", "This computer holds the state itself.")
     prev_done = all(s["status"] in {"done", "skipped"} for s in steps)
@@ -108,11 +109,18 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
     prev_done = all(s["status"] in {"done", "skipped"} for s in steps)
 
     # 3. hunt
-    hunt_ok = bool(t_hunt[0]) and (not linked or t_hunt >= t_read) and (not t_restore[0] or t_hunt >= t_restore)
-    if ev["last_hunt"] and ev["last_hunt"]["status"] == "running":
+    hunt_status = (ev["last_hunt"] or {}).get("status")
+    hunt_ok = bool(t_hunt[0]) and hunt_status in {"completed", "partial"} and (not linked or t_hunt >= t_read) and (not t_restore[0] or t_hunt >= t_restore)
+    if hunt_status == "running":
         add("hunt", "pending", "A hunt is running now.", at=None)
     else:
-        add("hunt", "done" if hunt_ok else ("next" if prev_done else "pending"), f"Last hunt {ev['last_hunt']['status']} at {ev['last_hunt']['finished_at']}." if hunt_ok else "Hunt after the page's actions are read.", "uv run jobhunter hunt run" + (" --trigger cloud --json" if nightly else " --json"), at=_iso(ev["last_hunt"]))
+        if hunt_ok:
+            why = f"Last hunt {hunt_status} at {ev['last_hunt']['finished_at']}."
+        elif ev["last_hunt"] and hunt_status not in {"completed", "partial"}:
+            why = f"The last hunt {hunt_status}: {ev['last_hunt'].get('error') or 'no usable result'}. Hunt again."
+        else:
+            why = "Hunt after the page's actions are read."
+        add("hunt", "done" if hunt_ok else ("next" if prev_done else "pending"), why, "uv run jobhunter hunt run" + (" --trigger cloud --json" if nightly else " --json"), at=_iso(ev["last_hunt"]) if hunt_ok else None)
     prev_done = all(s["status"] in {"done", "skipped"} for s in steps)
 
     # 4. digest: prepare -> save (durable reservation) -> send -> record
@@ -120,6 +128,8 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
         add("digest", "skipped", "No confirmed email address: nothing to send.")
     elif ev["sent_today"]:
         add("digest", "done", f"Today's digest was sent at {ev['last_email_sent_at']}.", at=ev["last_email_sent_at"])
+    elif (ev.get("last_prepare") or {}).get("status") == "skipped" and _t(ev["last_prepare"]) >= t_hunt:
+        add("digest", "done", "Nothing new to email after this hunt: " + str(ev["last_prepare"].get("note") or ""), at=_iso(ev["last_prepare"]))
     elif last_digest.get("status") == "sending":
         add("digest", "blocked", "A digest is reserved but its outcome was never recorded. Record it (sent, failed or uncertain) before anything else is sent; never send it again blindly.", f"uv run jobhunter digest record {last_digest.get('id')} <sent|failed|uncertain> ...", at=_iso(last_digest.get("sent_at") or last_digest.get("claimed_at") or last_digest.get("created_at")))
     elif last_digest.get("status") == "uncertain" and not last_digest.get("resolved_at"):
@@ -133,8 +143,8 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
     if not ev["state_repo"]:
         add("save", "skipped", "No private copy linked for the state.")
     else:
-        latest_change = max(t_hunt, t_read, t_digest)
-        done = bool(t_saved[0]) and t_saved >= latest_change
+        latest_change = max(t_hunt[0], t_read[0], t_digest[0])  # a save carries no counter: whole seconds decide
+        done = bool(t_saved[0]) and t_saved[0] >= latest_change
         add("save", "done" if done else ("next" if prev_done else "pending"), "State saved after the last change." if done else "Save the state so the next run (and the laptop) knows what happened.", "uv run jobhunter cloud save --json" + (" --branch main" if nightly else ""), at=_iso(ev["saved"]))
     prev_done = all(s["status"] in {"done", "skipped"} for s in steps)
 

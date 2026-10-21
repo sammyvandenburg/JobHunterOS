@@ -164,28 +164,28 @@ def test_page_notes_can_be_deleted_and_preferences_edited_from_the_page(ctx, db,
     nw = _key_for(db, "Northwind Cloud")
     inbox = tmp_path / "in"
     _action(inbox, nw, 1, note={"text": "First note", "rev": 1})
-    board.import_actions(ctx, db, inbox, listed=None)
+    board.import_actions(ctx, db, inbox, listed=1)
     nw_id = db.fetchone("SELECT id FROM jobs WHERE employer_name = 'Northwind Cloud'")["id"]
     assert notes.latest_for_job(db, nw_id)["body"] == "First note"
     # Delete on the page: the note goes, nothing else changes, and a re-run does not bring it back.
     _action(inbox, nw, 2, note={"text": "", "rev": 2, "deleted": True})
-    res = board.import_actions(ctx, db, inbox, listed=None)
+    res = board.import_actions(ctx, db, inbox, listed=1)
     assert {a["job_key"]: a["changes"] for a in res["applied"]}[nw] == ["note_deleted"]
     assert notes.latest_for_job(db, nw_id) is None
-    assert board.import_actions(ctx, db, inbox, listed=None)["applied"] == []
+    assert board.import_actions(ctx, db, inbox, listed=1)["applied"] == []
     # Preferences edited on the page travel through the same parser as setup, once.
     (inbox / "actions").mkdir(exist_ok=True)
     (inbox / "actions" / "_prefs.json").write_text(json.dumps({"job_key": "_prefs", "location": "Utrecht, Netherlands", "countries": "Netherlands, Germany", "salary": "60000 EUR a year", "remote": "remote preferred, hybrid ok, never fully on-site", "rev": 1}))
-    res = board.import_actions(ctx, db, inbox, listed=None)
+    res = board.import_actions(ctx, db, inbox, listed=2)
     assert {a["job_key"]: a["changes"] for a in res["applied"]}["_prefs"] == ["location", "countries", "salary", "remote"]
     from jobhunter.services import preferences as prefs_svc
 
     p = prefs_svc.get(db)
     assert p.current_location == "Utrecht, Netherlands" and set(p.work_countries) == {"NL", "DE"} and p.salary_min == 60000 and p.remote == "preferred" and p.work_modes == ["remote", "hybrid"]
-    assert board.import_actions(ctx, db, inbox, listed=None)["applied"] == []
+    assert board.import_actions(ctx, db, inbox, listed=2)["applied"] == []
     # A bad edit is reported, not applied.
     (inbox / "actions" / "_prefs.json").write_text(json.dumps({"job_key": "_prefs", "countries": "Narnia", "rev": 2}))
-    res = board.import_actions(ctx, db, inbox, listed=None)
+    res = board.import_actions(ctx, db, inbox, listed=2)
     assert res["applied"][0]["changes"][0].startswith("rejected:") and set(prefs_svc.get(db).work_countries) == {"NL", "DE"}
     # The export tells the page which preference edit was applied, and carries the compact profile and status.
     manifest = board.export(ctx, db, tmp_path / "out")
@@ -209,6 +209,8 @@ def test_dashboard_refinements_stable_reference_counts_and_short_locations(ctx, 
     manifest = board.export(ctx, db, tmp_path / "out", limit=1)
     run = json.loads(Path([w for w in manifest["writes"] if w["doc_id"] == "run"][0]["file"]).read_text())
     assert len(run["recommended"]) == 1 and run["counts"]["recommended_total"] >= 2  # loaded vs total, honestly
+    board.import_actions(ctx, db, tmp_path / "none", listed=0)
+    manifest = board.export(ctx, db, tmp_path / "out-all")
     shard = {}
     for w in manifest["writes"]:
         if w["collection"] == "board":

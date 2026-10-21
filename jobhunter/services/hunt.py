@@ -157,6 +157,7 @@ def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids:
             from jobhunter.services import board as _board
 
             stats["seq"] = _board._next_seq(db)  # orders this hunt against dashboard reads and writes in the same second
+            stats["unresolved_applied"] = len(_board.apply_unresolved(db))  # page actions for jobs this hunt just found
             status = "completed" if not stats["sources_failed"] and not stats["sources_partial"] else "partial"
             if stats.get("deadline_hit") and status == "completed":
                 status = "partial"

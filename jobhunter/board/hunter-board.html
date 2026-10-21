@@ -213,7 +213,9 @@ const Core = (() => {
   }
   function effective(job, action) {
     const s = (job && job.state) || {};
-    const base = { favorite: !!s.favorited, saved: !!s.saved, applied_at: s.applied_at || null, dismissed: !!s.dismissed, note: s.note ? { text: s.note, rev: 0 } : null, rev: 0 };
+    // A synced note keeps the revision the page's own action document carries, so the next edit starts from it.
+    const noteRev = (action && action.note && Number(action.note.rev)) || 0;
+    const base = { favorite: !!s.favorited, saved: !!s.saved, applied_at: s.applied_at || null, dismissed: !!s.dismissed, note: s.note ? { text: s.note, rev: noteRev } : null, rev: 0 };
     if (!action || !(Number(action.rev) > Number(s.synced_rev || 0))) return Object.assign(base, { pending: false });
     return { favorite: !!action.favorite, saved: !!action.saved, applied_at: action.applied_at || null, dismissed: !!action.dismissed,
       note: action.note && action.note.text ? action.note : (action.note && action.note.deleted ? null : base.note), rev: Number(action.rev) || 0, pending: true };
@@ -277,7 +279,7 @@ const Core = (() => {
   const CHIPS = [["recommended", "All recommended"], ["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"], ["uncertain", "Needs checking"], ["old", "Older"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Not interested"], ["all", "Everything"]];
   const GROUPS = [["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"]];
   const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null,
-    tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, drafts: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false }, dbError: null, prefsOpen: false, prefsStatus: null };
+    tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, drafts: {}, prefsDraft: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false }, dbError: null, prefsOpen: false, prefsStatus: null };
   try { const t = localStorage.getItem("hunter.tab"); if (t && CHIPS.some((x) => x[0] === t)) st.tab = t; } catch {}
 
   const el = (tag, attrs = {}, ...kids) => {
@@ -499,17 +501,18 @@ const Core = (() => {
   }
   function renderPrefs() {
     const p = st.profile || {}; const pr = p.prefs || {}; const cur = st.actions.get("_prefs") || {};
-    const val = (k, fallback) => (cur[k] != null ? cur[k] : fallback);
+    const val = (k, fallback) => (k in st.prefsDraft ? st.prefsDraft[k] : (cur[k] != null ? cur[k] : fallback));
+    const keep = (ev) => { st.prefsDraft[ev.target.name] = ev.target.value; };
     const modeText = (pr.remote === "required") ? "remote only" : (pr.work_modes && pr.work_modes.length === 2 && !pr.work_modes.includes("onsite")) ? "remote preferred, hybrid ok, never fully on-site" : (pr.remote === "preferred") ? "remote preferred" : (pr.remote === "no_preference") ? "don't mind" : "";
     const form = el("form", { onsubmit: (ev) => { ev.preventDefault(); doPrefs(new FormData(ev.target)); } },
       el("div", { class: "box" }, el("h2", {}, "Preferences"),
         el("p", { class: "s", style: "margin:0;color:var(--muted)" }, "Hunter applies these on its next run and re-checks every job."),
-        el("label", {}, "Where you live", el("input", { type: "text", name: "location", id: "pf-location", value: val("location", pr.location || "") })),
-        el("label", {}, "Countries you can work in", el("input", { type: "text", name: "countries", id: "pf-countries", placeholder: "for example: Netherlands, Germany or EU", value: val("countries", pr.countries_text || "") })),
-        el("label", {}, "Lowest pay you’d be happy with (leave empty to skip)", el("input", { type: "text", name: "salary", id: "pf-salary", placeholder: "for example: 55000 EUR a year", value: val("salary", pr.salary_text || "") })),
-        el("label", {}, "Remote work", (() => { const s = el("select", { name: "remote", id: "pf-remote" }); for (const o of ["remote only", "remote preferred, hybrid ok, never fully on-site", "remote preferred", "hybrid ok, never fully on-site", "don't mind"]) s.append(el("option", { value: o, selected: val("remote", modeText) === o }, o)); return s; })()),
+        el("label", {}, "Where you live", el("input", { type: "text", name: "location", id: "pf-location", value: val("location", pr.location || ""), oninput: keep })),
+        el("label", {}, "Countries you can work in", el("input", { type: "text", name: "countries", id: "pf-countries", placeholder: "for example: Netherlands, Germany or EU", value: val("countries", pr.countries_text || ""), oninput: keep })),
+        el("label", {}, "Lowest pay you’d be happy with (leave empty to skip)", el("input", { type: "text", name: "salary", id: "pf-salary", placeholder: "for example: 55000 EUR a year", value: val("salary", pr.salary_text || ""), oninput: keep })),
+        el("label", {}, "Remote work", (() => { const s = el("select", { name: "remote", id: "pf-remote", onchange: keep }); for (const o of ["remote only", "remote preferred, hybrid ok, never fully on-site", "remote preferred", "hybrid ok, never fully on-site", "don't mind"]) s.append(el("option", { value: o, selected: val("remote", modeText) === o }, o)); return s; })()),
         st.prefsStatus ? el("div", { class: "save " + (st.prefsStatus.ok ? "ok" : "err"), role: "status" }, st.prefsStatus.text) : null,
-        el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Save"), el("button", { class: "btn", type: "button", onclick: () => { st.prefsOpen = false; st.prefsStatus = null; renderOverlay(); } }, "Close"))));
+        el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Save"), el("button", { class: "btn", type: "button", onclick: () => { st.prefsOpen = false; st.prefsStatus = null; st.prefsDraft = {}; renderOverlay(); } }, "Close"))));
     return [el("div", { class: "modal" }, form)];
   }
   function renderOverlay() {
@@ -523,7 +526,7 @@ const Core = (() => {
     if (keep) { const n = $(keep.id); if (n) { n.focus({ preventScroll: true }); if (typeof keep.start === "number" && n.setSelectionRange) { try { n.setSelectionRange(keep.start, keep.end); } catch {} } } }
   }
   window.addEventListener("beforeunload", (ev) => {
-    const dirty = Object.keys(st.drafts).length > 0 || Object.keys(st.conflicts).length > 0;
+    const dirty = Object.keys(st.drafts).length > 0 || Object.keys(st.conflicts).length > 0 || Object.keys(st.prefsDraft).length > 0;
     if (dirty) { ev.preventDefault(); ev.returnValue = "You have an unsaved note."; }
   });
   function render() { renderBar(); renderNotice(); renderWho(); renderMetrics(); renderPicks(); renderAttention(); renderTools(); renderList(); renderOverlay(); }
@@ -553,7 +556,8 @@ const Core = (() => {
   async function doPrefs(fd) {
     const fields = { location: String(fd.get("location") || "").slice(0, 200), countries: String(fd.get("countries") || "").slice(0, 200), salary: String(fd.get("salary") || "").slice(0, 100), remote: String(fd.get("remote") || "").slice(0, 100) };
     const res = await Core.commit(st.db, "actions/_prefs", Core.setPrefs(fields), TAB_ID, { blank: { job_key: "_prefs", rev: 0 } });
-    st.prefsStatus = res.status === "saved" ? { ok: true, text: "Saved. Hunter applies this on its next run." } : { ok: false, text: "Not saved (" + (res.code || res.status) + "). Try again." };
+    if (res.status === "saved") { st.prefsDraft = {}; st.actions.set("_prefs", res.doc); }
+    st.prefsStatus = res.status === "saved" ? { ok: true, text: "Saved to your dashboard. Waiting for Hunter: it applies this on its next run." } : { ok: false, text: "Couldn't save (" + (res.code || res.status) + "). Your changes are still on screen; try again." };
     render();
   }
   function rebuildJobs() {

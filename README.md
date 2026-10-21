@@ -41,7 +41,7 @@ Your private data lives in `~/.jobhunteros` (change with `JOBHUNTER_HOME`). Noth
 
 | You say | Hunter does |
 |---|---|
-| "Let's get set up" | Four steps: finished? → your CV and LinkedIn PDF → "does this look right?" → six quick basics in one go (where you live, your countries, pay, remote, how often, how to tell you). |
+| "Let's get set up" | Four steps: finished? → your CV and LinkedIn PDF → "does this look right?" → three quick basics in one go (where you live and can work, pay, remote or hybrid). |
 | "Find jobs" | Reads 85 validated employer job boards (Greenhouse, Lever, Ashby) plus discovery feeds (Remotive, Arbeitnow; Adzuna optional) that introduce new employers, removes duplicates across sources, checks dates, and matches against your approved profile. |
 | "Show me the best options" | Good matches, Worth a shot, Backup options, only in the countries you can work in. Each with the real remote rule, pay as stated, freshness, plain reasons tied to your CV, things to check, links, and one next step. No percentages. |
 | "Help me apply" | Shows who they are looking for, how well you fit and why, how to present yourself, draft answers from your CV, and what only you can answer. You apply yourself. |

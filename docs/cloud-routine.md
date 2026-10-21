@@ -58,8 +58,10 @@ the merge cannot conflict with personal state; a code conflict (only possible if
 code) is reported and aborted, never resolved blindly. GitHub's "Sync fork" button does the same for a
 fork. Tested in `tests/test_cloud_repo.py`.
 
-## The dashboard from a cloud workspace
-The dashboard binds to 127.0.0.1 on purpose and has no login. A Claude Code cloud session can start it
+## The local fallback dashboard from a cloud workspace
+This section is about the local FastAPI dashboard (`jobhunter dashboard`), the no-Claude fallback; the student's
+real dashboard is the private Artifact page (`board.md`), which a cloud session can read and write with the
+Artifact tools and which needs none of the below. The local dashboard binds to 127.0.0.1 on purpose and has no login. A Claude Code cloud session can start it
 (`uv run jobhunter dashboard`) and Claude can drive it with a browser inside the container, but the
 session exposes no preview port or public URL to the student (checked 2026-10-19: no port-forwarding
 or preview facility is documented or present in the environment, and the network proxy does not

@@ -195,3 +195,56 @@ def test_page_actions_round_trip_into_hunter(site, ctx, db, tmp_path):
     manifest = board.export(ctx, db, tmp_path / "out2")
     shard = json.loads(Path(manifest["writes"][1]["file"]).read_text())["jobs"]
     assert shard[nw]["state"]["favorited"] and shard[nw]["state"]["note"] == "Round trip" and shard[nw]["state"]["synced_rev"] == 2
+
+
+def test_a_note_can_be_edited_again_after_hunter_synced_it(site):
+    """Save a note, let Hunter sync it (synced_rev = the action's rev), edit it again: no false conflict."""
+    from playwright.sync_api import sync_playwright
+
+    fake, nw = site["fake"], site["nw"]
+    with sync_playwright() as p:
+        browser = _browser(p)
+        context, page, errors = _open(browser, site["url"])
+        _open_job(page, nw)
+        page.locator("textarea#note").fill("First version")
+        page.get_by_role("button", name="Save note").click()
+        assert _wait(lambda: (fake.doc(f"actions/{nw}") or {}).get("rev") == 1)
+        # Hunter applies it and writes the page: the job's state now carries the note and synced_rev 1.
+        shard = fake.doc("board/jobs-0")
+        shard["jobs"][nw]["state"]["synced_rev"] = 1
+        shard["jobs"][nw]["state"]["note"] = "First version"
+        fake.load({"board/jobs-0": shard})
+        assert _wait(lambda: "Synced" in page.locator(".save[role=status]").inner_text())
+        page.locator("textarea#note").fill("Second version")
+        page.get_by_role("button", name="Save note").click()
+        assert _wait(lambda: (fake.doc(f"actions/{nw}") or {}).get("rev") == 2), fake.doc(f"actions/{nw}")
+        assert page.locator(".conflict[role=alert]").count() == 0
+        doc = fake.doc(f"actions/{nw}")
+        assert doc["note"]["text"] == "Second version" and doc["note"]["rev"] == 2
+        assert not errors, errors
+        context.close()
+        browser.close()
+
+
+def test_unsaved_preference_edits_survive_a_snapshot(site):
+    from playwright.sync_api import sync_playwright
+
+    fake = site["fake"]
+    with sync_playwright() as p:
+        browser = _browser(p)
+        context, page, errors = _open(browser, site["url"])
+        page.get_by_role("button", name="Preferences").first.click()
+        page.wait_for_selector("input#pf-salary")
+        page.locator("input#pf-salary").fill("75000 EUR a year")
+        page.locator("input#pf-location").fill("Groningen, Netherlands")
+        run = fake.doc("meta/run")
+        run["at"] = "2026-10-21T11:00:00Z"
+        fake.load({"meta/run": run})
+        time.sleep(0.5)
+        assert page.locator("input#pf-salary").input_value() == "75000 EUR a year"
+        assert page.locator("input#pf-location").input_value() == "Groningen, Netherlands"
+        page.locator("#overlay").get_by_role("button", name="Save", exact=True).click()
+        assert _wait(lambda: (fake.doc("actions/_prefs") or {}).get("salary") == "75000 EUR a year")
+        assert not errors, errors
+        context.close()
+        browser.close()

@@ -110,3 +110,15 @@ def test_postings_that_cannot_be_read_make_the_feed_partial_and_never_close_jobs
 def test_raw_posting_identity_is_kept():
     raw = RawPosting(source_id="ashby:x", external_id="a1b2-0042", title="T", employer_name="E", url="https://jobs.ashbyhq.com/x/a1b2-0042")
     assert raw.external_id == "a1b2-0042"
+
+
+def test_ashby_secondary_locations_use_the_documented_address_shape():
+    """Official shape: secondaryLocations[].address.addressCountry (the primary address keeps postalAddress)."""
+    job = copy.deepcopy(ASHBY_STRUCTURED)
+    job["location"] = "Austin, Texas"
+    job["address"] = {"postalAddress": {"addressLocality": "Austin", "addressRegion": "Texas", "addressCountry": "United States"}}
+    job["secondaryLocations"] = [{"location": "Hybrid office", "address": {"addressLocality": "Groningen", "addressCountry": "Netherlands"}}]
+    raw = get_adapter("ashby")._convert("ashby:contoso", job, {"employer_name": "Contoso Payments"})
+    assert raw.raw["country_names"] == ["United States", "Netherlands"]
+    n = normalize.normalize(raw)
+    assert set(n.country_codes) == {"US", "NL"}

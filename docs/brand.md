@@ -17,17 +17,17 @@ The authentic KubeCraft mark is the **white cog on black** that KubeCraft suppli
 and an inner ring, white on a black square. The file Hunter uses is `brand/KubeCraft-Cog-3.png`, exactly as
 supplied: it is never recoloured, redrawn, cropped or given new geometry. Scaling for display is the only change.
 
-State on 2026-10-21: the mark reached this repository only as an image pasted into the conversation, not as a
-file. `brand/KubeCraft-Cog-3.png` and `brand/ASSET_NOTES.md` therefore do not exist here yet; Hunter was built
-so that adding the file is enough:
+State on 2026-10-21: `brand/KubeCraft-Cog-3.png` is the supplied file, byte for byte (SHA-256
+`5d86782fa2674a22efad5b27f8a966c59075ff7f3a3b30f9b34d8fe1cf7ba6c7`, 124,354 bytes; provenance in
+`brand/ASSET_NOTES.md`). How Hunter uses it:
 
 - `uv run jobhunter board build --out <file>` writes the dashboard page with the mark inlined as a data URI when
   `brand/KubeCraft-Cog-3.png` exists next to the code; otherwise the page carries the accessible text mark.
 - The local dashboard serves `brand/KubeCraft-Cog-3.png` at `/static/brand/KubeCraft-Cog-3.png` when it exists.
 - The email is readable without images: no logo image is embedded; the subject and the footer carry the names.
 
-Until the file is added, every surface shows the text fallback: the letters "KC" in a square, with the
-accessible name "KubeCraft". Nothing invented stands in for the cog.
+Should the file ever be missing (a copy made without it), every surface shows the text fallback: the letters
+"KC" in a square, with the accessible name "KubeCraft". Nothing invented stands in for the cog.
 
 ## What was there before, and why it was removed
 `jobhunter/web/static/logo.svg` and the inline SVG the dashboard page used to carry were drawn during

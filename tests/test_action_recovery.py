@@ -12,7 +12,7 @@ import pytest
 
 from jobhunter.config import AppContext
 from jobhunter.db import connect
-from jobhunter.services import actions, board, cloudstate, notes, views
+from jobhunter.services import actions, board, cloudstate, hunt, notes, views
 from tests.conftest import approve_profile
 from tests.test_board import _action, _key_for, _seed_jobs
 
@@ -150,7 +150,7 @@ def test_an_incomplete_or_unreadable_listing_is_never_an_empty_read(ctx, db, tmp
     nw = _key_for(db, "Northwind Cloud")
     # Missing folder without evidence of an empty listing: refused, and the page stays unread.
     with pytest.raises(board.BoardError, match="does not exist"):
-        board.import_actions(ctx, db, tmp_path / "missing")
+        board.import_actions(ctx, db, tmp_path / "missing", listed=1)
     assert board.stale_reason(db) and db.get_setting("board.last_import") is None
     # A file that is not JSON: refused by name; nothing is applied or recorded.
     inbox = tmp_path / "in"
@@ -175,3 +175,45 @@ def test_an_incomplete_or_unreadable_listing_is_never_an_empty_read(ctx, db, tmp
     assert board.stale_reason(db)
     res = board.import_actions(ctx, db, tmp_path / "empty", listed=0)
     assert res["seen"] == 0 and board.stale_reason(db) is None
+
+
+def test_a_read_without_listing_evidence_is_refused_and_orphans_stay_visible_until_their_job_arrives(ctx, db, tmp_path):
+    approve_profile(db, ctx, countries="Netherlands")
+    board.link(db, URL)
+    inbox = tmp_path / "in"
+    inbox.mkdir()
+    (inbox / "actions").mkdir()
+    # An existing but empty folder with no evidence of an empty listing is not a read.
+    with pytest.raises(board.BoardError, match="listing"):
+        board.import_actions(ctx, db, inbox)
+    assert board.stale_reason(db)
+    # An action for a job this database does not hold yet: kept, visible, and applied the moment the job arrives.
+    from jobhunter.models import RawPosting
+
+    posting = RawPosting(source_id="greenhouse:fake", external_id="far", title="Platform Engineer", employer_name="Far Away BV", url="https://job-boards.greenhouse.io/far/jobs/1", location_text="Amsterdam, Netherlands", country_codes=["NL"], remote_type="hybrid", description_text="You run Kubernetes on AWS with Terraform and Linux. On-call.", posted_at="2026-10-19T09:00:00+00:00", posted_at_provenance="t", is_employer_hosted=True)
+    jid0 = hunt.import_postings(ctx, db, [posting], trigger="test")["job_ids"][0]
+    far = board.job_key(db.fetchone("SELECT canonical_key FROM jobs WHERE id = ?", (jid0,))["canonical_key"])
+    db.execute("PRAGMA foreign_keys=OFF")
+    for table in ("matches", "job_observations", "recommendations", "events"):
+        db.execute(f"DELETE FROM {table} WHERE job_id = ?", (jid0,))
+    db.execute("DELETE FROM jobs WHERE id = ?", (jid0,))  # as if another machine had found it, not this one
+    db.execute("PRAGMA foreign_keys=ON")
+    _action(inbox, far, 1, favorite=True, note={"text": "Looks great", "rev": 1})
+    res = board.import_actions(ctx, db, inbox, listed=1)
+    assert res["orphans"] == [far] and board.stale_reason(db) is None
+    st = board.status(db)
+    assert st["unresolved_actions"] == 1 and "wait for their jobs" in st["unresolved_note"]
+    assert db.fetchone("SELECT COUNT(*) AS n FROM board_sync WHERE job_key = ?", (far,))["n"] == 0  # never acknowledged
+    _seed_jobs(ctx, db)
+    hunt.import_postings(ctx, db, [posting], trigger="test")  # the hunt finds it here too
+    row = db.fetchone("SELECT id, canonical_key FROM jobs WHERE employer_name = 'Far Away BV'")
+    assert board.job_key(row["canonical_key"]) == far
+    applied = board.apply_unresolved(db)
+    assert applied == [far]
+    assert views.job_detail(db, row["id"])["favorited"] and notes.latest_for_job(db, row["id"])["body"] == "Looks great"
+    assert db.fetchone("SELECT synced_rev FROM board_sync WHERE job_key = ?", (far,))["synced_rev"] == 1
+    assert board.status(db)["unresolved_actions"] == 0
+    # Export carries the applied state; a replay of the same file is a no-op.
+    shard = _shard(board.export(ctx, db, tmp_path / "out"))
+    assert shard[far]["state"]["favorited"] and shard[far]["state"]["note"] == "Looks great"
+    assert board.import_actions(ctx, db, inbox, listed=1)["applied"] == []

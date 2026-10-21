@@ -3,7 +3,8 @@
 Docs: https://developers.ashbyhq.com/docs/public-job-posting-api
 Endpoint: GET https://api.ashbyhq.com/posting-api/job-board/{board}?includeCompensation=true
 Fields used: id, title, department, team, employmentType, location,
-secondaryLocations[].location/address, publishedAt, isListed, isRemote,
+secondaryLocations[].location and secondaryLocations[].address.addressCountry (documented shape;
+address.postalAddress.addressCountry accepted as a fallback), publishedAt, isListed, isRemote,
 workplaceType, address.postalAddress.addressCountry, jobUrl, applyUrl,
 descriptionPlain, compensation.compensationTierSummary.
 """
@@ -66,7 +67,9 @@ class AshbyAdapter(SourceAdapter):
         for s in j.get("secondaryLocations") or []:
             if isinstance(s, dict):
                 secondary.append(s.get("location") or "")
-                sc = ((s.get("address") or {}).get("postalAddress") or {}).get("addressCountry")
+                sa = s.get("address") if isinstance(s.get("address"), dict) else {}
+                # Documented shape: secondaryLocations[].address.addressCountry; older exports nested it under postalAddress.
+                sc = sa.get("addressCountry") or ((sa.get("postalAddress") or {}).get("addressCountry") if isinstance(sa.get("postalAddress"), dict) else None)
                 if isinstance(sc, str) and sc.strip():
                     countries.append(sc.strip())
         wt = (j.get("workplaceType") or "").lower()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from jobhunter.config import AppContext
 from jobhunter.db import connect
 from jobhunter.services import board, cloudstate, hunt, notifications, workflow
+from jobhunter.util import now_iso
 from tests.conftest import approve_profile
 from tests.test_board import _seed_jobs
 
@@ -95,4 +96,44 @@ def test_a_restored_database_reads_the_page_before_it_hunts(ctx, db, tmp_path, f
     hunt.run_hunt(c2, d2, trigger="cloud")
     st = workflow.routine_status(d2)
     assert st["last_nightly_run"]["status"] in {"completed", "partial"} and st["next_nightly_run"] is None and not st["email_configured"]
+    d2.close()
+
+
+def test_a_full_nightly_cycle_never_loops_back_to_restore(ctx, db, tmp_path, fake_sources):
+    """From an empty cloud database: restore -> read -> hunt -> digest -> save -> publish, each step staying done."""
+    approve_profile(db, ctx, countries="Netherlands")
+    notifications.set_recipient(db, "student@example.com")
+    db.set_setting("digest.transport", "claude")
+    board.link(db, URL)
+    bundle = cloudstate.export_bundle(ctx, db)
+    c2 = AppContext.from_env(demo=False, home=tmp_path / "cloud")
+    d2 = connect(c2.paths.db_path)
+    cloudstate.import_bundle(c2, d2, bundle, inputs=True, results=True)
+    d2.set_setting("cloud.repo_dir", str(tmp_path / "repo"))  # a private copy is linked (saving is simulated below)
+    seq = []
+    seq.append(workflow.plan(c2, d2, nightly=True)["next"])
+    board.import_actions(c2, d2, tmp_path / "none", listed=0)
+    seq.append(workflow.plan(c2, d2, nightly=True)["next"])
+    hunt.run_hunt(c2, d2, trigger="cloud")
+    seq.append(workflow.plan(c2, d2, nightly=True)["next"])
+    h = notifications.prepare_handoff(c2, d2)
+    assert h["status"] == "ready"
+    notifications.record_handoff(d2, h["notification_id"], "sent", message_id="gmail-1")
+    seq.append(workflow.plan(c2, d2, nightly=True)["next"])
+    d2.set_setting("cloud.last_export", {"at": now_iso(), "pushed": True})
+    seq.append(workflow.plan(c2, d2, nightly=True)["next"])
+    board.export(c2, d2, tmp_path / "out")
+    p = workflow.plan(c2, d2, nightly=True)
+    seq.append(p["next"])
+    assert seq == ["read_dashboard", "hunt", "digest", "save", "publish_dashboard", None], seq
+    assert p["complete"] and _status(p)["restore"] == "done"
+    # A failed hunt is never a done hunt; nothing new to email is a done digest, not a reason to start over.
+    d2.insert("hunt_runs", {"trigger": "cloud", "status": "failed", "started_at": now_iso(), "finished_at": now_iso(), "error": "boom"})
+    p = workflow.plan(c2, d2, nightly=True)
+    assert _status(p)["restore"] == "done" and _status(p)["hunt"] != "done" and p["next"] in {"read_dashboard", "hunt"}
+    board.import_actions(c2, d2, tmp_path / "none", listed=0)
+    hunt.run_hunt(c2, d2, trigger="cloud")
+    assert notifications.prepare_handoff(c2, d2)["status"] == "skipped"  # already emailed today / nothing new
+    p = workflow.plan(c2, d2, nightly=True)
+    assert _status(p)["digest"] == "done" and _status(p)["restore"] == "done" and p["next"] in {"save", "publish_dashboard"}
     d2.close()

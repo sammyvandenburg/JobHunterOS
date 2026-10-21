@@ -319,16 +319,19 @@ def prepare_handoff(ctx: AppContext, db: Database) -> dict:
     if not addr:
         raise DigestError("No confirmed digest address. Confirm one first (`jobhunter digest address you@example.com`).")
     if sent_today(db):
-        return {"status": "skipped", "note": "Already emailed today. One digest a day; the rest waits for tomorrow."}
+        return _prepared(db, {"status": "skipped", "note": "Already emailed today. One digest a day; the rest waits for tomorrow."})
     from jobhunter.services import board
 
     stale = board.stale_reason(db)
     if stale:
         # Never email a job the person marked applied or not interested on their dashboard.
         return {"status": "blocked", "note": stale}
+    from jobhunter.services import board as _board
+
+    _board.apply_unresolved(db)  # a page action whose job arrived with this hunt counts before anything is emailed
     jobs = pending_jobs(db)
     if not jobs:
-        return {"status": "skipped", "note": "Nothing new worth emailing."}
+        return _prepared(db, {"status": "skipped", "note": "Nothing new worth emailing."})
     digest = compose(db, jobs)
     path = ctx.paths.exports_dir / "digests" / f"digest-{now_iso().replace(':', '')}.txt"
     write_private_file(path, digest.text.encode("utf-8"))
@@ -337,6 +340,12 @@ def prepare_handoff(ctx: AppContext, db: Database) -> dict:
         return why_not
     db.update("notifications", {"channel": "email", "error": None}, "id = ?", (nid,))
     return {"status": "ready", "notification_id": nid, "to": addr, "subject": digest.subject, "text": digest.text, "html": digest.html, "content_hash": digest.content_hash, "jobs": digest.job_ids, "rules": ["Send to exactly this address, nothing else, nobody in cc or bcc.", "Send the subject, text and html as given.", "Then run `jobhunter digest record <notification_id> sent --message-id <id>`; on an error `failed --error \"...\"`; if you do not know whether it went out, `uncertain`."]}
+
+
+def _prepared(db: Database, result: dict) -> dict:
+    """Evidence that a digest was considered after the last hunt, so the run contract can tell 'nothing to send' from 'not tried'."""
+    db.set_setting("digest.last_prepare", {"at": now_iso(), "status": result.get("status"), "note": result.get("note")})
+    return result
 
 
 def sent_today(db: Database) -> bool:

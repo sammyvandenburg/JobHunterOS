@@ -127,10 +127,13 @@ def _is_before(a: dict, b: dict) -> bool:
 def status(db: Database) -> dict:
     url = db.get_setting(URL_SETTING)
     synced = db.fetchone("SELECT COUNT(*) AS n FROM board_sync WHERE synced_rev > 0")["n"]
+    pending = unresolved(db)
     return {
         "linked": bool(url),
         "url": url,
         "page": str(page_path()),
+        "unresolved_actions": len(pending),
+        "unresolved_note": (f"{len(pending)} dashboard action(s) wait for their jobs: Hunter does not hold those jobs yet; they are applied as soon as a search finds them." if pending else None),
         "last_export": db.get_setting("board.last_export"),
         "last_import": db.get_setting("board.last_import"),
         "actions_applied": synced,
@@ -407,6 +410,9 @@ def _attention(db: Database, docs: list[dict]) -> list[dict]:
         items.append({"kind": "digest_failed", "text": "The last job email could not be sent. Hunter will try again, or ask Hunter to send it."})
     if notifications.unresolved(db):
         items.append({"kind": "digest_uncertain", "text": "A job email may not have arrived. Check your inbox and tell Hunter."})
+    pending = unresolved(db)
+    if pending:
+        items.append({"kind": "unresolved_actions", "text": f"{len(pending)} change{'' if len(pending) == 1 else 's'} you made here {'is' if len(pending) == 1 else 'are'} for jobs Hunter has not found on this computer yet; kept, and applied when it does.", "keys": list(pending)[:5]})
     return items[:6]
 
 
@@ -424,6 +430,7 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
         why = stale_reason(db)
         if why:
             raise BoardError(why)
+    apply_unresolved(db)  # a kept action whose job a hunt found since is applied before the page is written
     out = Path(out_dir)
     (out / "meta").mkdir(parents=True, exist_ok=True)
     (out / "board").mkdir(parents=True, exist_ok=True)
@@ -515,6 +522,8 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path, listed: in
     `listed` is the number of documents the completed listing of the `actions` collection reported. A missing
     folder, an unreadable file, or a count that does not match the listing is a failed read, not an empty one:
     nothing is applied and the page stays "unread". An empty collection is a real read only with `listed=0`."""
+    if listed is None:
+        raise BoardError("No listing evidence: pass the number of documents the finished listing of the `actions` collection reported (`--listed N`, 0 when it was empty). Without it Hunter cannot tell an empty page from a read that never happened.")
     folder = Path(in_dir)
     folder = folder / "actions" if (folder / "actions").is_dir() else folder
     if not folder.is_dir():
@@ -554,6 +563,7 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path, listed: in
         jid = by_key.get(key)
         if jid is None:
             orphans.append(key)
+            _remember_unresolved(db, key, a)
             continue
         # One transaction per action: the changes and the revision that records them land together or not at all.
         with db.tx():
@@ -564,12 +574,60 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path, listed: in
             else:
                 db.insert("board_sync", {"job_key": key, **values})
         applied.append({"job_key": key, "job_id": jid, "rev": rev, "changes": done["changes"]})
-    summary = {"seen": len(docs), "applied": applied, "already_applied": skipped, "orphans": orphans, "at": now_iso()}
+    summary = {"seen": len(docs), "applied": applied, "already_applied": skipped, "orphans": orphans, "unresolved": len(db.get_setting(UNRESOLVED_SETTING) or {}), "at": now_iso()}
     db.set_setting("board.last_import", {"at": summary["at"], "seq": _next_seq(db), "seen": len(docs), "applied": len(applied), "orphans": len(orphans), "listed": listed})
     return summary
 
 
 PREFS_KEY = "_prefs"
+UNRESOLVED_SETTING = "board.unresolved"
+ACTION_FIELDS = ("job_key", "favorite", "saved", "applied_at", "dismissed", "rev", "updated_at")
+
+
+def _remember_unresolved(db: Database, key: str, a: dict) -> None:
+    """A page action for a job this database does not hold yet (found on another machine, or not yet by a hunt here):
+    kept, never acknowledged, applied the moment the job arrives. Only the known fields are kept, bounded."""
+    doc = {k: a.get(k) for k in ACTION_FIELDS}
+    note = a.get("note")
+    if isinstance(note, dict):
+        doc["note"] = {"text": str(note.get("text") or "")[: notes.MAX_NOTE_CHARS], "rev": int(note.get("rev") or 0), "deleted": bool(note.get("deleted"))}
+    pending = db.get_setting(UNRESOLVED_SETTING) or {}
+    if int(doc.get("rev") or 0) >= int((pending.get(key) or {}).get("rev") or 0):
+        pending[key] = doc
+        db.set_setting(UNRESOLVED_SETTING, pending)
+
+
+def unresolved(db: Database) -> dict:
+    return db.get_setting(UNRESOLVED_SETTING) or {}
+
+
+def apply_unresolved(db: Database) -> list[str]:
+    """Apply kept page actions whose jobs exist now (after a hunt or a restore). Each one lands with its revision in
+    one transaction, exactly like a read from the page; the rest stay kept and visible."""
+    pending = unresolved(db)
+    if not pending:
+        return []
+    by_key = {job_key(r["canonical_key"]): r["id"] for r in db.fetchall("SELECT id, canonical_key FROM jobs")}
+    done: list[str] = []
+    for key, a in list(pending.items()):
+        jid = by_key.get(key)
+        if jid is None:
+            continue
+        prev = db.fetchone("SELECT * FROM board_sync WHERE job_key = ?", (key,)) or {}
+        rev = int(a.get("rev") or 0)
+        if rev > int(prev.get("synced_rev") or 0):
+            with db.tx():
+                res = _apply_one(db, jid, a, prev)
+                values = {"canonical_key": _canonical(db, jid), "synced_rev": rev, "synced_at": now_iso(), "note_id": res.pop("_note_id", prev.get("note_id"))}
+                if prev:
+                    db.update("board_sync", values, "job_key = ?", (key,))
+                else:
+                    db.insert("board_sync", {"job_key": key, **values})
+        pending.pop(key, None)
+        done.append(key)
+    if done:
+        db.set_setting(UNRESOLVED_SETTING, pending)
+    return done
 
 
 def _apply_prefs(db: Database, a: dict) -> list[str]:

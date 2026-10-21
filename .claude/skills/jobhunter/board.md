@@ -10,10 +10,11 @@ Commands: `uv run jobhunter board status|page|link <url>|export --out DIR|import
 Tools: `Artifact` (publish the page once), `ArtifactData` (read and write its database; in some sessions
 it appears as the Artifact tool's `read_db` / `write_db`).
 
-## Create it once (after the profile is approved and the basics are saved)
+## Create it once (right after the profile is approved and the basics are saved, before the first hunt)
 1. `uv run jobhunter board status --json`. If `linked` is true, skip to "Sync".
-2. `uv run jobhunter board page --json` gives the page file and the capabilities to declare. Publish it:
-   `Artifact` publish with `file_path` = that file, `icon` "briefcase", `capabilities` exactly
+2. `uv run jobhunter board build --out <DIR>/hunter-board.html --json` writes the page to publish (the KubeCraft
+   mark inlined from `brand/KubeCraft-Cog-3.png`; never publish the raw template path). Publish it:
+   `Artifact` publish with `file_path` = that written file, `icon` "briefcase", `capabilities` exactly
    `{"db": {"rules": [{"path": "", "read": "owner", "write": "owner"}]}, "user": {}}` (owner-only: nobody
    else can read the student's data, even with the link), description "Your private Hunter dashboard".
 3. `uv run jobhunter board link <the url the tool returned>`.

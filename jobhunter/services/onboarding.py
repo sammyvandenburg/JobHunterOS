@@ -48,13 +48,10 @@ STEPS: list[Step] = [
     Step("profile_approve", "Here is what I understand about you. Does this look right?", "approve", help="Say yes, or tell me what is wrong."),
     Step(
         "basics",
-        "A few quick things, all in one go:\n"
-        "1. Where do you live? (city and country)\n"
-        "2. Which countries can you work in? (for example 'EU', or 'Netherlands and Germany')\n"
-        "3. Lowest salary you would be happy with? (optional, for example '55000 EUR a year', or 'skip')\n"
-        "4. Remote work: must have, nice to have, or don't mind?\n"
-        "5. How often should I look for jobs: every day, or only when you ask?\n"
-        "6. How should I tell you: in the dashboard only, or also a daily email?",
+        "Three quick things, all in one go:\n"
+        "1. Where should I look? Where do you live, and which countries can you work in? (for example 'Rotterdam, Netherlands; EU')\n"
+        "2. Lowest pay you would be happy with? (optional, for example '55000 EUR a year', or 'skip')\n"
+        "3. Remote, hybrid, or either? ('remote preferred, hybrid ok, never fully on-site' is a fine answer)",
         "basics",
         help="Short answers are fine. You can change any of this later.",
     ),
