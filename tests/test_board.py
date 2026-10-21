@@ -80,7 +80,7 @@ def test_page_actions_are_applied_once_by_a_separate_run(ctx, db, tmp_path, home
 
     # A separate Hunter run (new connection, same data folder) applies them.
     db2 = connect(AppContext.from_env(home=home).paths.db_path)
-    res = board.import_actions(ctx, db2, inbox)
+    res = board.import_actions(ctx, db2, inbox, listed=3)
     assert res["seen"] == 3 and res["orphans"] == ["jdeadbeefdeadbeefdead"] and res["already_applied"] == 0
     changes = {a["job_key"]: a["changes"] for a in res["applied"]}
     assert changes[nw] == ["favorite", "save", "note"] and changes[contoso] == ["dismiss"]
@@ -91,13 +91,13 @@ def test_page_actions_are_applied_once_by_a_separate_run(ctx, db, tmp_path, home
     assert {j["employer"] for j in views.current_recommended(db2)} == {"Northwind Cloud"}  # Contoso dismissed
 
     # The same files again: nothing is applied twice.
-    again = board.import_actions(ctx, db2, inbox)
+    again = board.import_actions(ctx, db2, inbox, listed=3)
     assert again["applied"] == [] and again["already_applied"] == 2 and notes.count_for_job(db2, nw_id) == 1
 
     # A newer revision edits the same note instead of adding a second one, un-dismisses, and records applied.
     _action(inbox, nw, 4, favorite=True, saved=True, note={"text": "Ask about on-call and pay", "rev": 2}, applied_at="2026-10-20T08:00:00.000Z")
     _action(inbox, contoso, 3, dismissed=False)
-    res = board.import_actions(ctx, db2, inbox)
+    res = board.import_actions(ctx, db2, inbox, listed=3)
     changes = {a["job_key"]: a["changes"] for a in res["applied"]}
     assert changes[nw] == ["applied", "note"] and changes[contoso] == ["undismiss"]
     assert notes.count_for_job(db2, nw_id) == 1 and notes.latest_for_job(db2, nw_id)["body"] == "Ask about on-call and pay"
@@ -107,7 +107,7 @@ def test_page_actions_are_applied_once_by_a_separate_run(ctx, db, tmp_path, home
 
     # Un-applying on the page is a correction, reversible like every event.
     _action(inbox, nw, 5, favorite=True, saved=True, note={"text": "Ask about on-call and pay", "rev": 2}, applied_at=None)
-    res = board.import_actions(ctx, db2, inbox)
+    res = board.import_actions(ctx, db2, inbox, listed=3)
     assert {a["job_key"]: a["changes"] for a in res["applied"]}[nw] == ["unapplied"]
     assert views.list_jobs(db2, view="applied")["total"] == 0
 
@@ -132,31 +132,30 @@ def test_link_validates_and_resets_sync_on_a_new_page(ctx, db):
     assert board.page_path().exists()
 
 
-def test_cloud_state_carries_the_dashboard_link_and_applied_revisions(ctx, db, tmp_path, home, monkeypatch):
+def test_cloud_state_carries_the_dashboard_link_but_never_the_applied_revisions(ctx, db, tmp_path, home, monkeypatch):
     approve_profile(db, ctx, countries="Netherlands")
     _seed_jobs(ctx, db)
     board.link(db, "https://claude.ai/artifact/5wUUffKaZnmpqGgPnRzPVE")
     nw = _key_for(db, "Northwind Cloud")
     _action(tmp_path / "in", nw, 2, favorite=True)
-    board.import_actions(ctx, db, tmp_path / "in")
+    board.import_actions(ctx, db, tmp_path / "in", listed=1)
     bundle = cloudstate.export_bundle(ctx, db)
-    assert bundle["inputs"]["board"] == {"url": "https://claude.ai/artifact/5wUUffKaZnmpqGgPnRzPVE", "synced": {nw: 2}}
+    assert bundle["inputs"]["board"] == {"url": "https://claude.ai/artifact/5wUUffKaZnmpqGgPnRzPVE"}
     assert not cloudstate.check_bundle_privacy(bundle)
 
-    # A fresh cloud machine restores the link and the revisions; a laptop import merges the revisions only.
+    # A fresh cloud machine restores the link and the favorite, but acknowledges no revision it did not apply itself.
     other = tmp_path / "cloud-home"
     monkeypatch.setenv("JOBHUNTER_HOME", str(other))
     cctx = AppContext.from_env(home=other)
     cdb = connect(cctx.paths.db_path)
     cloudstate.import_bundle(cctx, cdb, bundle, inputs=True, results=True)
     assert board.status(cdb)["url"] == "https://claude.ai/artifact/5wUUffKaZnmpqGgPnRzPVE"
-    assert cdb.fetchone("SELECT synced_rev FROM board_sync WHERE job_key = ?", (nw,))["synced_rev"] == 2
-    # Cloud applied a newer page action; the laptop learns about it without re-applying anything.
-    cdb.update("board_sync", {"synced_rev": 4}, "job_key = ?", (nw,))
-    back = cloudstate.export_bundle(cctx, cdb)
+    assert [j["employer"] for j in views.list_jobs(cdb, view="favorites")["items"]] == ["Northwind Cloud"]
+    assert cdb.fetchone("SELECT COUNT(*) AS n FROM board_sync")["n"] == 0
+    # An old state file that still carries revisions is accepted, and the revisions are ignored.
+    assert board.import_sync_state(cdb, {"url": bundle["inputs"]["board"]["url"], "synced": {nw: 4}}) == {"url": False, "synced_ignored": 1}
+    assert cdb.fetchone("SELECT COUNT(*) AS n FROM board_sync")["n"] == 0
     cdb.close()
-    cloudstate.import_bundle(ctx, db, back, inputs=False, results=True)
-    assert db.fetchone("SELECT synced_rev FROM board_sync WHERE job_key = ?", (nw,))["synced_rev"] == 4
 
 
 def test_page_notes_can_be_deleted_and_preferences_edited_from_the_page(ctx, db, tmp_path):
@@ -165,28 +164,28 @@ def test_page_notes_can_be_deleted_and_preferences_edited_from_the_page(ctx, db,
     nw = _key_for(db, "Northwind Cloud")
     inbox = tmp_path / "in"
     _action(inbox, nw, 1, note={"text": "First note", "rev": 1})
-    board.import_actions(ctx, db, inbox)
+    board.import_actions(ctx, db, inbox, listed=None)
     nw_id = db.fetchone("SELECT id FROM jobs WHERE employer_name = 'Northwind Cloud'")["id"]
     assert notes.latest_for_job(db, nw_id)["body"] == "First note"
     # Delete on the page: the note goes, nothing else changes, and a re-run does not bring it back.
     _action(inbox, nw, 2, note={"text": "", "rev": 2, "deleted": True})
-    res = board.import_actions(ctx, db, inbox)
+    res = board.import_actions(ctx, db, inbox, listed=None)
     assert {a["job_key"]: a["changes"] for a in res["applied"]}[nw] == ["note_deleted"]
     assert notes.latest_for_job(db, nw_id) is None
-    assert board.import_actions(ctx, db, inbox)["applied"] == []
+    assert board.import_actions(ctx, db, inbox, listed=None)["applied"] == []
     # Preferences edited on the page travel through the same parser as setup, once.
     (inbox / "actions").mkdir(exist_ok=True)
     (inbox / "actions" / "_prefs.json").write_text(json.dumps({"job_key": "_prefs", "location": "Utrecht, Netherlands", "countries": "Netherlands, Germany", "salary": "60000 EUR a year", "remote": "remote preferred, hybrid ok, never fully on-site", "rev": 1}))
-    res = board.import_actions(ctx, db, inbox)
+    res = board.import_actions(ctx, db, inbox, listed=None)
     assert {a["job_key"]: a["changes"] for a in res["applied"]}["_prefs"] == ["location", "countries", "salary", "remote"]
     from jobhunter.services import preferences as prefs_svc
 
     p = prefs_svc.get(db)
     assert p.current_location == "Utrecht, Netherlands" and set(p.work_countries) == {"NL", "DE"} and p.salary_min == 60000 and p.remote == "preferred" and p.work_modes == ["remote", "hybrid"]
-    assert board.import_actions(ctx, db, inbox)["applied"] == []
+    assert board.import_actions(ctx, db, inbox, listed=None)["applied"] == []
     # A bad edit is reported, not applied.
     (inbox / "actions" / "_prefs.json").write_text(json.dumps({"job_key": "_prefs", "countries": "Narnia", "rev": 2}))
-    res = board.import_actions(ctx, db, inbox)
+    res = board.import_actions(ctx, db, inbox, listed=None)
     assert res["applied"][0]["changes"][0].startswith("rejected:") and set(prefs_svc.get(db).work_countries) == {"NL", "DE"}
     # The export tells the page which preference edit was applied, and carries the compact profile and status.
     manifest = board.export(ctx, db, tmp_path / "out")

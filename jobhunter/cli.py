@@ -592,7 +592,7 @@ def cmd_board(args):
         elif c == "export":
             emit(args, board.export(ctx, db, args.out, limit=args.limit, require_actions=not args.without_actions))
         elif c == "import":
-            emit(args, board.import_actions(ctx, db, args.src))
+            emit(args, board.import_actions(ctx, db, args.src, listed=args.listed))
     except board.BoardError as exc:
         raise CliError(str(exc)) from exc
     finally:
@@ -1126,6 +1126,7 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--without-actions", action="store_true", help="write even though the page's actions were not read first (not recommended)")
     x = bds.add_parser("import", help="apply the actions the page recorded (a folder with actions/*.json)")
     x.add_argument("--in", dest="src", required=True)
+    x.add_argument("--listed", type=int, required=True, help="how many documents the completed listing of the `actions` collection reported (0 when it was empty)")
     bd.set_defaults(fn=cmd_board)
 
     sc = sub.add_parser("schedule", help="how often Hunter looks and when it tells you")

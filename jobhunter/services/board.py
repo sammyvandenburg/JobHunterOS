@@ -438,16 +438,17 @@ def _unwrap(obj: dict) -> dict:
 
 
 def _read_actions(folder: Path) -> list[dict]:
-    if not folder.is_dir():
-        return []
+    """Every *.json file in the folder, each one an action document. A file that cannot be read or parsed stops
+    the whole read: a half-read listing must never pass for a complete one."""
     out = []
     for p in sorted(folder.glob("*.json")):
         try:
             doc = _unwrap(json.loads(p.read_text(encoding="utf-8")))
-        except (ValueError, OSError):
-            continue
-        if isinstance(doc, dict) and doc.get("job_key"):
-            out.append(doc)
+        except (ValueError, OSError) as exc:
+            raise BoardError(f"The actions folder holds a file Hunter cannot read ({p.name}: {exc}). List the `actions` collection again into an empty folder, then import again.") from exc
+        if not isinstance(doc, dict) or not doc.get("job_key"):
+            raise BoardError(f"The actions folder holds a file that is not an action document ({p.name}). List the `actions` collection again into an empty folder, then import again.")
+        out.append(doc)
     return out
 
 
@@ -456,11 +457,25 @@ def _current(db: Database, job_id: int) -> dict:
     return views.summarize(row)
 
 
-def import_actions(ctx: AppContext, db: Database, in_dir: str | Path) -> dict:
-    """Apply what the page recorded under actions/. Each action document is applied once, by its `rev`;
-    untrusted input: only the known flags and the note text are read, everything else is ignored."""
+def import_actions(ctx: AppContext, db: Database, in_dir: str | Path, listed: int | None = None) -> dict:
+    """Apply what the page recorded under actions/. Each action document is applied once, by its `rev`, and the
+    revision is acknowledged in the same transaction as the values it carries; untrusted input: only the known
+    flags and the note text are read, everything else is ignored.
+
+    `listed` is the number of documents the completed listing of the `actions` collection reported. A missing
+    folder, an unreadable file, or a count that does not match the listing is a failed read, not an empty one:
+    nothing is applied and the page stays "unread". An empty collection is a real read only with `listed=0`."""
     folder = Path(in_dir)
-    docs = _read_actions(folder / "actions" if (folder / "actions").is_dir() else folder)
+    folder = folder / "actions" if (folder / "actions").is_dir() else folder
+    if not folder.is_dir():
+        if listed == 0:
+            docs: list[dict] = []
+        else:
+            raise BoardError(f"The actions folder {folder} does not exist, so the page's actions were not read. List the `actions` collection into that folder (pass --listed 0 if the listing was empty).")
+    else:
+        docs = _read_actions(folder)
+    if listed is not None and listed != len(docs):
+        raise BoardError(f"The listing reported {listed} action document(s) but the folder holds {len(docs)}. The read did not complete: list the `actions` collection again (follow every next_cursor) into an empty folder, then import again.")
     by_key = {job_key(r["canonical_key"]): r["id"] for r in db.fetchall("SELECT id, canonical_key FROM jobs")}
     synced = {r["job_key"]: r for r in db.fetchall("SELECT * FROM board_sync")}
     applied: list[dict] = []
@@ -500,7 +515,7 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path) -> dict:
                 db.insert("board_sync", {"job_key": key, **values})
         applied.append({"job_key": key, "job_id": jid, "rev": rev, "changes": done["changes"]})
     summary = {"seen": len(docs), "applied": applied, "already_applied": skipped, "orphans": orphans, "at": now_iso()}
-    db.set_setting("board.last_import", {"at": summary["at"], "seq": _next_seq(db), "seen": len(docs), "applied": len(applied), "orphans": len(orphans)})
+    db.set_setting("board.last_import", {"at": summary["at"], "seq": _next_seq(db), "seen": len(docs), "applied": len(applied), "orphans": len(orphans), "listed": listed})
     return summary
 
 
@@ -575,31 +590,18 @@ def _apply_one(db: Database, jid: int, a: dict, prev: dict) -> dict:
 # What travels in the cloud state file
 # ---------------------------------------------------------------------------
 def export_sync_state(db: Database) -> dict:
-    """The dashboard link and which page actions were already applied, so a cloud run and the laptop
-    agree and never apply the same action twice."""
-    return {"url": db.get_setting(URL_SETTING), "synced": {r["job_key"]: int(r["synced_rev"]) for r in db.fetchall("SELECT job_key, synced_rev FROM board_sync")}}
+    """The dashboard link. Which page revisions were applied is never carried: a revision is acknowledged only by
+    the database that applied its values itself, so a restored or merged database re-reads the page and replays
+    what it has not applied (replay is safe: every flag is compared with the current state first)."""
+    return {"url": db.get_setting(URL_SETTING)}
 
 
 def import_sync_state(db: Database, data: dict) -> dict:
     if not isinstance(data, dict):
-        return {"url": False, "synced": 0}
-    changed = {"url": False, "synced": 0}
+        return {"url": False, "synced_ignored": 0}
+    changed = {"url": False, "synced_ignored": len(data.get("synced") or {})}
     url = data.get("url")
     if isinstance(url, str) and URL_RE.match(url) and db.get_setting(URL_SETTING) != url.rstrip("/"):
         db.set_setting(URL_SETTING, url.rstrip("/"))
         changed["url"] = True
-    with db.tx():
-        for key, rev in (data.get("synced") or {}).items():
-            try:
-                rev = int(rev)
-            except (TypeError, ValueError):
-                continue
-            row = db.fetchone("SELECT synced_rev FROM board_sync WHERE job_key = ?", (key,))
-            if row and int(row["synced_rev"]) >= rev:
-                continue
-            if row:
-                db.update("board_sync", {"synced_rev": rev, "synced_at": now_iso()}, "job_key = ?", (key,))
-            else:
-                db.insert("board_sync", {"job_key": key, "synced_rev": rev, "synced_at": now_iso()})
-            changed["synced"] += 1
     return changed

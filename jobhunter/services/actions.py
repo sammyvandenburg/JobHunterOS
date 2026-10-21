@@ -77,25 +77,26 @@ def open_job(db: Database, job_id: int, actor: str = "user") -> dict:
     return {"job_id": job_id, "url": url or job.get("apply_url") or job.get("discovery_url"), "direct_verified": bool(url)}
 
 
-def save_job(db: Database, job_id: int, save: bool = True) -> dict:
+def save_job(db: Database, job_id: int, save: bool = True, occurred_at: str | None = None) -> dict:
+    """`occurred_at` keeps the original time when a decision made elsewhere (the page, a cloud run) is replayed here."""
     _require_job(db, job_id)
     with db.tx():
-        _event(db, "saved" if save else "unsaved", job_id, "user")
+        _event(db, "saved" if save else "unsaved", job_id, "user", occurred_at=occurred_at)
     return {"job_id": job_id, "saved": save}
 
 
-def favorite_job(db: Database, job_id: int, on: bool = True) -> dict:
+def favorite_job(db: Database, job_id: int, on: bool = True, occurred_at: str | None = None) -> dict:
     """Favorites are independent of saved and of notes."""
     _require_job(db, job_id)
     with db.tx():
-        _event(db, "favorited" if on else "unfavorited", job_id, "user")
+        _event(db, "favorited" if on else "unfavorited", job_id, "user", occurred_at=occurred_at)
     return {"job_id": job_id, "favorited": on}
 
 
-def dismiss_job(db: Database, job_id: int, reason_code: str | None = None, note: str | None = None, undo: bool = False) -> dict:
+def dismiss_job(db: Database, job_id: int, reason_code: str | None = None, note: str | None = None, undo: bool = False, occurred_at: str | None = None) -> dict:
     _require_job(db, job_id)
     with db.tx():
-        _event(db, "undismissed" if undo else "dismissed", job_id, "user", {"reason": reason_code, "note": note})
+        _event(db, "undismissed" if undo else "dismissed", job_id, "user", {"reason": reason_code, "note": note}, occurred_at=occurred_at)
         if not undo:
             feedback.record(db, job_id, "not_interested", reason_code, note)
     return {"job_id": job_id, "dismissed": not undo, "suggestions": feedback.suggestions(db)}

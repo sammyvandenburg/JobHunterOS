@@ -22,7 +22,8 @@ there holds only a README, and its CI fails if a `state/*.json` is ever committe
    routine settings.
 Every morning the routine restores the state from `state/`, hunts, emails once, and pushes `state/`
 back to the copy's main branch. On the laptop, `/jobhunter sync` pulls the results into the dashboard;
-notes, favorites and applications stay local and are never overwritten. `/jobhunter update` merges
+notes stay local, and a favorite, save, "not interested" or "applied" is kept by whichever side decided
+last. `/jobhunter update` merges
 KubeCraft's newer Hunter into the copy; `state/` is never touched by upstream, so it cannot conflict.
 
 ## What is reused and what was replaced
@@ -38,10 +39,15 @@ committed by Hunter. `cloud update` is the distribution path.
 ## What `state/` holds
 `hunter-state.json`: the approved profile facts and targets, preferences, three consents (readiness,
 profile approval, the confirmed digest address), the keys of dismissed and applied jobs, the emailed
-jobs with a snippet and their match outcome, cloud run summaries, the email history.
-`seen_jobs.json`: emailed job keys with time and status. Never: CV or LinkedIn text, notes, drafts,
-favorites, saved flags, application details, tokens, mailbox contents. `cloud save` refuses a bundle
-with a forbidden section. The copy is private on GitHub; the profile facts in it are the student's own.
+jobs with a snippet and their match outcome, every job the person acted on (favorite, saved, not
+interested, applied date and stage, whether a note exists, the time of the last decision) with its
+description so a restore into an empty database rebuilds the work, cloud run summaries, the email
+history, and the dashboard link. `seen_jobs.json`: emailed job keys with time and status.
+Never: CV or LinkedIn text, the text of notes, drafts, application details (packages, contacts),
+tokens, mailbox contents, or which dashboard revisions a database applied (each database acknowledges a
+page revision only after applying its values itself, so a restored database re-reads the page; replay is
+safe). `cloud save` refuses a bundle with a forbidden section. The copy is private on GitHub; the profile
+facts in it are the student's own.
 
 ## Distributing updates
 Fork or template, then `jobhunter cloud update`: it adds KubeCraft's repository as `upstream`, fetches,

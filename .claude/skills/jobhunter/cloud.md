@@ -20,9 +20,10 @@ tokens anywhere and never pretend Python can use your connectors.
 ## First time, on their computer (`/jobhunter email` or when they ask to be emailed)
 1. Ask for the address, once: "Which email address should the job digest go to?" →
    `uv run jobhunter digest address <address>` then `uv run jobhunter digest transport claude`.
-2. `uv run jobhunter cloud save --json`: the approved profile, preferences, the confirmed address and the
-   emailed-jobs history are committed to `state/` in their own copy and pushed. Nothing else (no CV,
-   notes, favorites, drafts, tokens); the command refuses to save anything forbidden.
+2. `uv run jobhunter cloud save --json`: the approved profile, preferences, the confirmed address, the
+   emailed-jobs history and the jobs they acted on (favorite, saved, not interested, applied; the flags
+   only) are committed to `state/` in their own copy and pushed. Nothing else (no CV, no note text, no
+   drafts, no tokens); the command refuses to save anything forbidden.
 3. Send today's digest (below). Then offer nightly hunting.
 
 ## Sending the digest (anywhere you have the Gmail connector)
@@ -77,13 +78,15 @@ Either way, the first run's report says whether it restored the state, hunted, e
 dashboard. Routines need a paid Claude plan and draw on its usage like a normal session.
 
 ## Sync on their computer (`/jobhunter sync`, also when they open Hunter after a night)
-`uv run jobhunter cloud load --json` (results only: adds the cloud's jobs and email history; never touches
-notes, favorites, saved jobs, applications or the profile on this computer), then
-`uv run jobhunter cloud save --json` so the next run knows what they dismissed or applied to.
+`uv run jobhunter cloud load --json` (results only: adds the cloud's jobs and email history, and any
+favorite, save, "not interested" or "applied" decided in a cloud run that is newer than this computer's;
+never touches notes or the profile here), then read the dashboard's actions (board.md step 1: a note
+written on the page reaches this computer only that way), then `uv run jobhunter cloud save --json` so
+the next run knows what they dismissed, applied to, favorited or saved.
 Tell them what arrived: how many new jobs, and the last email.
 
 ## Never
 - Send to any address other than the one in `digest prepare`'s output, or add recipients.
 - Email an employer, recruiter, or anyone else. Hunter prepares; the person sends.
-- Put the CV, notes, drafts, favorites, or any token in `state/`, anywhere else in the repository, in a prompt, or in a report.
+- Put the CV, a note's text, drafts, or any token in `state/`, anywhere else in the repository, in a prompt, or in a report.
 - Claim an email was sent before Gmail returned a message id, or claim a hunt ran when the command failed.

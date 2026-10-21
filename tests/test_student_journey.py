@@ -79,7 +79,7 @@ def test_clean_install_student_journey(home, fake_sources, tmp_path, capsys):
     assert run("board", "status")["actions_stale"]
     empty = tmp_path / "empty"
     empty.mkdir()
-    assert run("board", "import", "--in", str(empty))["seen"] == 0
+    assert run("board", "import", "--in", str(empty), "--listed", "0")["seen"] == 0
     manifest = run("board", "export", "--out", str(out))
     shard = json.loads(Path(manifest["writes"][1]["file"]).read_text())["jobs"]
     by_emp = {d["employer"]: d for d in shard.values()}
@@ -94,9 +94,9 @@ def test_clean_install_student_journey(home, fake_sources, tmp_path, capsys):
     _page_action(inbox, contoso, 1, applied_at="2026-10-20T09:30:00.000Z")
 
     # Close and reopen: a new Hunter run reads the page's actions and applies them once.
-    applied = run("board", "import", "--in", str(inbox))
+    applied = run("board", "import", "--in", str(inbox), "--listed", "2")
     assert {a["job_key"]: a["changes"] for a in applied["applied"]} == {northwind: ["favorite", "save", "note"], contoso: ["applied"]}
-    assert run("board", "import", "--in", str(inbox))["already_applied"] == 2
+    assert run("board", "import", "--in", str(inbox), "--listed", "2")["already_applied"] == 2
     favs = run("jobs", "list", "--view", "favorites")["items"]
     assert [j["employer"] for j in favs] == ["Northwind Cloud"] and favs[0]["saved"] and favs[0]["notes_count"] == 1
     assert [j["employer"] for j in run("jobs", "list", "--view", "applied")["items"]] == ["Contoso Payments"]
@@ -131,7 +131,7 @@ def test_clean_install_student_journey(home, fake_sources, tmp_path, capsys):
     assert run("digest", "prepare")["status"] == "blocked"
     assert cli.main(["--json", "hunt", "run"]) == 1 and "read" in json.loads(capsys.readouterr().out)["error"].lower()
     assert cli.main(["--json", "board", "export", "--out", str(out)]) == 1 and capsys.readouterr()
-    run("board", "import", "--in", str(inbox))
+    run("board", "import", "--in", str(inbox), "--listed", "2")
     assert run("board", "status")["actions_stale"] is None
     run("digest", "record", str(run("digest", "prepare")["notification_id"]), "failed", "--error", "test: not sent")
 
@@ -139,7 +139,10 @@ def test_clean_install_student_journey(home, fake_sources, tmp_path, capsys):
     bundle_path = tmp_path / "state.json"
     run("cloud", "export", "--out", str(bundle_path))
     bundle = json.loads(bundle_path.read_text())
-    assert bundle["inputs"]["board"]["url"] == "https://claude.ai/artifact/testpage0001" and bundle["inputs"]["board"]["synced"] == {northwind: 1, contoso: 1}
+    assert bundle["inputs"]["board"] == {"url": "https://claude.ai/artifact/testpage0001"}  # no revisions: each database acknowledges its own
     text = bundle_path.read_text()
     assert "Great team page" not in text and "Sam Example" not in text
+    states = {j["employer_name"]: j["state"] for j in bundle["results"]["jobs"] if j.get("state")}
+    assert states["Northwind Cloud"]["favorite"] and states["Northwind Cloud"]["saved"] and states["Northwind Cloud"]["has_note"]
+    assert states["Contoso Payments"]["stage"] == "applied"
     assert run("board", "status")["actions_applied"] == 2 and board.SCHEMA in Path(manifest["writes"][0]["file"]).read_text()

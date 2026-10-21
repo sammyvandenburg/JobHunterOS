@@ -10,11 +10,17 @@ folder). This module decides exactly what goes into that file and how it merges 
 * results (both ways): employers, jobs, scheduled hunt summaries, and the notification history
   (delivery keys and content hashes), so a digest is never repeated and the laptop's history is complete.
 
-Never in the bundle: original documents or extracted text, notes, drafts, favorites, saved flags,
-application details, email messages, tokens, or settings beyond the digest transport. Jobs are matched
-by their canonical key, never by row id, so the laptop and the cloud can both create jobs without
-colliding. Favorites, notes and applications are local events keyed to local ids; a results import adds
-or refreshes jobs and never touches them.
+* the person's work on jobs (both ways): every job they favorited, saved, dismissed, applied to or noted
+  travels with its identity and its flags (favorite, saved, not interested, applied date, stage) and the time
+  of the last decision, whatever its age, so a restore into an empty database rebuilds it and an old or
+  closed job they acted on is never lost. The newer decision wins on each side; equal state changes nothing.
+
+Never in the bundle: original documents or extracted text, the text of notes, drafts, application
+details (CVs, packages, contacts), email messages, tokens, or settings beyond the digest transport. A note's
+text lives in the page's own database and in the databases that read the page; which page revisions a
+database applied is never carried either, so each database replays the page's actions it has not applied.
+Jobs are matched by their canonical key, never by row id, so the laptop and the cloud can both create jobs
+without colliding.
 """
 
 from __future__ import annotations
@@ -44,7 +50,9 @@ MATCH_COLUMNS = ("score", "match_group", "reasons_json", "gaps_json", "eligibili
 JOB_REFRESH_COLUMNS = ("title", "location_text", "country_codes_json", "remote_type", "remote_restriction", "salary_text", "salary_min", "salary_max", "salary_currency", "salary_period", "description_text", "description_hash", "posted_at", "posted_at_provenance", "source_updated_at", "last_seen_at", "last_checked_at", "availability", "availability_note", "direct_url", "direct_url_status", "apply_url", "relevance", "relevance_reason")
 EMPLOYER_COLUMNS = ("name", "canonical_name", "website", "careers_url", "ats_kind", "ats_token", "ats_region", "regions_json", "country_codes_json", "origin", "discovered_via", "first_seen_at")
 CONSENTS = ("readiness", "profile_approved", "digest_email")
-FORBIDDEN_KEYS = {"facts_json_raw", "source_documents", "job_notes", "drafts", "email_messages", "secrets", "token", "refresh_token"}
+FORBIDDEN_KEYS = {"facts_json_raw", "source_documents", "job_notes", "note_text", "drafts", "email_messages", "secrets", "token", "refresh_token"}
+ACTED_DESCRIPTION_CAP = 3000  # what the dashboard shows for a job the person acted on; a mere snippet for the rest
+STATE_EVENT_KINDS = ("favorited", "unfavorited", "saved", "unsaved", "dismissed", "undismissed", "applied", "reply_received", "interview", "offer", "rejected", "withdrawn", "correction")
 
 
 class BundleError(Exception):
@@ -86,6 +94,36 @@ def _keys(db: Database, sql: str) -> list[str]:
     return sorted({r["k"] for r in db.fetchall(sql)})
 
 
+def _acted_jobs(db: Database) -> dict[int, dict]:
+    """Every job the person decided something about, with the current flags and the time of the last decision."""
+    rows = db.fetchall(
+        "SELECT j.id, j.canonical_key, "
+        "(SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('favorited','unfavorited') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS fav_state, "
+        "(SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('saved','unsaved') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS save_state, "
+        "(SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('dismissed','undismissed') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS dismiss_state, "
+        "a.stage AS app_stage, a.applied_at AS app_applied_at, "
+        "(SELECT COUNT(*) FROM job_notes n WHERE n.job_id = j.id AND n.deleted_at IS NULL) AS notes_count, "
+        f"(SELECT MAX(occurred_at) FROM events e WHERE e.job_id = j.id AND e.kind IN ({','.join('?' for _ in STATE_EVENT_KINDS)})) AS state_at "
+        "FROM jobs j LEFT JOIN applications a ON a.job_id = j.id",
+        STATE_EVENT_KINDS,
+    )
+    out = {}
+    for r in rows:
+        stage = r.get("app_stage") if r.get("app_stage") != "prepared" else None
+        if not (r.get("state_at") or r.get("notes_count") or stage):
+            continue
+        out[r["id"]] = {
+            "favorite": r.get("fav_state") == "favorited",
+            "saved": r.get("save_state") == "saved",
+            "dismissed": r.get("dismiss_state") == "dismissed",
+            "applied_at": r.get("app_applied_at") if stage else None,
+            "stage": stage,
+            "has_note": bool(r.get("notes_count")),
+            "at": r.get("state_at") or now_iso(),
+        }
+    return out
+
+
 def _export_results(db: Database) -> dict:
     since = (now() - timedelta(days=JOB_WINDOW_DAYS)).isoformat()
     referenced = set()
@@ -96,11 +134,16 @@ def _export_results(db: Database) -> dict:
         referenced.update(keys)
         notes.append({k: n.get(k) for k in ("kind", "channel", "recipient", "subject", "content_hash", "status", "attempts", "provider_message_id", "error", "created_at", "sent_at", "delivery_key", "claimed_at", "resolved_at", "resolution")} | {"job_keys": keys})
     excl_keys = set(_export_inputs_exclusion_keys(db))
-    # Only what the other side cannot re-derive travels: the jobs an email or an exclusion refers to, with their
-    # match outcome. Everything else a hunt finds again deterministically. Claude carries this file through its own
-    # context, so small is not a nicety; it is what makes the round trip possible at all.
+    acted = _acted_jobs(db)
+    # What the other side cannot re-derive travels: the jobs an email refers to, with their match outcome, and
+    # every job the person decided something about, with the decision. Everything else a hunt finds again.
     keys = referenced | excl_keys
-    jobs = db.fetchall(f"SELECT * FROM jobs WHERE canonical_key IN ({','.join('?' for _ in keys)}) AND (first_seen_at >= ? OR last_seen_at >= ?) ORDER BY id", (*keys, since, since)) if keys else []
+    recent = db.fetchall(f"SELECT * FROM jobs WHERE canonical_key IN ({','.join('?' for _ in keys)}) AND (first_seen_at >= ? OR last_seen_at >= ?) ORDER BY id", (*keys, since, since)) if keys else []
+    jobs = {j["id"]: j for j in recent}
+    if acted:
+        for j in db.fetchall(f"SELECT * FROM jobs WHERE id IN ({','.join('?' for _ in acted)}) ORDER BY id", tuple(acted)):
+            jobs[j["id"]] = j
+    jobs = [jobs[i] for i in sorted(jobs)]
     seen = referenced
     emp_ids = {j["employer_id"] for j in jobs if j.get("employer_id")}
     employers = db.fetchall(f"SELECT * FROM employers WHERE id IN ({','.join('?' for _ in emp_ids)})", tuple(emp_ids)) if emp_ids else []
@@ -112,7 +155,7 @@ def _export_results(db: Database) -> dict:
         runs.append({"tag": r.get("owner") if str(r.get("owner") or "").startswith("cloud:") else f"run:{r['started_at']}", "trigger": r["trigger"], "status": r["status"], "started_at": r["started_at"], "finished_at": r.get("finished_at"), "stats": json.loads(r.get("stats_json") or "{}"), "error": r.get("error")})
     return {
         "employers": [{k: e.get(k) for k in EMPLOYER_COLUMNS} for e in employers],
-        "jobs": [_job_row(j, emp_by_id, matches.get(j["id"]), snippet=j["canonical_key"] in seen) for j in jobs],
+        "jobs": [_job_row(j, emp_by_id, matches.get(j["id"]), snippet=j["canonical_key"] in seen, state=acted.get(j["id"])) for j in jobs],
         "hunt_runs": runs,
         "notifications": notes,
     }
@@ -121,12 +164,15 @@ def _export_results(db: Database) -> dict:
 DESCRIPTION_CAP = 300  # a snippet; the match travels with the job, and the cache key uses the untouched description_hash
 
 
-def _job_row(j: dict, emp_by_id: dict, match: dict | None, snippet: bool) -> dict:
+def _job_row(j: dict, emp_by_id: dict, match: dict | None, snippet: bool, state: dict | None = None) -> dict:
     row = {k: j.get(k) for k in JOB_COLUMNS}
     text = row.get("description_text") or ""
-    row["description_text"] = (text[:DESCRIPTION_CAP] + (" …" if len(text) > DESCRIPTION_CAP else "")) if snippet else None
+    cap = ACTED_DESCRIPTION_CAP if state else DESCRIPTION_CAP
+    row["description_text"] = (text[:cap] + (" …" if len(text) > cap else "")) if (snippet or state) else None
     row["employer_canonical_name"] = emp_by_id.get(j.get("employer_id"))
     row["match"] = {k: match.get(k) for k in MATCH_COLUMNS} if match else None
+    if state:
+        row["state"] = state
     return row
 
 
@@ -252,6 +298,7 @@ def _import_results(db: Database, results: dict) -> dict:
             db.insert("hunt_runs", {"trigger": "cloud", "status": r["status"], "started_at": r["started_at"], "finished_at": r.get("finished_at"), "owner": r["tag"], "stats_json": json.dumps(r.get("stats") or {}), "error": r.get("error")})
             runs_added += 1
         matches_added = _import_matches(db, results.get("jobs") or [], key_to_id)
+        states_applied = _import_states(db, results.get("jobs") or [], key_to_id)
         notes_added = 0
         for n in results.get("notifications") or []:
             if not n.get("delivery_key") or db.fetchone("SELECT id FROM notifications WHERE delivery_key = ?", (n["delivery_key"],)):
@@ -259,7 +306,61 @@ def _import_results(db: Database, results: dict) -> dict:
             ids = [key_to_id[k] for k in n.get("job_keys") or [] if k in key_to_id]
             db.insert("notifications", {k: n.get(k) for k in ("kind", "channel", "recipient", "subject", "content_hash", "status", "attempts", "provider_message_id", "error", "created_at", "sent_at", "delivery_key", "claimed_at", "resolved_at", "resolution")} | {"job_ids_json": json.dumps(ids), "body_path": None})
             notes_added += 1
-    return {"jobs_added": added, "jobs_refreshed": refreshed, "matches_added": matches_added, "hunt_runs_added": runs_added, "notifications_added": notes_added}
+    return {"jobs_added": added, "jobs_refreshed": refreshed, "matches_added": matches_added, "states_applied": states_applied, "hunt_runs_added": runs_added, "notifications_added": notes_added}
+
+
+def _state_at(db: Database, job_id: int) -> str:
+    row = db.fetchone(f"SELECT MAX(occurred_at) AS t FROM events WHERE job_id = ? AND kind IN ({','.join('?' for _ in STATE_EVENT_KINDS)})", (job_id, *STATE_EVENT_KINDS))
+    return (row or {}).get("t") or ""
+
+
+def _import_states(db: Database, jobs: list[dict], key_to_id: dict[str, int]) -> int:
+    """Rebuild the person's decisions on each job that travelled with a `state`: the newer side wins, equal
+    state changes nothing, and every change is an ordinary reversible event stamped with the original time.
+    Notes are not rebuilt here (their text never travels): the page is read again for them."""
+    from jobhunter.services import actions
+
+    n = 0
+    for j in jobs:
+        st = j.get("state")
+        jid = key_to_id.get(j["canonical_key"])
+        if not isinstance(st, dict) or not jid:
+            continue
+        when = str(st.get("at") or "")[:32]
+        if when and when <= _state_at(db, jid):
+            continue  # this database decided later (or at the same time): keep its own decision
+        row = db.fetchone(
+            "SELECT (SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('favorited','unfavorited') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS fav, "
+            "(SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('saved','unsaved') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS sav, "
+            "(SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('dismissed','undismissed') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS dis, "
+            "a.stage AS stage FROM jobs j LEFT JOIN applications a ON a.job_id = j.id WHERE j.id = ?",
+            (jid,),
+        )
+        changed = False
+        if bool(st.get("favorite")) != (row.get("fav") == "favorited"):
+            actions.favorite_job(db, jid, on=bool(st.get("favorite")), occurred_at=when or None)
+            changed = True
+        if bool(st.get("saved")) != (row.get("sav") == "saved"):
+            actions.save_job(db, jid, save=bool(st.get("saved")), occurred_at=when or None)
+            changed = True
+        if bool(st.get("dismissed")) != (row.get("dis") == "dismissed"):
+            actions.dismiss_job(db, jid, reason_code="restored", note="Decided on your other computer or in a cloud run.", undo=not st.get("dismissed"), occurred_at=when or None)
+            changed = True
+        stage = st.get("stage") if st.get("stage") in actions.STAGE_ORDER else None
+        cur_stage = row.get("stage") if row.get("stage") != "prepared" else None
+        if stage and stage != cur_stage:
+            if cur_stage is None:
+                applied_at = str(st.get("applied_at") or when or "")[:32] or None
+                actions.mark_applied(db, jid, applied_at=applied_at, source="user", evidence={"via": "restore"})
+            if stage != "applied":
+                actions.set_stage(db, jid, stage, actor="user", occurred_at=when or None, payload={"via": "restore"}, allow_backwards=True)
+            changed = True
+        elif not stage and cur_stage:
+            for ev in db.fetchall("SELECT id FROM events WHERE job_id = ? AND application_id IS NOT NULL AND reverted_by IS NULL AND kind IN ('applied','reply_received','interview','offer','rejected','withdrawn') ORDER BY id", (jid,)):
+                actions.correct(db, ev["id"], note="Undone on your other computer or in a cloud run.")
+            changed = True
+        n += changed
+    return n
 
 
 def _import_matches(db: Database, jobs: list[dict], key_to_id: dict[str, int]) -> int:
@@ -296,8 +397,8 @@ def _apply_exclusions(db: Database, excl: dict) -> int:
     n = 0
     keys = set(excl.get("dismissed") or []) | set(excl.get("applied") or [])
     for key in sorted(keys):
-        row = db.fetchone("SELECT j.id, (SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('dismissed','undismissed') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS st FROM jobs j WHERE canonical_key = ?", (key,))
-        if row and row.get("st") != "dismissed":
+        row = db.fetchone("SELECT j.id, (SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('dismissed','undismissed') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS st, a.stage AS stage FROM jobs j LEFT JOIN applications a ON a.job_id = j.id WHERE canonical_key = ?", (key,))
+        if row and row.get("st") != "dismissed" and (row.get("stage") or "prepared") == "prepared":
             actions.dismiss_job(db, row["id"], reason_code="cloud_restore", note="Excluded by the person on their own computer.")
             n += 1
     return n

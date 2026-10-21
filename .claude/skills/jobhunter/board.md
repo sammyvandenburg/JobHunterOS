@@ -30,9 +30,13 @@ job they marked applied or not interested from being recommended or emailed agai
 be read (tool missing, error), say so and stop; never pass `--without-actions` or `--without-dashboard` to
 get past it on their behalf.
 1. **Read their actions.** `ArtifactData` list, collection `actions`, `query.limit` 1000, `out_dir`
-   `<DIR>/in` (follow `next_cursor` until it is gone). Then `uv run jobhunter board import --in <DIR>/in --json`.
-   It applies favorites, saves, "not interested", "applied" and notes that are new since last time, once,
-   each together with the revision that records it. An empty collection is fine (first time).
+   `<DIR>/in` (a new, empty folder each time; follow `next_cursor` until it is gone and add up the counts).
+   Then `uv run jobhunter board import --in <DIR>/in --listed <total> --json`, where `<total>` is the number
+   of documents the finished listing reported (`--listed 0` when the collection is empty, which is fine the
+   first time). The command refuses when the folder is missing, a file is unreadable, or the count differs:
+   that is a failed read, not an empty one, so list again rather than guessing. It applies favorites,
+   saves, "not interested", "applied" and notes that are new since last time, once, each together with the
+   revision that records it; replaying the same files is harmless.
    Tell them in one line what came in ("I saw 2 favorites and a note from your dashboard.").
    Then run the hunt and/or prepare the digest if that is what this sync is for.
 2. **Write what Hunter knows.** `uv run jobhunter board export --out <DIR>/out --json`. The result is a

@@ -65,13 +65,18 @@ def test_two_cloud_runs_and_a_dashboard_action_survive_the_round_trip(ctx, db, t
     notes.add(db, kept, "Ask about on-call rota.")
     bundle = cloudstate.export_bundle(ctx, db)
     text = json.dumps(bundle)
-    # What leaves the laptop: profile facts, preferences, consents, exclusion keys, public job data. Not the CV, notes, favorites or secrets.
+    # What leaves the laptop: profile facts, preferences, consents, exclusion keys, public job data, and the flags on the
+    # jobs the person acted on. Not the CV, a note's text, or secrets.
     assert bundle["inputs"]["consents"]["digest_email"]["address"] == "student@example.com"
     assert set(bundle["inputs"]["exclusions"]["dismissed"]) == {db.fetchone("SELECT canonical_key AS k FROM jobs WHERE id = ?", (dismissed,))["k"]}
     assert set(bundle["inputs"]["exclusions"]["applied"]) == {db.fetchone("SELECT canonical_key AS k FROM jobs WHERE id = ?", (applied,))["k"]}
-    assert "Ask about on-call" not in text and "Rotterdam, Netherlands ·" not in text and "sam@example.invalid" not in text and "favorited" not in text and "applied_at" not in text
+    assert "Ask about on-call" not in text and "Rotterdam, Netherlands ·" not in text and "sam@example.invalid" not in text
     assert cloudstate.check_bundle_privacy(bundle) == []
     assert "source_documents" not in bundle and "notes" not in bundle["results"]
+    states = {j["employer_name"]: j.get("state") for j in bundle["results"]["jobs"]}
+    assert states["Local Only BV"]["favorite"] and states["Local Only BV"]["has_note"] and states["Local Only BV"]["at"]
+    assert states["Contoso Payments"]["stage"] == "applied" and states["Contoso Payments"]["applied_at"].startswith("2026-10-16")
+    assert states["Northwind Cloud"]["dismissed"]
 
     # Run one: a fresh cloud folder restores, hunts (synthetic source), sends one digest, exports.
     c1, d1 = _fresh(tmp_path, "cloud1")

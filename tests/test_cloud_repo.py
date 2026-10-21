@@ -62,7 +62,8 @@ def test_github_state_round_trip_two_cloud_runs_and_the_laptop(ctx, db, tmp_path
     c1, d1 = _fresh(tmp_path, "cloud1")
     clone1 = _clone(github, tmp_path / "clone1")
     loaded = cloudstate.load_from_repo(c1, d1, clone1, restore=True)
-    assert loaded["loaded"] and loaded["inputs"]["profile"] and loaded["exclusions_applied"] == 1
+    assert loaded["loaded"] and loaded["inputs"]["profile"]
+    assert loaded["results"]["states_applied"] == 1 and loaded["exclusions_applied"] == 0  # the dismissal travelled as state, so the exclusion list had nothing left to do
     hunt.run_hunt(c1, d1, trigger="cloud")
     cloudstate.tag_latest_run(d1, cloudstate.new_run_tag())
     h1 = notifications.prepare_handoff(c1, d1)
