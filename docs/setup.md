@@ -40,4 +40,10 @@ GitHub access is limited to the repositories attached to it, so Hunter cannot cr
 student (verified 2026-10-19). Everything after that step is done by Hunter: attaching the copy to the
 session, checking it is private, saving state, creating the dashboard, and (on request) the nightly routine.
 
-Updates: `uv run jobhunter cloud update` merges KubeCraft's newer Hunter into the copy; `state/` is never touched.
+Updates: `uv run jobhunter cloud update` brings KubeCraft's newer Hunter into the copy. A copy that shares history
+merges; a copy made with "Use this template" (its own history) gets KubeCraft's changes since the version it
+started from as a patch, found by matching the copy's first commit against KubeCraft's history (or from
+`.jobhunter/upstream.json`, which every update writes). `state/`, `.env` and the paths in `.jobhunter/protected`
+are never touched; the command refuses while there are unsaved changes outside `state/`, sets a backup tag
+first, and changes nothing when the patch does not apply; `cloud update --rollback` returns to the backup tag.
+Hunter's database migrates itself on the next command. No `--allow-unrelated-histories`, ever.

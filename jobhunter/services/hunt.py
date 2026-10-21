@@ -114,7 +114,7 @@ def board_stale(db: Database) -> str | None:
     return board.stale_reason(db)
 
 
-def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids: list[str] | None = None, client: SafeClient | None = None, progress=None, run_id: int | None = None, allow_stale_board: bool = False) -> dict:
+def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids: list[str] | None = None, client: SafeClient | None = None, progress=None, run_id: int | None = None, allow_stale_board: bool = False, deadline_seconds: float | None = None) -> dict:
     """Run one hunt. Raises HuntInProgress if another live run holds the lock, HuntNotAllowed before setup is
     done, DashboardNotRead when a linked dashboard's actions were not read since the last sync (unless
     `allow_stale_board`, for callers that cannot read the page, such as the local dashboard and the worker).
@@ -153,11 +153,13 @@ def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids:
         else:
             run_id = db.insert("hunt_runs", {"trigger": trigger, "status": "running", "started_at": now_iso(), "heartbeat_at": now_iso(), "owner": _owner()})
         try:
-            stats = _execute(ctx, db, run_id, source_ids, client, progress)
+            stats = _execute(ctx, db, run_id, source_ids, client, progress, deadline_seconds=deadline_seconds)
             from jobhunter.services import board as _board
 
             stats["seq"] = _board._next_seq(db)  # orders this hunt against dashboard reads and writes in the same second
             status = "completed" if not stats["sources_failed"] and not stats["sources_partial"] else "partial"
+            if stats.get("deadline_hit") and status == "completed":
+                status = "partial"
             if stats["sources_ok"] == 0 and (stats["sources_failed"] or stats["sources_partial"]):
                 status = "failed" if stats["sources_partial"] == 0 else "partial"
             if stats.get("problem"):
@@ -291,6 +293,38 @@ def running_run(db: Database) -> dict | None:
     return progress(db, row["id"]) if row else None
 
 
+def start_detached(ctx: AppContext, trigger: str = "manual", source_ids: list[str] | None = None, deadline_seconds: float | None = None) -> dict:
+    """Start `jobhunter hunt run` as its own process (new session, output to a log file) and return at once, so the
+    caller can poll `hunt status`, sync the dashboard when the first results are in, and finish later. The child
+    process owns the run; this process does not wait for it."""
+    import subprocess
+    import sys
+
+    from jobhunter.db import connect
+    from jobhunter.services import onboarding
+
+    db = connect(ctx.paths.db_path)
+    try:
+        ok, why = onboarding.live_hunting_allowed(db, ctx.demo)
+        if not ok:
+            raise HuntNotAllowed(why)
+        _reap_stale_runs(db)
+        if db.fetchone("SELECT id FROM hunt_runs WHERE status IN ('running','queued')"):
+            raise HuntInProgress("A search is already running. Wait for it to finish.")
+    finally:
+        db.close()
+    ctx.paths.logs_dir.mkdir(parents=True, exist_ok=True)
+    log = ctx.paths.logs_dir / f"hunt-{now_iso().replace(':', '')}.log"
+    cmd = [sys.executable, "-m", "jobhunter", "--json", "hunt", "run", "--trigger", trigger, "--without-dashboard"]
+    if deadline_seconds:
+        cmd += ["--deadline", str(int(deadline_seconds))]
+    for s in source_ids or []:
+        cmd += ["--source", s]
+    with open(log, "ab") as fh:
+        proc = subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True, cwd=str(ctx.paths.root))
+    return {"started": True, "pid": proc.pid, "log": str(log), "note": "The search runs on its own. `jobhunter hunt status --json` follows it; the dashboard can be synced as soon as the first matches are in."}
+
+
 def start_background(ctx: AppContext, trigger: str = "manual") -> dict:
     """Start a hunt in a background thread and return its run id at once. The page can poll
     `progress(db, run_id)` while jobs appear source by source. Honest early answers: not allowed,
@@ -326,8 +360,14 @@ def start_background(ctx: AppContext, trigger: str = "manual") -> dict:
     return {"run_id": run_id, "status": "queued"}
 
 
-def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] | None, client: SafeClient | None, progress) -> dict:
+def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] | None, client: SafeClient | None, progress, deadline_seconds: float | None = None) -> dict:
     ensure_sources_initialized(db)
+    t_start = time.monotonic()
+    deadline_at = (t_start + float(deadline_seconds)) if deadline_seconds else None
+
+    def past_deadline() -> bool:
+        return deadline_at is not None and time.monotonic() >= deadline_at
+
     sources, problem, note = sources_state(db, source_ids)
     if problem:
         _progress_update(db, run_id, {"stage": "ready", "sources_total": 0, "sources_done": 0, "jobs_new": 0, "jobs_relevant_new": 0})
@@ -394,8 +434,9 @@ def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] |
                     continue
                 futures[pool.submit(_fetch_one, client, s)] = s
             pending = dict(futures)
+            budget = SOURCE_STAGE_BUDGET_SECONDS if deadline_at is None else max(0.1, min(SOURCE_STAGE_BUDGET_SECONDS, deadline_at - time.monotonic()))
             try:
-                for fut in as_completed(futures, timeout=SOURCE_STAGE_BUDGET_SECONDS):
+                for fut in as_completed(futures, timeout=budget):
                     s = pending.pop(fut)
                     try:
                         res = fut.result()
@@ -405,9 +446,12 @@ def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] |
             except TimeoutError:
                 # The budget is up: what answered is kept, the rest is "couldn't check", never "no jobs".
                 minutes = int(SOURCE_STAGE_BUDGET_SECONDS // 60) or 1
+                hit = past_deadline()
+                stats["deadline_hit"] = stats.get("deadline_hit", False) or hit
+                why = f"Did not answer before the deadline ({int(deadline_seconds or 0)} s for the whole search); skipped this time." if hit else f"Did not answer within {minutes} minute(s); skipped this time."
                 for fut, s in list(pending.items()):
                     fut.cancel()
-                    step(s, FetchResult(source_id=s["id"], status="failed", error=f"Did not answer within {minutes} minute(s); skipped this time.", complete=False))
+                    step(s, FetchResult(source_id=s["id"], status="failed", error=why, complete=False))
         finally:
             # Never wait for a hung download: the threads finish on their own and their results are dropped.
             pool.shutdown(wait=False, cancel_futures=True)
@@ -415,11 +459,17 @@ def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] |
         prog["stage"] = "discovering employers"
         _progress_update(db, run_id, prog)
         stats["employers_new"] = db.fetchone("SELECT COUNT(*) AS n FROM employers")["n"] - employers_before
-        try:
-            stats["sources_added"] = _promote_discovered_employers(db, client, limit=MAX_NEW_SOURCES_PER_HUNT)
-        except Exception as exc:
+        skipped_stages: list[str] = []
+        if past_deadline():
+            stats["deadline_hit"] = True
             stats["sources_added"] = 0
-            stats.setdefault("warnings", []).append(f"employer discovery: {type(exc).__name__}: {exc}")
+            skipped_stages.append("employer discovery")
+        else:
+            try:
+                stats["sources_added"] = _promote_discovered_employers(db, client, limit=MAX_NEW_SOURCES_PER_HUNT)
+            except Exception as exc:
+                stats["sources_added"] = 0
+                stats.setdefault("warnings", []).append(f"employer discovery: {type(exc).__name__}: {exc}")
         # Matching runs before the original-link lookups so the best matches get looked up first.
         prog["stage"] = "comparing jobs"
         _progress_update(db, run_id, prog)
@@ -435,8 +485,15 @@ def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] |
         prog["stage"] = "finding original links"
         _progress_update(db, run_id, prog)
         t_links = time.monotonic()
-        _lookup_originals(db, client, run_id, heartbeat=lambda: _progress_update(db, run_id, prog))
+        if past_deadline():
+            stats["deadline_hit"] = True
+            skipped_stages.append("original-link lookup")
+        else:
+            _lookup_originals(db, client, run_id, heartbeat=lambda: _progress_update(db, run_id, prog))
         timings["links"] = round(time.monotonic() - t_links, 1)
+        if stats.get("deadline_hit"):
+            total = round(time.monotonic() - t_start)
+            stats["note"] = ((stats.get("note") or "") + f" Stopped at the deadline after {total} s" + (": " + " and ".join(skipped_stages) + " skipped this time" if skipped_stages else "") + ". What was found is matched; the rest waits for the next search.").strip()
     finally:
         original_lookup.clear_cache()
         if own_client:

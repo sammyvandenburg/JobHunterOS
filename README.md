@@ -1,6 +1,6 @@
-# JobHunterOS
+# JobHunterOS by KubeCraft
 
-Hunter is a private job-hunt companion for KubeCraft students and graduates looking for DevOps, Platform Engineering, SRE, Cloud, and Infrastructure work in North America and Europe.
+JobHunterOS is a private job-hunt companion by KubeCraft for its students and graduates looking for DevOps, Platform Engineering, SRE, Cloud, and Infrastructure work in North America and Europe. Hunter is the assistant inside it: the voice you talk to in Claude Code, the sender of your digest, the name on the dashboard's status line. The naming rules and the KubeCraft mark are in `docs/brand.md`.
 
 The experience: **Learn about me. Find suitable jobs. Show me the best options. Help me act. Remember what happened.**
 

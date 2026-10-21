@@ -50,8 +50,10 @@ safe). `cloud save` refuses a bundle with a forbidden section. The copy is priva
 facts in it are the student's own.
 
 ## Distributing updates
-Fork or template, then `jobhunter cloud update`: it adds KubeCraft's repository as `upstream`, fetches,
-and merges `upstream/main` into the student's main. Because KubeCraft's commits never touch `state/`,
+Fork or template, then `jobhunter cloud update`: it adds KubeCraft's repository as `upstream`, fetches, and
+merges `upstream/main` into the student's main when the histories are shared, or applies KubeCraft's changes
+since the copy's starting version as a patch when the copy was made from the template (protected paths left
+alone, backup tag first, `--rollback` to undo). Because KubeCraft's commits never touch `state/`,
 the merge cannot conflict with personal state; a code conflict (only possible if the student edited the
 code) is reported and aborted, never resolved blindly. GitHub's "Sync fork" button does the same for a
 fork. Tested in `tests/test_cloud_repo.py`.

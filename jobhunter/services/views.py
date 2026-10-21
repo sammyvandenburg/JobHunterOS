@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 
 from jobhunter.config import POLICY_VERSION
 from jobhunter.db import Database
@@ -158,6 +159,26 @@ def summarize(r: dict) -> dict:
         "first_seen_at": r.get("first_seen_at"),
         "relevance": r.get("relevance"),
     }
+
+
+JOB_KEY_RE = re.compile(r"^j[0-9a-f]{20}$")
+
+
+def resolve_job_ref(db: Database, ref) -> int | None:
+    """A job id (this database) or a dashboard job key ("j" + 20 hex, the same on every machine) -> local id."""
+    if isinstance(ref, int):
+        return ref
+    text = str(ref or "").strip()
+    if text.isdigit():
+        return int(text)
+    if not JOB_KEY_RE.match(text):
+        return None
+    from jobhunter.services.board import job_key
+
+    for r in db.fetchall("SELECT id, canonical_key FROM jobs"):
+        if job_key(r["canonical_key"]) == text:
+            return r["id"]
+    return None
 
 
 def job_detail(db: Database, job_id: int) -> dict | None:

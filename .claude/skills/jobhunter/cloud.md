@@ -66,10 +66,15 @@ is done and which comes next from the evidence in the database, so check it when
    from memory.
 
 ## Updating Hunter (`/jobhunter update`)
-`uv run jobhunter cloud update --json` fetches KubeCraft's repository as `upstream` and merges it into
-their copy; `state/` is never touched by KubeCraft, so personal state survives every update. Then
-`uv sync`. If it reports that the update does not merge cleanly, nothing was changed; tell them to ask
-KubeCraft for help rather than resolving it yourself.
+`uv run jobhunter cloud update --json` fetches KubeCraft's repository as `upstream` and brings its changes
+into their copy: a merge when the copy shares history, or (for a copy made with "Use this template", which
+has its own history) a patch of everything KubeCraft changed since the version the copy started from.
+`state/`, `.env`, `.jobhunter/upstream.json` and any path listed in `.jobhunter/protected` are never
+touched, so personal state survives every update. The command refuses while the copy has unsaved changes
+outside `state/`, sets a backup tag first, and changes nothing when the update does not apply cleanly;
+`uv run jobhunter cloud update --rollback --json` returns to the backup tag. Then `uv sync`. If it reports
+that the update does not merge or apply cleanly, nothing was changed; tell them to ask KubeCraft for help
+rather than resolving it yourself. Hunter's own database migrates itself on the next command.
 
 ## Helping them switch nightly hunting on (`/jobhunter nightly`)
 Two ways. Both need their private copy on GitHub with state saved (`cloud save`), and the Gmail connector.

@@ -123,7 +123,7 @@ def test_clean_install_student_journey(home, fake_sources, tmp_path, capsys):
     assert shard[northwind]["state"]["favorited"] and shard[northwind]["state"]["note"].startswith("Great team") and shard[northwind]["state"]["synced_rev"] == 1
     assert shard[contoso]["state"]["stage"] == "applied" and not shard[contoso]["recommended"] and shard[contoso]["list"] == "acted"
     run_doc = json.loads(Path(manifest["writes"][-1]["file"]).read_text())
-    assert run_doc["counts"] == {"recommended": 1, "jobs": 2, "favorites": 1, "saved": 1, "dismissed": 0, "applied": 1, "old": 0, "uncertain": 0}
+    assert run_doc["counts"] == {"recommended": 1, "jobs": 2, "favorites": 1, "saved": 1, "dismissed": 0, "applied": 1, "old": 0, "uncertain": 0, "recommended_total": 1}
     assert run_doc["sync"]["actions_read_at"] and run_doc["sync"]["actions_seen"] == 2
 
     # After Hunter wrote the page, nothing recommends or emails again until the page's actions are read:

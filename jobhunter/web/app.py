@@ -50,6 +50,15 @@ HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
 
+def _brand_mark_present() -> bool:
+    from jobhunter.services import board as _board
+
+    return _board.BRAND_PNG.exists()
+
+
+templates.env.globals["brand_mark"] = _brand_mark_present
+
+
 def _countries_input(codes) -> str:
     """A value the countries box can be saved back from: 'EU' for the whole EU/EEA, else country names."""
     from jobhunter.services.normalize import COUNTRY_NAMES
@@ -108,6 +117,17 @@ def create_app(ctx: AppContext) -> FastAPI:
     app = FastAPI(title="Hunter", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     secret = dashboard_secret(ctx.paths)
     app.add_middleware(LocalOnlyMiddleware, secret=secret)
+    @app.get("/static/brand/KubeCraft-Cog-3.png")
+    def brand_mark_file():
+        from fastapi import HTTPException
+        from fastapi.responses import FileResponse
+
+        from jobhunter.services import board as _board
+
+        if not _board.BRAND_PNG.exists():
+            raise HTTPException(404, "The KubeCraft mark file is not installed (brand/KubeCraft-Cog-3.png).")
+        return FileResponse(str(_board.BRAND_PNG), media_type="image/png")
+
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
     def db():

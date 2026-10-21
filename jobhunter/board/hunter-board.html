@@ -1,10 +1,10 @@
-<title>Hunter by KubeCraft</title>
+<title>JobHunterOS by KubeCraft</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
 /* Layout: a personal career workspace. Compact bar, one-line profile, four small counters, top picks,
    what needs attention, then the full list with chips. A job opens in a drawer with a section menu.
-   Dark-first: KubeCraft black with the orange cog; light theme mirrored. */
+   Dark-first; light theme mirrored. The KubeCraft mark is the supplied file (see docs/brand.md), never drawn here. */
 :root{
   color-scheme:dark;
   --bg:#0e0f12;--panel:#17191e;--panel-2:#1f2229;--line:#2c3039;--ink:#f3f4f6;--ink-2:#c7cbd3;--muted:#8d939e;
@@ -39,7 +39,7 @@ a{color:var(--accent)}
 .bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bar);color:var(--bar-ink);border-bottom:1px solid rgba(255,255,255,.07)}
 .bar .in{display:flex;align-items:center;gap:12px;max-width:1180px;margin:0 auto;padding-block:9px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:16px;letter-spacing:.2px}
-.brand svg{width:28px;height:28px;flex:none}
+.brand .mark{width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:#000;color:#fff;font-size:11px;font-weight:800;letter-spacing:.5px;overflow:hidden}.brand .mark img{width:28px;height:28px;display:block}
 .brand small{display:block;font-weight:600;color:var(--bar-muted);font-size:10.5px;letter-spacing:.4px;text-transform:uppercase}
 .bar .title{font-family:var(--display);font-weight:700;color:var(--bar-ink);font-size:14px;opacity:.9}
 .bar .right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -149,8 +149,8 @@ label{display:grid;gap:4px;font-size:13px;color:var(--ink-2)}
 <header class="bar">
   <div class="in">
     <div class="brand">
-      <svg viewBox="0 0 200 200" role="img" aria-label="KubeCraft"><g fill="none" stroke="#ff7a00" stroke-width="12"><circle cx="100" cy="100" r="70"/><circle cx="100" cy="100" r="28" fill="#ff7a00" stroke="none"/><path d="M100 8v34M100 158v34M8 100h34M158 100h34M35 35l24 24M141 141l24 24M165 35l-24 24M59 141l-24 24"/></g><g fill="#ff7a00"><path d="M100 52l8 14h-16zM100 148l-8-14h16zM52 100l14-8v16zM148 100l-14 8v-16zM66 66l15 1-1 15zM134 134l-15-1 1-15zM134 66l-1 15-15-1zM66 134l1-15 15 1z"/></g></svg>
-      <div>Hunter<small>by KubeCraft</small></div>
+      <span class="mark" role="img" aria-label="KubeCraft"><!--KUBECRAFT-MARK-->KC</span>
+      <div>JobHunterOS<small>by KubeCraft</small></div>
     </div>
     <div class="title">Your job hunt</div>
     <div class="right" id="barRight"></div>
@@ -313,6 +313,8 @@ const Core = (() => {
     else if (!st.db) items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), "Sign in to see your jobs"));
     else if (st.owner === false) items.push(el("span", { class: "stat" }, el("span", { class: "dot bad" }), "Not your dashboard"));
     else if (st.loaded.run && st.run) {
+      const ip = st.run.hunt_in_progress;
+      if (ip && ip.running) items.push(el("span", { class: "stat", title: "A search is running now; this page shows what it has found so far" }, el("span", { class: "dot warn" }), "Searching now: " + (ip.sources_total ? ip.sources_done + " of " + ip.sources_total + " sites, " : "") + (ip.jobs_relevant_new || 0) + " new match" + (ip.jobs_relevant_new === 1 ? "" : "es") + " so far"));
       const lastHunt = h && h.last_successful_hunt_at;
       items.push(el("span", { class: "stat", title: "The last search that finished" }, el("span", { class: "dot " + (lastHunt ? "ok" : "warn") }), "Last search " + rel(lastHunt)));
       items.push(el("span", { class: "stat", title: "When Hunter last updated this page" }, el("span", { class: "dot " + (pending ? "warn" : "ok") }), "Synced " + rel(st.run.at) + (pending ? " · " + pending + " waiting" : "")));
@@ -363,8 +365,8 @@ const Core = (() => {
     const j = st.jobs.get(k) || {}; const e = eff(k);
     return el("article", { class: "pick" },
       el("div", { class: "t" }, j.title || "Untitled job"),
-      el("div", { class: "s" }, [j.employer, where(j)].filter(Boolean).join(" · ")),
-      el("div", { class: "s" }, [j.salary || "Salary not listed", j.freshness_label].filter(Boolean).join(" · "), " ", el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "")),
+      el("div", { class: "s" }, [j.employer, j.location_label || where(j)].filter(Boolean).join(" · ")),
+      el("div", { class: "s" }, [j.salary || "Pay not stated", j.freshness_label].filter(Boolean).join(" · "), " ", el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "")),
       j.why ? el("div", { class: "why" }, el("b", {}, "Why: "), j.why) : null,
       j.check ? el("div", { class: "why" }, el("b", {}, "Check: "), j.check) : null,
       el("div", { class: "acts" },
@@ -413,7 +415,7 @@ const Core = (() => {
     marks.append(el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"));
     return el("button", { class: "row", role: "listitem", "data-key": k, "aria-current": String(st.sel === k), onclick: () => select(k) },
       el("div", { style: "min-width:0" }, el("div", { class: "t" }, j.title || "Untitled job"),
-        el("div", { class: "s" }, [j.employer, where(j), j.salary || null, j.freshness_label].filter(Boolean).join(" · ")),
+        el("div", { class: "s" }, [j.employer, j.location_label || where(j), j.salary || null, j.freshness_label].filter(Boolean).join(" · ")),
         j.why ? el("div", { class: "why" }, el("b", {}, "Why: "), j.why) : null),
       marks);
   }
@@ -424,7 +426,9 @@ const Core = (() => {
     const t = Core.tabsFor(st.jobs, st.actions, st.run);
     let keys = t[st.tab] || [];
     if (st.q) keys = keys.filter((k) => Core.matches(st.jobs.get(k) || {}, st.q));
-    $("allNote").textContent = keys.length ? keys.length + " job" + (keys.length === 1 ? "" : "s") : "";
+    const totalRec = st.run && st.run.counts && Number(st.run.counts.recommended_total);
+    const more = st.tab === "recommended" && !st.q && totalRec > keys.length ? " (showing " + keys.length + " of " + totalRec + ")" : "";
+    $("allNote").textContent = keys.length ? keys.length + " job" + (keys.length === 1 ? "" : "s") + more : "";
     if (!keys.length) {
       const msg = st.q ? "Nothing matches your search." : { recommended: st.run ? "Nothing to recommend right now. Hunter adds jobs after each search." : "Hunter hasn’t synced yet.", good: "No good matches right now.", worth_a_shot: "Nothing worth a shot right now.", backup: "No backup options right now.", favorites: "No favorites yet. Star a job you like.", saved: "Nothing saved yet.", applied: "No applications recorded yet. Press “Mark applied” on a job after you applied.", uncertain: "Nothing needs checking. Jobs land here when Hunter can’t tell where they allow you to be.", old: "No older matches. Jobs posted more than 14 days ago land here.", dismissed: "Nothing marked as not interested.", all: "No jobs yet." }[st.tab];
       box.replaceChildren(el("div", { class: "empty" }, msg)); return;
@@ -473,7 +477,7 @@ const Core = (() => {
       el("div", { class: "sec", id: "sec-next" }, el("h3", {}, "Next actions"),
         el("div", { class: "actions" },
           direct ? el("a", { class: "btn primary", style: "text-align:center;text-decoration:none", href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application") : el("span", { class: "btn", disabled: true }, "No link available"),
-          el("button", { class: "btn", onclick: () => copyText("/jobhunter apply " + (j.title || "")) }, "Help me apply (copy for Claude Code)"),
+          el("button", { class: "btn", title: "Copies a command with this job's key; paste it to Hunter in Claude Code", onclick: () => copyText("/jobhunter apply " + k) }, "Help me apply (copy for Claude Code)"),
           flag("favorite", e.favorite, "★ Favorite", "☆ Favorite"), flag("saved", e.saved, "Saved", "Save for later"),
           flag("applied", !!e.applied_at, "Applied ✓", "Mark applied"), flag("dismissed", e.dismissed, "Not interested", "Not interested?")),
         saveLine(k)),

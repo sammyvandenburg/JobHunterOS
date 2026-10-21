@@ -5,15 +5,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf }}">
-<title>{% block title %}Hunter{% endblock %} · KubeCraft JobHunterOS</title>
+<title>{% block title %}Hunter{% endblock %} · JobHunterOS by KubeCraft</title>
 <link rel="stylesheet" href="/static/app.css">
-<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+{% if brand_mark() %}<link rel="icon" href="/static/brand/KubeCraft-Cog-3.png" type="image/png">{% endif %}
 </head>
 <body>
 {% if demo %}<div class="banner demo" role="status">Demo mode: all of this is made-up example data. Nothing here is real.</div>{% endif %}
 <div class="shell">
   <aside class="sidebar" id="sidebar" aria-label="Main navigation">
-    <a class="brand" href="/"><img src="/static/logo.svg" alt=""><span><span class="name">Hunter</span><span class="by">by KubeCraft</span></span></a>
+    <a class="brand" href="/" aria-label="JobHunterOS by KubeCraft">{% if brand_mark() %}<img src="/static/brand/KubeCraft-Cog-3.png" alt="KubeCraft">{% else %}<span class="mark" role="img" aria-label="KubeCraft">KC</span>{% endif %}<span><span class="name">JobHunterOS</span><span class="by">by KubeCraft</span></span></a>
     <nav class="nav">
       {% for key, label, ic, href, count in navitems %}
       <a href="{{ href }}" {% if active == key %}aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span>{% if key in ('new','favorites','saved','applied','attention') %}<span class="count{% if key == 'attention' %} alert{% endif %}{% if not count %} zero{% endif %}" data-count="{{ key }}">{{ count or 0 }}</span>{% endif %}</a>
@@ -26,13 +26,13 @@
   </aside>
   <div class="main">
     <div class="topbar">
-      <a class="brand" href="/"><img src="/static/logo.svg" alt=""><span class="name">Hunter</span></a>
+      <a class="brand" href="/" aria-label="JobHunterOS by KubeCraft">{% if brand_mark() %}<img src="/static/brand/KubeCraft-Cog-3.png" alt="KubeCraft">{% else %}<span class="mark" role="img" aria-label="KubeCraft">KC</span>{% endif %}<span class="name">JobHunterOS</span></a>
       <button class="ghost" data-toggle-sidebar aria-expanded="false" aria-controls="sidebar" aria-label="Open menu">{{ icon('menu') }}</button>
     </div>
     <main class="content">
       {% if flash %}<div class="flash" role="status">{{ icon('check') }}<span>{{ flash }}</span></div>{% endif %}
       {% block content %}{% endblock %}
-      <p class="foot">KubeCraft JobHunterOS {{ version }} · Runs only on your computer · <a href="/profile#data">Export or delete my data</a></p>
+      <p class="foot">JobHunterOS by KubeCraft {{ version }} · Hunter runs only on your computer · <a href="/profile#data">Export or delete my data</a></p>
     </main>
   </div>
 </div>

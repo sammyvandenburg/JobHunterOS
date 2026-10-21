@@ -41,3 +41,13 @@ Say clearly that imports come from the text they gave, not from scraping.
 
 ## Sources and discovery
 `uv run jobhunter sources list` shows every source and its health; `sources add --kind greenhouse|lever|ashby --token <board> --name <employer>` adds an employer board the person knows; `sources check <id>` tests it. Feeds (Remotive, Arbeitnow) introduce employers outside the starter list automatically; Adzuna is optional and needs free keys. LinkedIn and Indeed only arrive through imports.
+
+## A long search: start it, show the first results early
+`uv run jobhunter hunt run` keeps the whole search inside a deadline (20 minutes by default, `--deadline`
+seconds): a site that has not answered by then is "couldn't check", later stages are skipped, and what was
+found is matched. When you have the Artifact tools and the dashboard is linked, you can show the first
+results before the search ends: `uv run jobhunter hunt start --json` starts the search as its own process
+and returns at once; poll `uv run jobhunter hunt status --json` every minute or so; as soon as
+`jobs_relevant_new` is at least 1, do the Sync in board.md (read the actions, `board export`, write the
+files): the page then says "Searching now: 12 of 72 sites, 3 new matches so far". When `running` is false,
+sync once more for the final result. Never claim the search is finished while `running` is true.

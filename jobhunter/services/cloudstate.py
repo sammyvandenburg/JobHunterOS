@@ -620,24 +620,145 @@ def load_from_repo(ctx: AppContext, db: Database, repo=None, restore: bool = Fal
     return {"loaded": True, "branch": br, "commit": _git(d, "rev-parse", "--short", "HEAD", check=False), "exported_at": bundle.get("exported_at"), "exported_by": bundle.get("exported_by"), **res}
 
 
+BACKUP_PREFIX = "hunter-update-backup-"
+UPSTREAM_FILE = ".jobhunter/upstream.json"
+PROTECTED_FILE = ".jobhunter/protected"
+DEFAULT_PROTECTED = (STATE_DIR + "/", ".env", UPSTREAM_FILE, PROTECTED_FILE)
+
+
+def _git_ok(d, *args: str) -> bool:
+    import subprocess
+
+    return subprocess.run(["git", "-C", str(d), *args], capture_output=True, text=True).returncode == 0
+
+
+def _backup_tag_name(d) -> str:
+    base = BACKUP_PREFIX + now_iso().replace(":", "").replace("+", "")
+    tag, n = base, 1
+    while _git_ok(d, "rev-parse", "-q", "--verify", f"refs/tags/{tag}"):
+        n += 1
+        tag = f"{base}-{n}"
+    return tag
+
+
+def _protected_paths(d) -> list[str]:
+    """Paths an update never touches: the state, local secrets, the update bookkeeping, and whatever the
+    student lists in .jobhunter/protected (one path per line)."""
+    out = list(DEFAULT_PROTECTED)
+    f = d / PROTECTED_FILE
+    if f.exists():
+        for line in f.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and line not in out:
+                out.append(line)
+    return out
+
+
+def _dirty_outside_state(d) -> list[str]:
+    out = []
+    for line in _git(d, "status", "--porcelain", "--untracked-files=no").splitlines():
+        path = line[3:].strip()
+        if path and not path.startswith(STATE_DIR + "/"):
+            out.append(path)
+    return out
+
+
+def _template_base(d, branch: str) -> str | None:
+    """The upstream commit this copy's files started from. Recorded by an earlier update in
+    .jobhunter/upstream.json; otherwise found by matching the copy's first commit tree against upstream's
+    history (GitHub's "Use this template" copies the files exactly, so the trees are identical)."""
+    f = d / UPSTREAM_FILE
+    if f.exists():
+        try:
+            commit = json.loads(f.read_text(encoding="utf-8")).get("commit")
+            if commit and _git_ok(d, "cat-file", "-e", f"{commit}^{{commit}}") and _git_ok(d, "merge-base", "--is-ancestor", commit, f"upstream/{branch}"):
+                return commit
+        except (ValueError, OSError, RepoError):
+            pass
+    roots = _git(d, "rev-list", "--max-parents=0", "HEAD").split()
+    trees = {_git(d, "rev-parse", f"{r}^{{tree}}") for r in roots}
+    for line in _git(d, "log", "--format=%H %T", "-n", "2000", f"upstream/{branch}").splitlines():
+        sha, tree = line.split()
+        if tree in trees:
+            return sha
+    return None
+
+
 def update_from_upstream(repo=None, upstream_url: str = UPSTREAM_URL, branch: str = "main") -> dict:
-    """Bring KubeCraft's newer Hunter into the student's own copy. Upstream never touches `state/`, so a
-    merge cannot conflict with personal state; a conflict in code is reported, never resolved blindly."""
+    """Bring KubeCraft's newer Hunter into the student's own copy.
+
+    A copy that shares history with upstream (a clone or fork) merges. A copy made from the template has its own
+    history: upstream's changes since the version the copy started from are applied as a patch, with the state,
+    local secrets and any protected path left alone. Either way: refused while the copy has unsaved changes
+    outside state/, a backup tag is set first (`rollback_update` returns to it), and a change that does not
+    apply cleanly changes nothing. Never `--allow-unrelated-histories`."""
     d = repo or software_repo()
     if not d:
         raise RepoError("Hunter is not running from a git clone, so there is nothing to update.")
+    dirty = _dirty_outside_state(d)
+    if dirty:
+        return {"updated": False, "note": "Your copy has unsaved changes outside state/: " + ", ".join(dirty[:5]) + ". Commit or discard them first, then update again.", "changes": dirty}
     remotes = _git(d, "remote").split()
     if "upstream" not in remotes:
         _git(d, "remote", "add", "upstream", upstream_url)
     _git(d, "fetch", "--quiet", "upstream", branch)
-    before = _git(d, "rev-parse", "--short", "HEAD")
+    before = _git(d, "rev-parse", "HEAD")
+    target = _git(d, "rev-parse", f"upstream/{branch}")
+    shared = _git(d, "merge-base", "HEAD", f"upstream/{branch}", check=False)
+    tag = _backup_tag_name(d)
     import subprocess
 
-    res = subprocess.run(["git", "-C", str(d), "-c", "user.name=Hunter", "-c", "user.email=hunter@jobhunteros.local", "merge", "--no-edit", f"upstream/{branch}"], capture_output=True, text=True, timeout=120)
-    if res.returncode != 0:
-        subprocess.run(["git", "-C", str(d), "merge", "--abort"], capture_output=True, text=True)
-        return {"updated": False, "note": "KubeCraft's update does not merge cleanly with your copy. Nothing was changed. Ask for help with: " + (res.stdout or res.stderr).strip()[:200]}
-    after = _git(d, "rev-parse", "--short", "HEAD")
+    if shared:
+        if shared == target:
+            return {"updated": False, "note": "Up to date.", "method": "merge", "from": before[:7], "to": target[:7]}
+        _git(d, "tag", tag, before)
+        res = subprocess.run(["git", "-C", str(d), "-c", "user.name=Hunter", "-c", "user.email=hunter@jobhunteros.local", "merge", "--no-edit", f"upstream/{branch}"], capture_output=True, text=True, timeout=120)
+        if res.returncode != 0:
+            subprocess.run(["git", "-C", str(d), "merge", "--abort"], capture_output=True, text=True)
+            _git(d, "tag", "-d", tag, check=False)
+            return {"updated": False, "method": "merge", "note": "KubeCraft's update does not merge cleanly with your copy. Nothing was changed. Ask for help with: " + (res.stdout or res.stderr).strip()[:200]}
+        method = "merge"
+    else:
+        base = _template_base(d, branch)
+        if not base:
+            return {"updated": False, "method": "patch", "note": "Hunter cannot tell which KubeCraft version your copy started from, so it will not guess. Ask KubeCraft for help (they can add .jobhunter/upstream.json with the starting commit)."}
+        if base == target:
+            return {"updated": False, "note": "Up to date.", "method": "patch", "from": base[:7], "to": target[:7]}
+        excludes = [f":(exclude){p.rstrip('/')}" for p in _protected_paths(d)]
+        diff = subprocess.run(["git", "-C", str(d), "diff", "--binary", base, target, "--", ".", *excludes], capture_output=True, text=True, timeout=120)
+        if diff.returncode != 0:
+            raise RepoError("Could not compute KubeCraft's changes: " + diff.stderr.strip()[:200])
+        _git(d, "tag", tag, before)
+        if diff.stdout.strip():
+            applied = subprocess.run(["git", "-C", str(d), "apply", "--3way", "--index"], input=diff.stdout, capture_output=True, text=True, timeout=120)
+            if applied.returncode != 0:
+                subprocess.run(["git", "-C", str(d), "reset", "--hard", "-q", tag], capture_output=True, text=True)
+                _git(d, "tag", "-d", tag, check=False)
+                return {"updated": False, "method": "patch", "note": "KubeCraft's update does not apply cleanly to your copy (a file you changed was changed upstream too). Nothing was changed. Ask for help with: " + (applied.stderr or applied.stdout).strip()[:200]}
+        f = d / UPSTREAM_FILE
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"commit": target, "from": base, "updated_at": now_iso(), "upstream": upstream_url}, indent=1) + "\n", encoding="utf-8")
+        _git(d, "add", "-f", "--", UPSTREAM_FILE)
+        _git(d, "-c", "user.name=Hunter", "-c", "user.email=hunter@jobhunteros.local", "commit", "-q", "-m", f"Hunter update to KubeCraft {target[:7]}")
+        method = "patch"
+    after = _git(d, "rev-parse", "HEAD")
     changed = _git(d, "diff", "--name-only", before, after).split() if before != after else []
-    touched_state = [f for f in changed if f.startswith(STATE_DIR + "/")]
-    return {"updated": before != after, "from": before, "to": after, "files_changed": len(changed), "state_touched": touched_state, "note": "Up to date." if before == after else "Hunter is updated. Run `uv sync` once, then restart the dashboard if it is open."}
+    touched_state = [x for x in changed if x.startswith(STATE_DIR + "/")]
+    return {"updated": before != after, "method": method, "from": before[:7], "to": after[:7], "upstream": target[:7], "files_changed": len(changed), "state_touched": touched_state, "backup_tag": tag, "note": "Up to date." if before == after else f"Hunter is updated (backup tag {tag}; `jobhunter cloud update --rollback` returns to it). Run `uv sync` once, then restart the dashboard if it is open."}
+
+
+def rollback_update(repo=None) -> dict:
+    """Return to the tree before the last update (its backup tag). Refused while there are unsaved changes."""
+    d = repo or software_repo()
+    if not d:
+        raise RepoError("Hunter is not running from a git clone, so there is nothing to roll back.")
+    tags = sorted(t for t in _git(d, "tag", "--list", BACKUP_PREFIX + "*").split() if t)
+    if not tags:
+        return {"rolled_back": False, "note": "No update to roll back: no backup tag exists."}
+    dirty = _git(d, "status", "--porcelain", "--untracked-files=no").strip()
+    if dirty:
+        return {"rolled_back": False, "note": "Your copy has unsaved changes. Save or discard them first (`jobhunter cloud save` for the state), then roll back."}
+    tag = tags[-1]
+    _git(d, "reset", "--hard", "-q", tag)
+    _git(d, "tag", "-d", tag, check=False)
+    return {"rolled_back": True, "to": tag, "head": _git(d, "rev-parse", "--short", "HEAD"), "note": "Back to the version before the last update. Run `uv sync` once."}

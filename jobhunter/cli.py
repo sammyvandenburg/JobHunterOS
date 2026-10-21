@@ -56,9 +56,28 @@ def _print_plain(obj, indent: int = 0) -> None:
         print(f"{pad}{obj}")
 
 
+def job_ref(value: str):
+    """A job id, or the dashboard's job key (the same on every machine)."""
+    v = str(value).strip()
+    return int(v) if v.isdigit() else v
+
+
+def _resolve_job_refs(db, args) -> None:
+    from jobhunter.services import views
+
+    for name in ("id", "job_id", "job"):
+        val = getattr(args, name, None)
+        if isinstance(val, str) and views.JOB_KEY_RE.match(val):
+            jid = views.resolve_job_ref(db, val)
+            if jid is None:
+                raise CliError(f"No job with key {val} on this computer. Sync the dashboard (or run a search) first.")
+            setattr(args, name, jid)
+
+
 def _open(args) -> tuple[AppContext, Database]:
     ctx = AppContext.from_env(demo=args.demo or None, home=Path(args.home) if args.home else None)
     db = connect(ctx.paths.db_path)
+    _resolve_job_refs(db, args)
     return ctx, db
 
 
@@ -359,22 +378,43 @@ def cmd_hunt(args):
         if ctx.demo:
             raise CliError("Demo mode uses synthetic data only (`jobhunter --demo demo seed`). Live hunts run without --demo.")
         try:
-            stats = hunt.run_hunt(ctx, db, trigger=args.trigger, source_ids=args.source or None, progress=(None if args.json else lambda sid, st: print(f"  {sid}: {st}", file=sys.stderr)), allow_stale_board=bool(getattr(args, "without_dashboard", False)))
+            stats = hunt.run_hunt(ctx, db, trigger=args.trigger, source_ids=args.source or None, progress=(None if args.json else lambda sid, st: print(f"  {sid}: {st}", file=sys.stderr)), allow_stale_board=bool(getattr(args, "without_dashboard", False)), deadline_seconds=args.deadline or None)
         except (hunt.HuntInProgress, hunt.HuntNotAllowed) as exc:
             raise CliError(str(exc)) from exc
         emit(args, stats, text=None if args.json else _hunt_text(stats))
+        _exit_now_if_fetches_linger(0)
+    elif args.hunt_cmd == "start":
+        if ctx.demo:
+            raise CliError("Demo mode uses synthetic data only (`jobhunter --demo demo seed`). Live hunts run without --demo.")
+        try:
+            emit(args, hunt.start_detached(ctx, trigger=args.trigger, source_ids=args.source or None, deadline_seconds=args.deadline or None))
+        except (hunt.HuntInProgress, hunt.HuntNotAllowed) as exc:
+            raise CliError(str(exc)) from exc
     elif args.hunt_cmd == "status":
         running = hunt.running_run(db)
         if running:
             emit(args, running, text=None if args.json else f"Searching now: {running['message']}")
             return
         last = hunt.last_run(db)
-        emit(args, {"last_run": last, "sources": [{k: s.get(k) for k in ("id", "plain_status", "last_success_at")} for s in hunt.source_health(db)]})
+        prog = hunt.progress(db, last["id"]) if last else {"status": "never", "running": False, "message": "No search has run yet."}
+        emit(args, {**prog, "last_run": last, "sources": [{k: s.get(k) for k in ("id", "plain_status", "last_success_at")} for s in hunt.source_health(db)]})
     elif args.hunt_cmd == "history":
         rows = db.fetchall("SELECT id, trigger, status, started_at, finished_at, stats_json, error FROM hunt_runs ORDER BY id DESC LIMIT ?", (args.limit,))
         for r in rows:
             r["stats"] = json.loads(r.pop("stats_json") or "{}")
         emit(args, rows)
+
+
+def _exit_now_if_fetches_linger(code: int) -> None:
+    """A download that never answers must not keep the command alive after its result was printed: the fetch
+    threads were abandoned at the deadline, so leave without waiting for them."""
+    import os
+    import threading
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if any(t.is_alive() and t is not threading.current_thread() and t.name.startswith("ThreadPoolExecutor") for t in threading.enumerate()):
+        os._exit(code)
 
 
 def _hunt_text(stats: dict) -> str:
@@ -578,7 +618,10 @@ def cmd_cloud(args):
         elif c == "link":
             emit(args, cloudstate.link_repo(db, args.repo))
         elif c == "update":
-            emit(args, cloudstate.update_from_upstream(args.repo, upstream_url=args.upstream or cloudstate.UPSTREAM_URL, branch=args.branch))
+            if args.rollback:
+                emit(args, cloudstate.rollback_update(args.repo))
+            else:
+                emit(args, cloudstate.update_from_upstream(args.repo, upstream_url=args.upstream or cloudstate.UPSTREAM_URL, branch=args.branch))
         elif c == "save":
             emit(args, cloudstate.save_to_repo(ctx, db, args.repo, branch=args.branch))
         elif c == "load":
@@ -605,7 +648,9 @@ def cmd_board(args):
             emit(args, board.status(db))
         elif c == "page":
             p = board.page_path()
-            emit(args, {"page": str(p), "exists": p.exists(), "title": "Hunter by KubeCraft", "capabilities": {"db": {"rules": [{"path": "", "read": "owner", "write": "owner"}]}, "user": {}}}, text=str(p))
+            emit(args, {"page": str(p), "exists": p.exists(), "title": "JobHunterOS by KubeCraft", "mark": "file" if board.BRAND_PNG.exists() else "text", "capabilities": {"db": {"rules": [{"path": "", "read": "owner", "write": "owner"}]}, "user": {}}, "note": "Use `board build --out <file>` to write the page to publish (the KubeCraft mark is inlined when brand/KubeCraft-Cog-3.png exists)."}, text=str(p))
+        elif c == "build":
+            emit(args, board.build_page(args.out))
         elif c == "export":
             emit(args, board.export(ctx, db, args.out, limit=args.limit, require_actions=not args.without_actions))
         elif c == "import":
@@ -926,7 +971,7 @@ def build_parser() -> argparse.ArgumentParser:
     x = ds.add_parser("list")
     x.add_argument("--all", action="store_true")
     x = ds.add_parser("text")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     ds.add_parser("verify")
     x = ds.add_parser("linkedin")
     x.add_argument("--url")
@@ -1005,6 +1050,11 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--source", action="append")
     x.add_argument("--trigger", default="manual")
     x.add_argument("--without-dashboard", action="store_true", help="search even though the dashboard page's actions were not read first (the local dashboard and the worker do this on their own)")
+    x.add_argument("--deadline", type=float, default=1200.0, help="seconds for the whole search; sources that have not answered by then are 'couldn't check' and later stages are skipped (default 1200)")
+    x = hs.add_parser("start", help="start the search as its own process and return at once; follow it with `hunt status`")
+    x.add_argument("--source", action="append")
+    x.add_argument("--trigger", default="manual")
+    x.add_argument("--deadline", type=float, default=1200.0)
     hs.add_parser("status")
     x = hs.add_parser("history")
     x.add_argument("--limit", type=int, default=10)
@@ -1025,7 +1075,7 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--limit", type=int, default=10)
     x.add_argument("--sort", default="best", choices=["best", "newest", "added", "employer"])
     x = js.add_parser("show")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x = js.add_parser("import")
     x.add_argument("--text")
     x.add_argument("--file")
@@ -1036,7 +1086,7 @@ def build_parser() -> argparse.ArgumentParser:
     x = js.add_parser("import-alert")
     x.add_argument("--file", required=True)
     x = js.add_parser("lookup")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     j.set_defaults(fn=cmd_jobs)
 
     m = sub.add_parser("match", help="matching and explanations")
@@ -1053,25 +1103,25 @@ def build_parser() -> argparse.ArgumentParser:
     acs = ac.add_subparsers(dest="act_cmd", required=True)
     for name in ("open", "save", "unsave", "favorite", "unfavorite", "undismiss", "history", "notes"):
         x = acs.add_parser(name)
-        x.add_argument("id", type=int)
+        x.add_argument("id", type=job_ref)
     x = acs.add_parser("dismiss")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("--reason", choices=["consultancy", "too_senior", "too_junior", "location", "salary", "employer", "other"])
     x.add_argument("--note")
     x = acs.add_parser("applied")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("--when")
     x = acs.add_parser("stage")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("stage", choices=["prepared", "applied", "replied", "interview", "offer", "rejected", "withdrawn"])
     x.add_argument("--when")
     x = acs.add_parser("contacted")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("--who", required=True)
     x.add_argument("--channel", default="email")
     x.add_argument("--when")
     x = acs.add_parser("note")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("text", nargs="+")
     x = acs.add_parser("undo")
     x.add_argument("event_id", type=int)
@@ -1081,24 +1131,24 @@ def build_parser() -> argparse.ArgumentParser:
     ap = sub.add_parser("apply", help="prepare an application (never submits)")
     aps = ap.add_subparsers(dest="apply_cmd", required=True)
     x = aps.add_parser("prepare")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("--model", action="store_true")
     x.add_argument("--regenerate", action="store_true", help="make a new version even if nothing changed")
     x = aps.add_parser("followup")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("--days", type=int, default=7)
     x = aps.add_parser("handoff")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("--include-messages", action="store_true")
     ap.set_defaults(fn=cmd_apply)
 
     dr = sub.add_parser("drafts", help="outreach and follow-up drafts")
     drs = dr.add_subparsers(dest="drafts_cmd", required=True)
     x = drs.add_parser("list")
-    x.add_argument("--job", type=int)
+    x.add_argument("--job", type=job_ref)
     for name in ("outreach", "followup"):
         x = drs.add_parser(name)
-        x.add_argument("id", type=int)
+        x.add_argument("id", type=job_ref)
         x.add_argument("--to")
     x = drs.add_parser("sent")
     x.add_argument("draft_id", type=int)
@@ -1119,10 +1169,11 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("tag")
     x = cls.add_parser("link", help="use another clone for the state (default: this checkout's own state/ folder)")
     x.add_argument("--repo", required=True)
-    x = cls.add_parser("update", help="merge KubeCraft's newer Hunter into your own copy; state/ is never touched")
+    x = cls.add_parser("update", help="bring KubeCraft's newer Hunter into your own copy (merge, or a patch for a template-made copy); state/ and protected paths are never touched; --rollback returns to the backup tag")
     x.add_argument("--repo")
     x.add_argument("--upstream")
     x.add_argument("--branch", default="main")
+    x.add_argument("--rollback", action="store_true", help="undo the last update (back to its backup tag)")
     x = cls.add_parser("save", help="write state/ in your own private copy, commit and push to the state branch")
     x.add_argument("--repo")
     x.add_argument("--branch", help="the persistent branch (default: the current one, then main)")
@@ -1144,6 +1195,8 @@ def build_parser() -> argparse.ArgumentParser:
     bds.add_parser("unlink", help="forget the page")
     bds.add_parser("status")
     bds.add_parser("page", help="where the page file is (Claude publishes it once per student)")
+    x = bds.add_parser("build", help="write the page to publish, with the KubeCraft mark inlined when brand/KubeCraft-Cog-3.png exists")
+    x.add_argument("--out", required=True)
     x = bds.add_parser("export", help="write the documents for the page into a folder, plus a manifest Claude follows")
     x.add_argument("--out", required=True)
     x.add_argument("--limit", type=int, default=150, help="how many recommended jobs to show (default 150)")
@@ -1198,7 +1251,7 @@ def build_parser() -> argparse.ArgumentParser:
     dgs.add_parser("test", help="send a short test email to the confirmed address")
     dgs.add_parser("prepare", help="compose and claim the next digest for Claude to send through its Gmail connector")
     x = dgs.add_parser("record", help="record what happened to a digest Claude sent")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("outcome", choices=["sent", "failed", "uncertain"])
     x.add_argument("--message-id")
     x.add_argument("--error")
@@ -1206,10 +1259,10 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("name", choices=["claude", "show"])
     dgs.add_parser("use-connected-address", help="send digests to the Gmail address you connected")
     x = dgs.add_parser("retry", help="send a failed or uncertain digest again (asks for --force when it may already have arrived)")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("--force", action="store_true")
     x = dgs.add_parser("resolve", help="tell Hunter whether an uncertain digest arrived")
-    x.add_argument("id", type=int)
+    x.add_argument("id", type=job_ref)
     x.add_argument("outcome", choices=["arrived", "not-arrived"])
     dg.set_defaults(fn=cmd_digest)
 
@@ -1235,7 +1288,7 @@ def build_parser() -> argparse.ArgumentParser:
     els.add_parser("pending")
     x = els.add_parser("confirm")
     x.add_argument("email_id", type=int)
-    x.add_argument("job_id", type=int)
+    x.add_argument("job_id", type=job_ref)
     for name in ("reject", "unlink"):
         x = els.add_parser(name)
         x.add_argument("email_id", type=int)

@@ -51,6 +51,27 @@ def job_key(canonical_key: str) -> str:
     return "j" + hashlib.sha1((canonical_key or "").encode("utf-8")).hexdigest()[:20]
 
 
+BRAND_PNG = Path(__file__).resolve().parents[2] / "brand" / "KubeCraft-Cog-3.png"
+BRAND_MARK_PLACEHOLDER = "<!--KUBECRAFT-MARK-->KC"
+
+
+def build_page(out_path: str | Path) -> dict:
+    """Write the dashboard page for publishing. When KubeCraft's supplied mark (brand/KubeCraft-Cog-3.png) exists it
+    is inlined byte for byte as a data URI; otherwise the page keeps its accessible text mark. Nothing is drawn."""
+    import base64
+
+    html = page_path().read_text(encoding="utf-8")
+    mark = "text"
+    if BRAND_PNG.exists():
+        data = base64.b64encode(BRAND_PNG.read_bytes()).decode("ascii")
+        html = html.replace(BRAND_MARK_PLACEHOLDER, f'<img src="data:image/png;base64,{data}" alt="KubeCraft">', 1)
+        mark = "file"
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return {"out": str(out), "mark": mark, "title": "JobHunterOS by KubeCraft", "bytes": out.stat().st_size, "note": "Publish this file with the Artifact tool (same URL to update the page)." + ("" if mark == "file" else " The KubeCraft mark file is not in brand/ yet, so the page shows the text mark.")}
+
+
 def page_path() -> Path:
     """The page Claude publishes once per student. It ships with Hunter, so every student gets the same dashboard."""
     return Path(__file__).resolve().parents[1] / "board" / "hunter-board.html"
@@ -162,6 +183,7 @@ def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[
         "remote_type": it.get("remote_type"),
         "remote_label": it.get("remote_type_label") or "",
         "remote_restriction": it.get("remote_restriction"),
+        "location_label": _location_label(it),
         "salary": it.get("salary"),
         "posted_at": it.get("posted_at"),
         "first_seen_at": it.get("first_seen_at"),
@@ -194,6 +216,22 @@ def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[
             "synced_rev": int((synced.get(key) or {}).get("synced_rev") or 0),
         },
     }
+
+
+def _location_label(it: dict) -> str:
+    """One short line for a card: the place and the remote rule without the quoted evidence. The full text,
+    quote included, stays in `remote_restriction` for the drawer."""
+    place = (it.get("location") or "").strip()
+    rule = (it.get("remote_restriction") or "").strip()
+    rule = re.sub(r"\s*\(the posting says:.*?\)", "", rule)
+    rule = re.sub(r"\.\s*(Check (before you apply|the posting)\.?)$", ".", rule).rstrip(".")
+    if rule and len(rule) > 70:
+        rule = rule[:67].rstrip() + "…"
+    label = (it.get("remote_type_label") or "") if not rule else rule
+    parts = [place] if place and place != "No location given" else []
+    if label and label.lower() not in place.lower():
+        parts.append(label)
+    return " · ".join(parts) or place or "Location not stated"
 
 
 _ASK = re.compile(r"^They ask for (?P<asked>.+?)\. Your CV shows (?P<have>.+?)(?: \((?P<n>\d+ of \d+)\))?\.$")
@@ -284,6 +322,7 @@ def _run_doc(db: Database, recommended: list[str], docs: list[dict], shards: int
     counts["applied"] = sum(1 for d in docs if d["state"].get("stage") in {"applied", "replied", "interview", "offer", "rejected", "withdrawn"})
     counts["old"] = sum(1 for d in docs if d.get("list") == "old")
     counts["uncertain"] = sum(1 for d in docs if d.get("list") == "uncertain")
+    counts["recommended_total"] = views.list_jobs(db, view="new", per_page=1)["total"]  # loaded vs total: never pretend the page holds everything
     imp = db.get_setting("board.last_import") or {}
     return {
         "schema": SCHEMA,
@@ -295,6 +334,7 @@ def _run_doc(db: Database, recommended: list[str], docs: list[dict], shards: int
         "counts": counts,
         "sync": {"actions_read_at": imp.get("at"), "actions_seen": imp.get("seen"), "actions_applied": imp.get("applied")},
         "hunter": _hunter_status(db),
+        "hunt_in_progress": hunt.running_run(db),
         "attention": _attention(db, docs),
         "last_hunt": None
         if not last

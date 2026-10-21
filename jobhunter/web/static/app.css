@@ -288,3 +288,6 @@ select, input, textarea { max-width:100%; }
 .status-chips .chip { font-size:.88rem; padding:6px 10px; display:inline-flex; align-items:center; gap:6px; }
 details.card > summary { cursor:pointer; font-weight:600; }
 .stack label { display:flex; gap:8px; align-items:flex-start; }
+
+.brand .mark{width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:#000;color:#fff;font-size:11px;font-weight:800;letter-spacing:.5px}
+.brand img{width:28px;height:28px;display:block}

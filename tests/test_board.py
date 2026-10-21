@@ -196,3 +196,29 @@ def test_page_notes_can_be_deleted_and_preferences_edited_from_the_page(ctx, db,
     shard = json.loads(Path(manifest["writes"][1]["file"]).read_text())["jobs"]
     first = next(iter(shard.values()))
     assert first["why"] and not first["why"].startswith(("Good match", "Worth a shot")) and "list" in first
+
+
+def test_dashboard_refinements_stable_reference_counts_and_short_locations(ctx, db, tmp_path, capsys):
+    from jobhunter import cli
+
+    approve_profile(db, ctx, countries="Netherlands")
+    _seed_jobs(ctx, db)
+    hunt.import_postings(ctx, db, [RawPosting(source_id="greenhouse:fake", external_id="far", title="Platform Engineer", employer_name="Far Away BV", url="https://job-boards.greenhouse.io/far/jobs/1", location_text="Remote", remote_type="remote", country_codes=[], description_text=JOURNEY_DESC + " Applicants must be based in the Netherlands.", posted_at="2026-10-19T09:00:00+00:00", posted_at_provenance="t", is_employer_hosted=True)], trigger="test")
+    board.link(db, "https://claude.ai/artifact/5wUUffKaZnmpqGgPnRzPVE")
+    board.import_actions(ctx, db, tmp_path / "none", listed=0)
+    manifest = board.export(ctx, db, tmp_path / "out", limit=1)
+    run = json.loads(Path([w for w in manifest["writes"] if w["doc_id"] == "run"][0]["file"]).read_text())
+    assert len(run["recommended"]) == 1 and run["counts"]["recommended_total"] >= 2  # loaded vs total, honestly
+    shard = {}
+    for w in manifest["writes"]:
+        if w["collection"] == "board":
+            shard.update(json.loads(Path(w["file"]).read_text())["jobs"])
+    far = next(d for d in shard.values() if d["employer"] == "Far Away BV")
+    assert "the posting says" in far["remote_restriction"] and "the posting says" not in far["location_label"] and len(far["location_label"]) < len(far["remote_restriction"])
+    assert far["location_label"].startswith("Remote")
+    # The page's "Help me apply" carries the job key; the command line resolves it on any machine.
+    key = far["key"]
+    assert cli.main(["--json", "jobs", "show", key]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["employer"] == "Far Away BV"
+    assert cli.main(["--json", "jobs", "show", "j00000000000000000000"]) == 1 and "No job with key" in json.loads(capsys.readouterr().out)["error"]

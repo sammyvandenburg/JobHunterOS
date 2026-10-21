@@ -100,11 +100,11 @@ def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) ->
                 link=f'<a href="{_esc(link)}">{_esc(link)}</a>' if link else "no link available",
             )
         )
-    lines += ["Open your dashboard on the computer where Hunter runs to save, dismiss, or prepare an application.", "", "Hunter (JobHunterOS)"]
+    lines += ["Open your dashboard on the computer where Hunter runs to save, dismiss, or prepare an application.", "", "Hunter, your JobHunterOS assistant by KubeCraft"]
     text = "\n".join(lines)
-    html = "<p>Hi,</p><p>Hunter found {} job(s) worth a look.</p><ul>{}</ul><p>Open your dashboard on the computer where Hunter runs to act on these.</p><p>Hunter (JobHunterOS)</p>".format(len(jobs), "".join(html_items))
+    html = "<p>Hi,</p><p>Hunter found {} job(s) worth a look.</p><ul>{}</ul><p>Open your dashboard on the computer where Hunter runs to act on these.</p><p>Hunter, your JobHunterOS assistant by KubeCraft</p>".format(len(jobs), "".join(html_items))
     ids = [int(j["id"]) for j in jobs]
-    return Digest(subject=f"Hunter: {len(jobs)} job(s) worth a look", text=text, html=html, job_ids=ids, content_hash=sha256_text(json.dumps(sorted(ids))))
+    return Digest(subject=f"JobHunterOS: {len(jobs)} job(s) worth a look", text=text, html=html, job_ids=ids, content_hash=sha256_text(json.dumps(sorted(ids))))
 
 
 def _salary(j: dict) -> str:
@@ -381,7 +381,7 @@ def send_test(ctx: AppContext, db: Database) -> dict:
         raise DigestError("Confirm the address first.")
     stamp = now_iso()
     text = (
-        "Hi,\n\nThis is a test from Hunter, your KubeCraft job-hunt companion.\n"
+        "Hi,\n\nThis is a test from Hunter, your JobHunterOS assistant by KubeCraft.\n"
         "If you can read this, your job emails will arrive here.\n\n"
         f"Sent {stamp[:16].replace('T', ' ')} UTC. Nothing else was sent and no job was applied to.\n"
     )

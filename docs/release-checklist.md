@@ -128,3 +128,32 @@ and the client JSON published at `https://jobhunter.kubecraft.nl/google-oauth-cl
 - [ ] A second hunt shows new jobs on the same page; no second page is created (`board status` keeps one link).
 - [ ] Nightly: the routine's report names the restored commit, the hunt numbers, the Gmail message id, the saved commit and "dashboard synced"; the next morning's email repeats none of the jobs from the day before.
 - [ ] After `cloud update` to a newer Hunter, the dashboard still opens and a sync still works (export rematches with the new rules).
+
+## G. Release candidate, student update and rollback
+A release is one commit on KubeCraft's shared repository that students' copies update to. Nothing else changes
+hands: no student data ever flows the other way.
+
+Before KubeCraft publishes a candidate commit:
+- [ ] `uv run ruff check` and `uv run pytest` are clean on the candidate (the command prints the real counts).
+- [ ] `docs/status.md` names the candidate's date and what was live-tested.
+- [ ] The repository's visibility and licence are unchanged (`jobhunter cloud save` refuses a public or shared
+      repository as a state destination; the shared repository itself holds no `state/` content: `state/README.md` only).
+- [ ] If the KubeCraft mark changed, `brand/KubeCraft-Cog-3.png` is the supplied file and `tests/test_branding.py` passes.
+- [ ] Tag the candidate (`git tag -a v<date> -m "..."`) after the checks, push the tag; students update to `main`.
+
+A student updates (Hunter does this on "update Hunter"): `uv run jobhunter cloud update --json`.
+- A copy that shares history with KubeCraft's repository merges; a copy made with "Use this template" gets the
+  changes since its starting version as a patch (the starting commit is found by matching the copy's first
+  commit tree, or read from `.jobhunter/upstream.json`, which every update writes).
+- `state/`, `.env`, `.jobhunter/upstream.json` and the paths in `.jobhunter/protected` are never touched.
+- Refused while the copy has unsaved changes outside `state/`; a backup tag `hunter-update-backup-<time>` is set
+  first; a change that does not apply cleanly changes nothing and says so.
+- Then `uv sync`. Hunter's database migrates itself on the next command (migrations are additive and idempotent).
+
+Rollback: `uv run jobhunter cloud update --rollback --json` returns the copy to the backup tag (refused while
+there are unsaved changes; `jobhunter cloud save` first). The database is not rolled back: migrations only add
+tables and columns, and an older Hunter ignores columns it does not know.
+
+Verified in this build: `tests/test_update_template.py` (template copy: patch, protected paths, backup tag,
+rollback, conflict, dirty tree) and `tests/test_cloud_repo.py` (shared history: merge). Not yet run against a real
+GitHub template-created repository; that is the first thing to do on the pilot.
