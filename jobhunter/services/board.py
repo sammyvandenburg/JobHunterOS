@@ -169,6 +169,7 @@ def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[
         "verification": it.get("verification"),
         "countries": json.loads(row.get("country_codes_json") or "[]"),
         "employment_type": row.get("employment_type"),
+        "authorization": it.get("authorization"),
         "links": it.get("links") or {},
         "description": truncate(row.get("description_text") or "", DESCRIPTION_CHARS),
         "group": it.get("group"),

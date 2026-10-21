@@ -8,7 +8,7 @@
 # Fields: name, ats (greenhouse|lever|ashby), token (board token / site / board
 # name), region (na|eu|both: where the employer mainly hires, not a promise),
 # careers (public careers page), checked (YYYY-MM-DD).
-version: 2026-10-18
+version: 2026-10-21
 employers:
   # ---- Greenhouse ---------------------------------------------------------
   - {name: GitLab, ats: greenhouse, token: gitlab, region: both, careers: https://about.gitlab.com/jobs/, checked: 2026-10-18}
@@ -50,6 +50,11 @@ employers:
   - {name: Honeycomb, ats: greenhouse, token: honeycomb, region: na, careers: https://www.honeycomb.io/careers, checked: 2026-10-18}
   - {name: Thoughtworks, ats: greenhouse, token: thoughtworks, region: both, careers: https://www.thoughtworks.com/careers, checked: 2026-10-18}
   - {name: Adyen, ats: greenhouse, token: adyen, region: eu, careers: https://careers.adyen.com/, checked: 2026-10-18}
+  # Dutch employers added 2026-10-21 after a read-only check of each public board that day (Bird's Greenhouse board
+  # belongs to the Canadian company of the same name and was left out).
+  - {name: Nebius, ats: greenhouse, token: nebius, region: both, careers: https://nebius.com/careers, checked: 2026-10-21}
+  - {name: bol.com, ats: greenhouse, token: bolcom, region: eu, careers: https://careers.bol.com/, checked: 2026-10-21}
+  - {name: Catawiki, ats: greenhouse, token: catawiki, region: eu, careers: https://www.catawiki.com/en/careers, checked: 2026-10-21}
   - {name: Celonis, ats: greenhouse, token: celonis, region: eu, careers: https://www.celonis.com/careers/, checked: 2026-10-18}
   - {name: Contentful, ats: greenhouse, token: contentful, region: eu, careers: https://www.contentful.com/careers/, checked: 2026-10-18}
   - {name: N26, ats: greenhouse, token: n26, region: eu, careers: https://n26.com/en/careers, checked: 2026-10-18}
@@ -72,6 +77,8 @@ employers:
   - {name: MoonPay, ats: lever, token: moonpay, region: both, careers: https://www.moonpay.com/careers, checked: 2026-10-18}
   - {name: Veeva, ats: lever, token: veeva, region: both, careers: https://careers.veeva.com/, checked: 2026-10-18}
   # ---- Ashby --------------------------------------------------------------
+  - {name: Mollie, ats: ashby, token: mollie, region: eu, careers: https://www.mollie.com/careers, checked: 2026-10-21}
+  - {name: Weaviate, ats: ashby, token: weaviate, region: eu, careers: https://weaviate.io/company/careers, checked: 2026-10-21}
   - {name: Ashby, ats: ashby, token: ashby, region: both, careers: https://www.ashbyhq.com/careers, checked: 2026-10-18}
   - {name: Linear, ats: ashby, token: linear, region: both, careers: https://linear.app/careers, checked: 2026-10-18}
   - {name: Ramp, ats: ashby, token: ramp, region: na, careers: https://ramp.com/careers, checked: 2026-10-18}

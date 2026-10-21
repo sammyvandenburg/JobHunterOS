@@ -464,7 +464,7 @@ const Core = (() => {
     const secs = [["opp", "Opportunity"], ["why", "Why it fits"], ["next", "Next actions"], ["notes", "My notes"], ["desc", "Description"]];
     const body = el("div", { class: "dbody", id: "dbody" },
       el("div", { class: "sec", id: "sec-opp" }, el("h3", {}, "Opportunity"),
-        el("div", { class: "kv" }, el("span", {}, "Where"), el("span", {}, where(j) || "Not stated"), el("span", {}, "Pay"), el("span", {}, j.salary || "Not listed"), el("span", {}, "Posted"), el("span", {}, [j.freshness_label, j.verification].filter(Boolean).join(" · ")), el("span", {}, "Type"), el("span", {}, j.employment_type || "Not stated")),
+        el("div", { class: "kv" }, el("span", {}, "Where"), el("span", {}, where(j) || "Not stated"), el("span", {}, "Pay"), el("span", {}, j.salary || "Not listed"), el("span", {}, "Posted"), el("span", {}, [j.freshness_label, j.verification].filter(Boolean).join(" · ")), el("span", {}, "Type"), el("span", {}, j.employment_type || "Not stated"), el("span", {}, "Work authorization"), el("span", {}, j.authorization || "Not stated in the posting.")),
         direct ? el("p", { style: "margin:8px 0 0" }, el("a", { href: direct, target: "_blank", rel: "noopener noreferrer" }, safeUrl(links.direct) ? "Open the employer’s listing" : "Open the listing")) : null),
       el("div", { class: "sec", id: "sec-why" }, el("h3", {}, "Why it fits"),
         el("ul", { class: "r" }, (j.reasons || []).map((r) => el("li", {}, r))),

@@ -143,7 +143,8 @@ class FetchResult(BaseModel):
     error: str | None = None
     http_status: int | None = None
     notes: str | None = None
-    complete: bool = True  # False when pagination stopped early or the feed was truncated
+    complete: bool = True  # False when pagination stopped early, the feed was truncated, or a posting could not be read
+    skipped_ids: list[str] = Field(default_factory=list)  # raw posting ids the adapter could not convert
 
 
 class MatchReason(BaseModel):

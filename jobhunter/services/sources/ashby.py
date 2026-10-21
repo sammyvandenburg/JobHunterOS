@@ -17,6 +17,23 @@ from jobhunter.services.sources.base import SourceAdapter
 BASE = "https://api.ashbyhq.com/posting-api/job-board"
 
 
+def _structured_salary(comp: dict) -> dict:
+    """The first salary component of the compensation tiers (includeCompensation=true): numbers, currency and
+    interval as the employer entered them. Equity and bonus components are not pay and are left out."""
+    for tier in comp.get("compensationTiers") or []:
+        for c in (tier.get("components") or []) if isinstance(tier, dict) else []:
+            if not isinstance(c, dict) or str(c.get("compensationType") or "").lower() != "salary":
+                continue
+            lo, hi = c.get("minValue"), c.get("maxValue")
+            if lo is None and hi is None:
+                continue
+            interval = str(c.get("interval") or "").upper()
+            period = "year" if "YEAR" in interval else "month" if "MONTH" in interval else "hour" if "HOUR" in interval else None
+            cur = c.get("currencyCode")
+            return {"min": lo, "max": hi, "currency": str(cur).upper() if isinstance(cur, str) and cur else None, "period": period}
+    return {}
+
+
 class AshbyAdapter(SourceAdapter):
     kind = "ashby"
     employer_hosted = True
@@ -34,15 +51,9 @@ class AshbyAdapter(SourceAdapter):
         jobs = data.get("jobs") if isinstance(data, dict) else None
         if not isinstance(jobs, list):
             return self.failed(source_id, f"Ashby board '{board}' returned an unexpected shape.")
-        postings = []
-        for j in jobs:
-            if j.get("isListed") is False:
-                continue
-            try:
-                postings.append(self._convert(source_id, j, config))
-            except Exception:
-                continue
-        return FetchResult(source_id=source_id, status="ok", postings=postings, http_status=200)
+        listed = [j for j in jobs if not (isinstance(j, dict) and j.get("isListed") is False)]
+        postings, skipped = self.convert_all(source_id, listed, config)
+        return self.result(source_id, postings, skipped, len(listed))
 
     @staticmethod
     def _convert(source_id: str, j: dict, config: dict) -> RawPosting:
@@ -61,7 +72,8 @@ class AshbyAdapter(SourceAdapter):
         wt = (j.get("workplaceType") or "").lower()
         remote = {"remote": "remote", "hybrid": "hybrid", "onsite": "onsite"}.get(wt, "remote" if j.get("isRemote") else "unknown")
         comp = j.get("compensation") or {}
-        summary = comp.get("compensationTierSummary") if isinstance(comp, dict) else None
+        summary = (comp.get("compensationTierSummary") or comp.get("scrapeableCompensationSalarySummary")) if isinstance(comp, dict) else None
+        structured = _structured_salary(comp) if isinstance(comp, dict) else {}
         loc = j.get("location") or ""
         if secondary:
             loc = ", ".join([loc] + [s for s in secondary if s]) if loc else ", ".join(s for s in secondary if s)
@@ -78,6 +90,10 @@ class AshbyAdapter(SourceAdapter):
             employment_type=j.get("employmentType"),
             description_text=j.get("descriptionPlain") or "",
             salary_text=summary,
+            salary_min=structured.get("min"),
+            salary_max=structured.get("max"),
+            salary_currency=structured.get("currency"),
+            salary_period=structured.get("period"),
             posted_at=j.get("publishedAt"),
             posted_at_provenance="ashby.publishedAt" if j.get("publishedAt") else None,
             is_employer_hosted=True,

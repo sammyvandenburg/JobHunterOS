@@ -37,13 +37,8 @@ class GreenhouseAdapter(SourceAdapter):
         jobs = data.get("jobs") if isinstance(data, dict) else None
         if not isinstance(jobs, list):
             return self.failed(source_id, f"Greenhouse board '{token}' returned an unexpected shape.")
-        postings = []
-        for j in jobs:
-            try:
-                postings.append(self._convert(source_id, j, config))
-            except Exception:
-                continue
-        return FetchResult(source_id=source_id, status="ok", postings=postings, http_status=200)
+        postings, skipped = self.convert_all(source_id, jobs, config)
+        return self.result(source_id, postings, skipped, len(jobs))
 
     @staticmethod
     def _convert(source_id: str, j: dict, config: dict) -> RawPosting:

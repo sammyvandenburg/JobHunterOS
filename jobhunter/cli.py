@@ -306,6 +306,10 @@ def cmd_sources(args):
         emit(args, [{k: s.get(k) for k in ("id", "kind", "enabled", "origin", "last_status", "last_success_at", "plain_status", "last_error")} for s in hunt.source_health(db)])
     elif args.sources_cmd == "registry":
         emit(args, PROVIDERS)
+    elif args.sources_cmd == "coverage":
+        from jobhunter.services import coverage
+
+        emit(args, coverage.report(db, run_id=args.run))
     elif args.sources_cmd in {"enable", "disable"}:
         n = db.update("watch_sources", {"enabled": 1 if args.sources_cmd == "enable" else 0}, "id = ?", (args.id,))
         if not n:
@@ -977,6 +981,8 @@ def build_parser() -> argparse.ArgumentParser:
     sos.add_parser("list")
     sos.add_parser("registry")
     sos.add_parser("sync-catalog")
+    x = sos.add_parser("coverage", help="what the last hunt really checked and where the jobs it found are (never a promise about the whole market)")
+    x.add_argument("--run", type=int, help="a specific hunt run id (default: the last finished one)")
     for name in ("enable", "disable", "check"):
         x = sos.add_parser(name)
         x.add_argument("id")

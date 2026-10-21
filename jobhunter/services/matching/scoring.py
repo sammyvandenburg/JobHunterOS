@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 
 from jobhunter.models import Fact, Preferences
 from jobhunter.services import freshness
-from jobhunter.services.matching.skills import TOOL_LABELS, canonical_skill_keys, coverage
+from jobhunter.services.matching import requirements
+from jobhunter.services.matching.skills import TOOL_LABELS, canonical_skill_keys, coverage, extract_skills
 from jobhunter.services.matching.skills import job_tools as _job_tools
 from jobhunter.services.matching.skills import tool_label as _tool_label
 from jobhunter.services.normalize import MANAGEMENT, country_names, primary_role, seniority_of
@@ -55,15 +56,68 @@ def tool_label(key: str) -> str:
     return _tool_label(key)
 
 
-def candidate_skills(facts: list[Fact]) -> dict[str, Fact]:
-    """Canonical skill key -> the fact that proves it. A phrase-valued fact ("Kubernetes (AKS, k3s)")
-    yields every key it names, so parser-made and Claude-made facts behave the same."""
-    out: dict[str, Fact] = {}
+EVIDENCE_RANK = {"paid work": 3, "project work": 2, "a guided course project": 2, "a course or certification": 1, "your skills list": 0}
+
+
+def _fact_tools(f: Fact) -> set[str]:
+    keys = {t.split(":", 1)[1] for t in f.tags if t.startswith("tool:")}
+    if f.category == "skill":
+        keys |= canonical_skill_keys(f.text)
+    elif f.category in {"project", "course", "certification"}:
+        keys |= extract_skills(f.text)
+    return keys
+
+
+def evidence_kinds(facts: list[Fact]) -> dict[str, tuple[str, Fact]]:
+    """Canonical tool key -> (the strongest kind of evidence the profile holds for it, the fact). Paid work
+    (a role's bullets) beats project work, which beats a course or certification, which beats a bare skills
+    list. Rejected facts never count."""
+    out: dict[str, tuple[str, Fact]] = {}
     for f in facts:
-        if f.category == "skill" and f.status != "rejected":
-            for key in canonical_skill_keys(f.text):
-                out.setdefault(key, f)
+        if f.status == "rejected":
+            continue
+        if f.category == "role" and f.experience_kind == "professional":
+            kind = "paid work"
+        elif f.category == "project":
+            kind = "a guided course project" if f.experience_kind == "guided" else "project work"
+        elif f.category in {"course", "certification"}:
+            kind = "a course or certification"
+        elif f.category == "skill":
+            kind = "your skills list"
+        else:
+            continue
+        for key in _fact_tools(f):
+            if key not in out or EVIDENCE_RANK[kind] > EVIDENCE_RANK[out[key][0]]:
+                out[key] = (kind, f)
     return out
+
+
+def candidate_skills(facts: list[Fact]) -> dict[str, Fact]:
+    """Canonical skill key -> the fact that proves it: the skills list, and the tools a paid role's bullets,
+    a project, a course or a certification name (the explanation says which). A phrase-valued fact
+    ("Kubernetes (AKS, k3s)") yields every key it names, so parser-made and Claude-made facts behave the same."""
+    return {key: fact for key, (kind, fact) in evidence_kinds(facts).items()}
+
+
+def _evidence_sentence(have: list[str], kinds: dict[str, tuple[str, Fact]]) -> str | None:
+    groups: dict[str, list[str]] = {}
+    for key in have:
+        kind = kinds.get(key, ("your skills list", None))[0]
+        groups.setdefault(kind, []).append(key)
+    parts = []
+    for kind in sorted(groups, key=lambda k: -EVIDENCE_RANK[k]):
+        keys = groups[kind]
+        verb = "comes" if len(keys) == 1 else "come"
+        if kind == "paid work":
+            parts.append(f"{_join(keys, 6)} {verb} from your paid work")
+        elif kind == "your skills list":
+            parts.append(f"{_join(keys, 6)} {'is' if len(keys) == 1 else 'are'} in your skills list only")
+        else:
+            parts.append(f"{_join(keys, 6)} {verb} from {kind} (not paid work)")
+    if not parts:
+        return None
+    text = "; ".join(parts) + "."
+    return text[0].upper() + text[1:]
 
 
 DIRECTION_WORDS = {"devops": ["devops", "dev ops"], "platform": ["platform"], "sre": ["sre", "reliability"], "cloud": ["cloud"], "infrastructure": ["infrastructure", "infra"], "systems": ["systems", "linux", "sysadmin"]}
@@ -127,8 +181,14 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
     res.components["relevance"] = rel
 
     # 2. Skills overlap -------------------------------------------------------
-    tools = job_tools(desc, title)
+    req = requirements.parse(desc, title)
+    tools = req.asked or (job_tools(desc, title) - req.negated)
+    # What the person retracted ("I do not use AWS") never comes back as evidence, whatever a CV bullet says.
+    skills = {k: f for k, f in skills.items() if k not in rejected_skills}
+    kinds = {k: v for k, v in evidence_kinds(facts).items() if k not in rejected_skills}
     have, related, missing = coverage(tools, set(skills))
+    pref_have, pref_related, pref_missing = coverage(req.preferred, set(skills))
+    pref_missing = pref_missing + [want for want, _got in pref_related]  # a related tool is not the nice-to-have itself
     if tools:
         cov = (len(have) + 0.5 * len(related)) / len(tools)
         skill_score = 10.0 + 15.0 * cov
@@ -145,8 +205,15 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
         else:
             text = f"They ask for {_join(asked)}. Your CV shows {_join(have)} ({len(have)} of {len(asked)})."
         res.reasons.insert(0, {"text": text, "fact_ids": ids})
+        evidence = _evidence_sentence(have, kinds)
+        if evidence:
+            res.reasons.insert(1, {"text": evidence, "fact_ids": [kinds[t][1].id for t in have[:6] if t in kinds]})
     for want, got in related[:2]:
-        res.gaps.append(f"They ask for {tool_label(want)}. Your CV shows {tool_label(got)}, which is related but not the same.")
+        res.gaps.append(f"They use {tool_label(want)}. Your profile shows {tool_label(got)}, not {tool_label(want)}.")
+    if pref_have:
+        skill_score += min(3.0, 1.0 * len(pref_have))
+    if pref_missing:
+        res.gaps.append("Nice to have: " + _join(pref_missing, 4) + ". Not in your profile" + (", but that is not a requirement." if not missing else "."))
     if missing:
         # Missing evidence (in the CV, not yet in the approved profile) is a different problem from missing experience.
         said_no = [t for t in missing if t in rejected_skills]
@@ -193,6 +260,8 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
             else:
                 res.gaps.append("The job does not say junior. Lean on your project work when you apply.")
         else:
+            if years_required is not None and years_required > years + 4:
+                return _exclude(res, f"They ask for about {years_required} years and a {seniority} level. Your CV shows about {years:g} years. Not a fair shot right now.")
             level_score = -12.0
             res.gaps.append("Two or more levels above your experience.")
     elif diff == -1:
@@ -272,6 +341,25 @@ def score_job(job: dict, facts: list[Fact], targets: dict, prefs: Preferences, f
         res.reasons.append({"text": sal_note["text"], "fact_ids": []})
     elif sal_note["status"] in {"unknown", "incomparable"}:
         res.gaps.append(sal_note["text"])
+    # Languages and contract type: visible checks, never guesses.
+    spoken = [f.text for f in facts if f.status != "rejected" and "language" in f.tags]
+    for lang, strength in requirements.languages(desc)[:3]:
+        if strength != "required" or lang == "English":
+            continue
+        listed = next((t for t in spoken if lang.lower() in t.lower()), None)
+        if listed:
+            res.reasons.insert(min(2, len(res.reasons)), {"text": f"They ask for {lang}; your profile lists {listed}.", "fact_ids": [f.id for f in facts if f.text == listed]})
+        elif not spoken:
+            res.gaps.append(f"They ask for fluent {lang}. Your profile does not say which languages you speak; add it under Profile if you do.")
+        else:
+            res.gaps.append(f"They ask for {lang}. Your profile lists {_join(spoken, 3)}, not {lang}.")
+    etype = job.get("employment_type") or ""
+    if etype == "Contract":
+        res.gaps.append("This is a contract role (freelance or fixed term), not permanent employment. Check that it suits you.")
+    elif etype == "Temporary":
+        res.gaps.append("This is a temporary role. Check how long it runs.")
+    elif etype == "Part-time":
+        res.gaps.append("This is a part-time role.")
     if feedback_flags.get("fewer_consultancy") and (CONSULTANCY.search(job.get("employer_name") or "") or CONSULTANCY.search(desc[:3000])):
         pref_score -= 10.0 if feedback_flags["fewer_consultancy"] == "must" else 5.0
         res.gaps.append("Looks like consultancy work, which you asked to see less of.")

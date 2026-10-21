@@ -30,6 +30,8 @@ class LeverAdapter(SourceAdapter):
             return self.failed(source_id, "Lever site name is missing or invalid.")
         base = BASES.get((config.get("region") or "us").lower(), BASES["us"])
         postings: list[RawPosting] = []
+        skipped: list[str] = []
+        total = 0
         skip = 0
         complete = True
         for _ in range(MAX_PAGES):
@@ -43,17 +45,16 @@ class LeverAdapter(SourceAdapter):
                 return self.failed(source_id, f"Lever site '{site}' returned data Hunter could not parse.")
             if not isinstance(data, list):
                 return self.failed(source_id, f"Lever site '{site}' returned an unexpected shape.")
-            for j in data:
-                try:
-                    postings.append(self._convert(source_id, j, config))
-                except Exception:
-                    continue
+            got, bad = self.convert_all(source_id, data, config)
+            postings += got
+            skipped += bad
+            total += len(data)
             if len(data) < PAGE:
                 break
             skip += PAGE
         else:
             complete = False
-        return FetchResult(source_id=source_id, status="ok" if complete else "partial", postings=postings, complete=complete, http_status=200)
+        return self.result(source_id, postings, skipped, total, complete=complete)
 
     @staticmethod
     def _convert(source_id: str, j: dict, config: dict) -> RawPosting:

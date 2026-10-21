@@ -81,7 +81,7 @@ def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) ->
         lines += [
             f"- {j['title']} at {j.get('employer_name') or 'unknown employer'} ({group_label(j['match_group'])})",
             f"  Location: {j.get('location_text') or 'not stated'}" + (f" · {j['remote_restriction']}" if j.get("remote_restriction") else ""),
-            f"  Salary: {j.get('salary_text') or 'Not listed'}",
+            f"  Salary: {_salary(j)}",
             f"  {flabel}",
             f"  Why: {j.get('explanation_text') or ''}",
             f"  Link: {link or 'no link available'}",
@@ -94,7 +94,7 @@ def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) ->
                 g=_esc(group_label(j["match_group"])),
                 loc=_esc(j.get("location_text") or "not stated"),
                 rr=(" · " + _esc(j["remote_restriction"])) if j.get("remote_restriction") else "",
-                sal=_esc(j.get("salary_text") or "Not listed"),
+                sal=_esc(_salary(j)),
                 fl=_esc(flabel),
                 why=_esc(j.get("explanation_text") or ""),
                 link=f'<a href="{_esc(link)}">{_esc(link)}</a>' if link else "no link available",
@@ -105,6 +105,12 @@ def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) ->
     html = "<p>Hi,</p><p>Hunter found {} job(s) worth a look.</p><ul>{}</ul><p>Open your dashboard on the computer where Hunter runs to act on these.</p><p>Hunter (JobHunterOS)</p>".format(len(jobs), "".join(html_items))
     ids = [int(j["id"]) for j in jobs]
     return Digest(subject=f"Hunter: {len(jobs)} job(s) worth a look", text=text, html=html, job_ids=ids, content_hash=sha256_text(json.dumps(sorted(ids))))
+
+
+def _salary(j: dict) -> str:
+    from jobhunter.services.normalize import salary_label
+
+    return salary_label(j.get("salary_min"), j.get("salary_max"), j.get("salary_currency"), j.get("salary_period"), j.get("salary_basis"), j.get("salary_text")) or "Not listed"
 
 
 def _esc(s: str | None) -> str:

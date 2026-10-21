@@ -1,0 +1,326 @@
+{
+ "about": "Labelled evaluation set for matching. Each vacancy carries the label a careful recruiter would give for each synthetic candidate (beginner, career_changer, mid, senior): 'recommend' (show it as a match), 'check' (show it under Needs checking only), 'out' (leave it out, with a reason). Labels were written by reading the vacancy and the CVs, not by running the code. Candidates live in the Netherlands and can work there; remote preferred, hybrid fine, never fully in the office.",
+ "vacancies": [
+  {
+   "id": "v01",
+   "title": "Platform Engineer",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "About the role\nYou run our internal developer platform.\nWhat you bring\n- Kubernetes in production\n- Terraform\n- AWS\n- Linux\n- CI/CD with GitHub Actions\nWhat you'll do\nOwn the clusters, be on call once a month.",
+   "labels": {
+    "beginner": "recommend",
+    "career_changer": "recommend",
+    "mid": "recommend",
+    "senior": "recommend"
+   }
+  },
+  {
+   "id": "v02",
+   "title": "Senior Site Reliability Engineer",
+   "location": "Rotterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "remote",
+   "description": "What you bring\n7+ years running production Kubernetes. Terraform, AWS, Prometheus, Grafana, on-call. Linux.\nWhat you'll do\nLead reliability for payments.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "recommend",
+    "senior": "recommend"
+   }
+  },
+  {
+   "id": "v03",
+   "title": "Junior DevOps Engineer",
+   "location": "Utrecht, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "Entry level. You learn Kubernetes, Terraform and Linux with us. Docker, Git, GitHub Actions. Nice to have\n- Python",
+   "labels": {
+    "beginner": "recommend",
+    "career_changer": "recommend",
+    "mid": "recommend",
+    "senior": "recommend"
+   }
+  },
+  {
+   "id": "v04",
+   "title": "Head of Platform Engineering",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "You lead three teams, own the budget and the roadmap. Kubernetes in production, Terraform, AWS, Linux, Prometheus and Grafana, CI/CD. On-call once a month.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "recommend"
+   }
+  },
+  {
+   "id": "v05",
+   "title": "Security Operations Engineer",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "You run the SOC: triage alerts, threat hunting, incident response, SIEM tuning. Linux and AWS knowledge welcome. Kubernetes a plus.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "check",
+    "senior": "out"
+   },
+   "why": "A SOC job: triage, threat hunting, SIEM. Shown under Needs checking only to someone with paid infrastructure work at the same level; a beginner or a senior SRE is not a SOC analyst."
+  },
+  {
+   "id": "v06",
+   "title": "Software Engineer, Infrastructure",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "Own the Kubernetes platform on AWS: Terraform, Helm, Linux hosts, Prometheus alerting, CI/CD pipelines, on-call rotation. Go for internal tooling.",
+   "labels": {
+    "beginner": "recommend",
+    "career_changer": "recommend",
+    "mid": "recommend",
+    "senior": "recommend"
+   }
+  },
+  {
+   "id": "v07",
+   "title": "Platform Engineer",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "About the role\nYou build features for our customer app.\nWhat you bring\nJava, Spring Boot, TypeScript, React, REST APIs, unit tests, microservices. You ship frontend and backend code every week with the product team.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "out"
+   },
+   "why": "The title says platform; the work is React and Java product development. Needs checking at most, never a recommendation."
+  },
+  {
+   "id": "v08",
+   "title": "Machine Learning Platform Engineer",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "Run GPU clusters on Kubernetes with Terraform and Linux; CUDA drivers, Prometheus, on-call; no model training.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "check",
+    "senior": "check"
+   },
+   "why": "GPU platform work on Kubernetes: infrastructure with a data flavour, so Needs checking for someone with Terraform and on-call evidence; a beginner lacks both."
+  },
+  {
+   "id": "v09",
+   "title": "Automation Engineer",
+   "location": "Eindhoven, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "onsite",
+   "description": "PLC programming with Siemens TIA Portal, SCADA systems, industrial control systems and OT networks for a factory.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "out"
+   }
+  },
+  {
+   "id": "v10",
+   "title": "Platform Engineer",
+   "location": "Remote",
+   "countries": [],
+   "remote": "remote",
+   "description": "You run production Kubernetes on AWS with Terraform and Linux. Applicants must be based in the US.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "out"
+   }
+  },
+  {
+   "id": "v11",
+   "title": "Platform Engineer",
+   "location": "Berlin, Germany",
+   "countries": [
+    "DE"
+   ],
+   "remote": "hybrid",
+   "description": "You run production Kubernetes on AWS with Terraform and Linux. Prometheus, Grafana, CI/CD.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "out"
+   }
+  },
+  {
+   "id": "v12",
+   "title": "DevOps Engineer",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "onsite",
+   "description": "You run production Kubernetes on AWS with Terraform and Linux. Prometheus, Grafana, CI/CD. Five days a week in our Amsterdam office.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "out"
+   }
+  },
+  {
+   "id": "v13",
+   "title": "DevOps Engineer",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "What you bring\n- Kubernetes\n- Infrastructure as code with Pulumi\n- Datadog for monitoring\n- Linux\n- GitLab CI\nFluent Dutch is required.",
+   "labels": {
+    "beginner": "recommend",
+    "career_changer": "recommend",
+    "mid": "recommend",
+    "senior": "recommend"
+   }
+  },
+  {
+   "id": "v14",
+   "title": "Platform Engineer (freelance)",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "remote",
+   "employment_type": "Contract",
+   "description": "Freelance / ZZP opdracht voor 6 maanden. Kubernetes, Terraform, AWS, Linux, CI/CD, on-call.",
+   "labels": {
+    "beginner": "recommend",
+    "career_changer": "recommend",
+    "mid": "recommend",
+    "senior": "recommend"
+   }
+  },
+  {
+   "id": "v15",
+   "title": "Head of Marketing",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "Own the brand and the campaigns. Lead a team of four. Budget ownership.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "out"
+   }
+  },
+  {
+   "id": "v16",
+   "title": "Cloud Engineer",
+   "location": "Remote - Europe",
+   "countries": [],
+   "remote": "remote",
+   "description": "Remote within the EU. Azure, AKS, Terraform, Linux, GitHub Actions, monitoring. On-call.",
+   "labels": {
+    "beginner": "recommend",
+    "career_changer": "recommend",
+    "mid": "recommend",
+    "senior": "recommend"
+   }
+  },
+  {
+   "id": "v17",
+   "title": "Systems Engineer",
+   "location": "Rotterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "SCADA, PLCs and OT networks for a water utility. Windows servers for the control room.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "out"
+   }
+  },
+  {
+   "id": "v18",
+   "title": "Staff Platform Engineer",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "remote",
+   "description": "10+ years. You design the platform strategy, mentor senior engineers, own production Kubernetes on AWS and GCP, Terraform, observability.",
+   "labels": {
+    "beginner": "out",
+    "career_changer": "out",
+    "mid": "out",
+    "senior": "recommend"
+   },
+   "why": "A staff role asking for 10+ years: out for everyone but the senior engineer."
+  },
+  {
+   "id": "v19",
+   "title": "Platform Engineer",
+   "location": "Amsterdam, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "Platform Engineer wanted.",
+   "labels": {
+    "beginner": "check",
+    "career_changer": "check",
+    "mid": "check",
+    "senior": "check"
+   }
+  },
+  {
+   "id": "v20",
+   "title": "Linux System Administrator",
+   "location": "The Hague, Netherlands",
+   "countries": [
+    "NL"
+   ],
+   "remote": "hybrid",
+   "description": "Linux servers, Ansible, monitoring with Zabbix, networking, backups. Some Docker. No Kubernetes experience required.",
+   "labels": {
+    "beginner": "recommend",
+    "career_changer": "recommend",
+    "mid": "recommend",
+    "senior": "recommend"
+   }
+  }
+ ]
+}

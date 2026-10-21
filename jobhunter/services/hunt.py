@@ -154,6 +154,9 @@ def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids:
             run_id = db.insert("hunt_runs", {"trigger": trigger, "status": "running", "started_at": now_iso(), "heartbeat_at": now_iso(), "owner": _owner()})
         try:
             stats = _execute(ctx, db, run_id, source_ids, client, progress)
+            from jobhunter.services import board as _board
+
+            stats["seq"] = _board._next_seq(db)  # orders this hunt against dashboard reads and writes in the same second
             status = "completed" if not stats["sources_failed"] and not stats["sources_partial"] else "partial"
             if stats["sources_ok"] == 0 and (stats["sources_failed"] or stats["sources_partial"]):
                 status = "failed" if stats["sources_partial"] == 0 else "partial"

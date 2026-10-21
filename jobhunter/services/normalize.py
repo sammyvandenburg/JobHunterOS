@@ -212,6 +212,40 @@ def parse_salary(text: str | None) -> dict:
     return out
 
 
+CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
+PERIOD_WORDS = {"year": "a year", "month": "a month", "hour": "an hour"}
+
+
+def salary_label(lo, hi, currency: str | None, period: str | None, basis: str | None = None, text: str | None = None) -> str | None:
+    """The one way pay is shown (dashboard, email, command line). Numbers win over text; text with no numbers
+    stays as it is; nothing is invented. None means the posting states no pay."""
+    if lo is None and hi is None:
+        return (text or "").strip() or None
+
+    def amount(v) -> str:
+        n = float(v)
+        s = f"{n:,.0f}" if n == int(n) else f"{n:,.2f}"
+        sym = CURRENCY_SYMBOLS.get((currency or "").upper())
+        return f"{sym}{s}" if sym else (f"{s} {currency.upper()}" if currency else s)
+
+    if lo is not None and hi is not None:
+        core = amount(lo) if float(lo) == float(hi) else f"{amount(lo)} to {amount(hi)}"
+    elif lo is not None:
+        core = f"from {amount(lo)}"
+    else:
+        core = f"up to {amount(hi)}"
+    core += " " + PERIOD_WORDS.get(period or "year", "a year")
+    if basis == "total":
+        core += " (total compensation)"
+    return core
+
+
+def employment_label(raw_type: str | None, description: str | None = None) -> str | None:
+    from jobhunter.services.matching.requirements import employment_label as _label
+
+    return _label(raw_type, description)
+
+
 def detect_sponsorship(text: str) -> str:
     if NO_SPONSOR.search(text):
         return "no"
@@ -249,6 +283,9 @@ DATA_FLAVOUR = re.compile(r"\b(machine learning|ml|ai|artificial intelligence|ge
 
 
 MANAGEMENT = re.compile(r"\b(head of|director|vp|vice president|chief|cto|cio|ciso|manager|management)\b", re.I)
+INFRA_SUFFIX = re.compile(r"\b(infrastructure|infra|sre|site reliability|reliability|devops|systems engineering|production engineering)\b", re.I)
+# Industrial automation (OT): PLCs, SCADA and control systems are not IT infrastructure work.
+OT_WORDS = re.compile(r"\b(plcs?|scada|siemens tia|tia portal|industrial control|ics\b|ot networks?|operational technology|hmi|dcs\b|modbus|profinet|profibus|instrumentation|control systems? engineer|factory automation|machine controls?)\b", re.I)
 SECURITY_OPS = re.compile(r"\b(security operations|secops|soc|cyber ?security|cyber|penetration|pentest(er|ing)?|appsec|application security|security (analyst|engineer|architect|specialist|consultant)|information security|infosec|threat|incident responder|forensics)\b", re.I)
 DESC_SOFTWARE = re.compile(r"\b(java|kotlin|c#|\.net|typescript|react|angular|vue|node\.?js|spring boot|django|rails|php|laravel|swift|flutter|graphql|rest apis?|microservices|unit tests?|front-?end|back-?end)\b", re.I)
 
@@ -274,7 +311,16 @@ def classify_relevance(title: str, description: str) -> tuple[str, str]:
     hits = infra_signal_count(description or "")
     title_infra = bool(TITLE_INFRA.search(t))
     primary = primary_role(t)
+    ot_hits = len({m.group(0).lower() for m in OT_WORDS.finditer(description or "")})
+    if ot_hits >= 2 and hits < 3:
+        return "irrelevant", "This is industrial automation (PLC, SCADA, control systems), not IT infrastructure work."
+    software_desc = len(DESC_SOFTWARE.findall(description or ""))
     if title_infra and SOFTWARE_PRIMARY.search(primary) and not TITLE_INFRA.search(primary):
+        # "Software Engineer, Infrastructure" with infrastructure responsibilities is infrastructure work; a
+        # full-stack or front-end role on a "Platform" team is not decided by the team name.
+        generic_swe = re.search(r"^(software|systems software)\s+(development\s+)?(engineer|developer)\b|^engineer\b", primary, re.I)
+        if generic_swe and INFRA_SUFFIX.search(t[len(primary):]) and hits >= 4 and software_desc <= 1 and not DATA_FLAVOUR.search(primary):
+            return "relevant", "The title says software, but the work described is infrastructure work: that is what counts."
         title_infra = False  # the infrastructure word names the team, the role is software development
     if title_infra and TITLE_INFRA.search(primary) and DATA_FLAVOUR.search(primary) and not re.search(r"\b(devops|sre|site reliability|mlops|kubernetes|cloud)\b", primary, re.I):
         return "uncertain", "This is a data or machine-learning platform job. Part of the work may be infrastructure work; check the description."
@@ -453,7 +499,7 @@ def normalize(raw: RawPosting) -> Normalized:
         region_tags=tags,
         remote_type=remote,
         remote_restriction=restriction,
-        employment_type=raw.employment_type,
+        employment_type=employment_label(raw.employment_type, desc),
         salary_text=salary_text,
         salary_min=sal["min"],
         salary_max=sal["max"],

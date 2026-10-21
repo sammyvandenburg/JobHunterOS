@@ -23,15 +23,17 @@ from jobhunter.util import parse_iso
 ORDER = ("restore", "read_dashboard", "hunt", "digest", "save", "publish_dashboard")
 
 
-def _t(value) -> float:
-    """An instant for ordering (seconds since the epoch); 0 when unknown. Mixed time zones and precisions
-    compare correctly as instants, never as text."""
+def _t(value, seq=None) -> tuple[float, int]:
+    """An instant for ordering: (seconds since the epoch, sequence number); (0, 0) when unknown. Timestamps
+    carry whole seconds, so two steps in the same second are ordered by the shared counter the dashboard
+    reads, writes and hunts take (`board.seq`)."""
     if not value:
-        return 0.0
+        return (0.0, 0)
     if isinstance(value, dict):
+        seq = value.get("seq") if seq is None else seq
         value = value.get("at") or value.get("finished_at")
     d = parse_iso(str(value))
-    return d.timestamp() if d else 0.0
+    return (d.timestamp(), int(seq or 0)) if d else (0.0, 0)
 
 
 def _iso(value) -> str | None:
@@ -56,7 +58,7 @@ def evidence(db: Database) -> dict:
         "restored": db.get_setting("cloud.last_import"),
         "saved": db.get_setting("cloud.last_export"),
         "state_repo": db.get_setting("cloud.repo_dir"),
-        "last_hunt": {"id": last_run["id"], "status": last_run["status"], "trigger": last_run.get("trigger"), "started_at": last_run.get("started_at"), "finished_at": last_run.get("finished_at"), "error": last_run.get("error")} if last_run else None,
+        "last_hunt": {"id": last_run["id"], "status": last_run["status"], "trigger": last_run.get("trigger"), "started_at": last_run.get("started_at"), "finished_at": last_run.get("finished_at"), "error": last_run.get("error"), "stats": last_run.get("stats") or {}} if last_run else None,
         "email_address_confirmed": bool(notifications.recipient(db)),
         "email_transport": db.get_setting("digest.transport"),
         "last_digest": {k: last_digest.get(k) for k in ("id", "status", "created_at", "claimed_at", "sent_at", "error", "provider_message_id")} if last_digest else None,
@@ -75,21 +77,21 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
     t_restore = _t(ev["restored"])
     t_read = _t(ev["dashboard_read"])
     t_written = _t(ev["dashboard_written"])
-    t_hunt = _t(ev["last_hunt"]) if ev["last_hunt"] and ev["last_hunt"]["status"] != "running" else 0.0
+    t_hunt = _t(ev["last_hunt"], (ev["last_hunt"].get("stats") or {}).get("seq")) if ev["last_hunt"] and ev["last_hunt"]["status"] != "running" else (0.0, 0)
     t_saved = _t(ev["saved"])
     last_digest = ev["last_digest"] or {}
-    t_digest = _t(last_digest.get("sent_at") or last_digest.get("claimed_at") or last_digest.get("created_at")) if last_digest else 0.0
+    t_digest = _t(last_digest.get("sent_at") or last_digest.get("claimed_at") or last_digest.get("created_at")) if last_digest else (0.0, 0)
 
     def add(name, status, why, command=None, **extra):
         steps.append({"step": name, "status": status, "why": why, "command": command, **extra})
 
     # A finished cycle: the page was written after a hunt that followed a read (and the restore). Then this run is
     # complete, and the page being "unread since Hunter wrote" is simply where the next run starts.
-    cycle_done = bool(t_read) and t_hunt >= t_read and t_written >= t_hunt and t_read >= t_restore if linked else bool(t_hunt) and t_hunt >= t_restore
+    cycle_done = bool(t_read[0]) and t_hunt >= t_read and t_written >= t_hunt and t_read >= t_restore if linked else bool(t_hunt[0]) and t_hunt >= t_restore
 
     # 1. restore (a nightly run always starts from the private copy; a laptop session never restores)
     if nightly or role_cloud:
-        done = bool(t_restore) and (not t_hunt or t_restore >= t_hunt)
+        done = bool(t_restore[0]) and (not t_hunt[0] or t_restore >= t_hunt)
         add("restore", "done" if done else "next", "State loaded from the private copy in this run." if done else "Load the state from the private copy first.", "uv run jobhunter cloud load --restore --branch main --json", at=_iso(ev["restored"]))
     else:
         add("restore", "skipped", "This computer holds the state itself.")
@@ -100,13 +102,13 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
         add("read_dashboard", "skipped", "No dashboard linked yet.")
     else:
         stale = None if cycle_done else ev["dashboard_stale"]
-        done = not stale and bool(t_read) and (not t_restore or t_read >= t_restore)
+        done = not stale and bool(t_read[0]) and (not t_restore[0] or t_read >= t_restore)
         add("read_dashboard", "done" if done else ("next" if prev_done else "pending"), "The page's actions were read after Hunter last wrote to it." if done else (stale or "Read the page's actions first (after a restore, every action is read again)."),
             "ArtifactData list collection=actions out_dir=<DIR>/in (follow next_cursor), then: uv run jobhunter board import --in <DIR>/in --listed <total> --json", at=_iso(ev["dashboard_read"]))
     prev_done = all(s["status"] in {"done", "skipped"} for s in steps)
 
     # 3. hunt
-    hunt_ok = bool(t_hunt) and (not linked or t_hunt >= t_read) and (not t_restore or t_hunt >= t_restore)
+    hunt_ok = bool(t_hunt[0]) and (not linked or t_hunt >= t_read) and (not t_restore[0] or t_hunt >= t_restore)
     if ev["last_hunt"] and ev["last_hunt"]["status"] == "running":
         add("hunt", "pending", "A hunt is running now.", at=None)
     else:
@@ -132,7 +134,7 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
         add("save", "skipped", "No private copy linked for the state.")
     else:
         latest_change = max(t_hunt, t_read, t_digest)
-        done = bool(t_saved) and t_saved >= latest_change
+        done = bool(t_saved[0]) and t_saved >= latest_change
         add("save", "done" if done else ("next" if prev_done else "pending"), "State saved after the last change." if done else "Save the state so the next run (and the laptop) knows what happened.", "uv run jobhunter cloud save --json" + (" --branch main" if nightly else ""), at=_iso(ev["saved"]))
     prev_done = all(s["status"] in {"done", "skipped"} for s in steps)
 
@@ -140,7 +142,7 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
     if not linked:
         add("publish_dashboard", "skipped", "No dashboard linked yet.")
     else:
-        done = bool(t_written) and t_written >= t_hunt and t_written >= t_read and (not t_digest or t_written >= t_digest)
+        done = bool(t_written[0]) and t_written >= t_hunt and t_written >= t_read and (not t_digest[0] or t_written >= t_digest)
         add("publish_dashboard", "done" if done else ("next" if prev_done else "pending"), "The page shows this run." if done else "Write the page after the hunt and the digest.", "uv run jobhunter board export --out <DIR>/out --json, then the ArtifactData batch from the manifest", at=_iso(ev["dashboard_written"]))
 
     nxt = next((s for s in steps if s["status"] in {"next", "blocked"}), None)

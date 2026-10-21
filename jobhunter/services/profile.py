@@ -319,6 +319,8 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
                         break
                     bullets.append(follow)
                 domain, scope = classify_role(title_line, " ".join(bullets))
+                # The tools the bullets name stay with the role: that is what "paid work" evidence means.
+                tool_tags = [f"tool:{k}" for k in sorted(extract_skills(" ".join(bullets)))]
                 facts.append(
                     Fact(
                         id=nid("r"),
@@ -329,7 +331,7 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
                         start=start,
                         end=end,
                         evidence=[EvidenceRef(type="document", ref=f"document:{cv['id']}", quote=_quote(line))],
-                        tags=[f"domain:{domain}", f"scope:{scope}"],
+                        tags=[f"domain:{domain}", f"scope:{scope}", *tool_tags],
                     )
                 )
                 if kind == "professional":
@@ -381,6 +383,22 @@ def build_rule_based_draft(db: Database) -> ProfileDraft:
                     tags=["skill"],
                 )
             )
+
+    # Languages: a "Languages" line or section, one fact per language, as written.
+    from jobhunter.services.matching.requirements import LANGUAGES as _LANGS
+
+    lang_rx = re.compile(r"^\W*(languages?|talen)\b\W*(?P<rest>.*)$", re.I)
+    all_lines = [ln for sec in sections for ln in sec.lines]
+    for idx, ln in enumerate(all_lines):
+        m = lang_rx.match(ln)
+        if not m:
+            continue
+        body = m.group("rest").strip() or (all_lines[idx + 1] if idx + 1 < len(all_lines) else "")
+        for part in re.split(r"[,;•|/]| and ", body):
+            part = part.strip(" .")
+            if any(lang.lower() in part.lower() for lang in _LANGS) and len(part) <= 40:
+                facts.append(Fact(id=nid("l"), category="other", text=part, confidence="explicit", evidence=[EvidenceRef(type="document", ref=f"document:{cv['id']}", quote=_quote(ln if m.group("rest").strip() else body))], tags=["language"]))
+        break
 
     # Certifications vs courses: a course is not a certification.
     for pattern, label in CERT_PATTERNS:

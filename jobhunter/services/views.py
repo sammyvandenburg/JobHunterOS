@@ -8,7 +8,7 @@ import math
 
 from jobhunter.config import POLICY_VERSION
 from jobhunter.db import Database
-from jobhunter.services import actions, freshness, hunt, notes
+from jobhunter.services import actions, freshness, hunt, normalize, notes
 from jobhunter.util import now_iso, truncate
 
 VIEWS = ("new", "favorites", "saved", "applied", "finished", "all", "dismissed", "excluded", "uncertain", "old", "closed", "interviews")
@@ -129,7 +129,10 @@ def summarize(r: dict) -> dict:
         "remote_label": remote_label,
         "remote_type_label": {"remote": "Remote", "hybrid": "Hybrid", "onsite": "In office"}.get(r.get("remote_type") or "unknown", ""),
         "remote_restriction": r.get("remote_restriction"),
-        "salary": r.get("salary_text") or None,
+        "salary": normalize.salary_label(r.get("salary_min"), r.get("salary_max"), r.get("salary_currency"), r.get("salary_period"), r.get("salary_basis"), r.get("salary_text")),
+        "salary_source_text": r.get("salary_text") or None,
+        "authorization": {"no": "The posting says: no visa sponsorship.", "yes": "The posting says: visa sponsorship offered."}.get(r.get("sponsorship") or "unknown", "Not stated in the posting."),
+        "employment_type": r.get("employment_type"),
         "freshness": b,
         "freshness_label": flabel,
         "verification": freshness.verification_label(r),

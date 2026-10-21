@@ -167,7 +167,7 @@ def test_skills_canonical_for_parser_and_structured_paths_and_aks_is_not_broad_a
     assert set(candidate_skills(phrase)) == {"kubernetes", "aks"}
     jid = _job(ctx, db, "az", description_text="Kubernetes on Azure. Terraform. Linux. Git. CI/CD.")
     m = _m(db, jid)
-    assert any("Azure" in g and "AKS" in g and "related" in g for g in m["gaps"]), m["gaps"]
+    assert any("Azure" in g and "AKS" in g and ("related" in g or "not Azure" in g) for g in m["gaps"]), m["gaps"]
 
 
 # ---------------------------------------------------------------- JH-04: location

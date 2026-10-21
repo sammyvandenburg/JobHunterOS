@@ -22,35 +22,88 @@ SKILL_VOCAB: dict[str, list[str]] = {
     "cloudformation": ["cloudformation", "cloud formation"],
     "ansible": ["ansible"],
     "helm": ["helm", "helm charts"],
-    "argocd": ["argo cd", "argocd", "gitops", "flux", "fluxcd"],
+    "argocd": ["argo cd", "argocd", "argo-cd"],
+    "flux": ["flux", "fluxcd", "flux cd"],
+    "gitops": ["gitops"],
     "aws": ["aws", "amazon web services", "ec2", "s3", "iam roles", "lambda", "amazon eks"],
     "azure": ["azure", "microsoft azure", "azure devops", "entra"],
     "gcp": ["gcp", "google cloud", "google cloud platform"],
     "linux": ["linux", "ubuntu", "debian", "rhel", "centos", "red hat", "bash", "shell scripting", "shell scripts"],
-    "ci/cd": ["ci/cd", "ci cd", "cicd", "jenkins", "gitlab ci", "github actions", "pipelines", "circleci", "tekton", "continuous integration", "continuous delivery", "continuous deployment"],
+    "ci/cd": ["ci/cd", "ci cd", "cicd", "pipelines", "continuous integration", "continuous delivery", "continuous deployment", "build pipelines", "deployment pipelines"],
+    "jenkins": ["jenkins"],
+    "github actions": ["github actions"],
+    "gitlab ci": ["gitlab ci", "gitlab-ci", "gitlab ci/cd", "gitlab pipelines"],
+    "circleci": ["circleci"],
+    "tekton": ["tekton"],
     "python": ["python"],
     "go": ["golang", "go programming", "go language", "go (golang)"],
-    "monitoring": ["prometheus", "grafana", "datadog", "observability", "monitoring", "opentelemetry", "elk", "loki", "alerting", "new relic", "splunk", "zabbix", "nagios"],
+    "monitoring": ["observability", "monitoring", "alerting", "telemetry"],
+    "prometheus": ["prometheus", "alertmanager"],
+    "grafana": ["grafana"],
+    "datadog": ["datadog"],
+    "newrelic": ["new relic", "newrelic"],
+    "splunk": ["splunk"],
+    "elk": ["elk", "elasticsearch", "elastic stack", "kibana", "logstash"],
+    "loki": ["loki"],
+    "opentelemetry": ["opentelemetry", "otel"],
+    "zabbix": ["zabbix"],
+    "nagios": ["nagios"],
+    "puppet": ["puppet"],
+    "chef": ["chef"],
+    "salt": ["saltstack", "salt stack"],
+    "bicep": ["bicep"],
+    "proxmox": ["proxmox"],
+    "hyperv": ["hyper-v", "hyperv"],
+    "virtualization": ["virtualization", "virtualisation", "hypervisor", "virtual machines"],
     "networking": ["networking", "tcp/ip", "dns", "load balancing", "load balancer", "load balancers", "vpc", "firewall", "firewalls", "vpn", "bgp"],
     "security": ["security", "vault", "secrets management", "cis benchmark", "devsecops"],
     "sql": ["postgresql", "postgres", "mysql", "sql"],
     "git": ["git", "github", "gitlab", "version control"],
     "windows server": ["windows server", "active directory"],
-    "vmware": ["vmware", "vsphere", "proxmox", "hyper-v"],
+    "vmware": ["vmware", "vsphere", "esxi", "vcenter"],
     "nginx": ["nginx"],
     "on-call": ["on-call", "on call", "incident response", "pagerduty", "incident management"],
     "cloud": ["cloud"],
 }
+# A family word and the specific tools that belong to it ("monitoring" is satisfied by Prometheus or Datadog;
+# a job that names Datadog asks for Datadog, not for "monitoring").
+FAMILIES: dict[str, list[str]] = {
+    "monitoring": ["prometheus", "grafana", "datadog", "newrelic", "splunk", "elk", "loki", "opentelemetry", "zabbix", "nagios"],
+    "gitops": ["argocd", "flux"],
+    "ci/cd": ["jenkins", "github actions", "gitlab ci", "circleci", "tekton"],
+    "virtualization": ["vmware", "proxmox", "hyperv"],
+    "kubernetes": ["aks", "eks", "gke"],
+}
 # Having the left-hand skill means having the right-hand ones too.
-IMPLIES: dict[str, list[str]] = {"aks": ["kubernetes"], "eks": ["kubernetes"], "gke": ["kubernetes"], "cloudformation": ["aws"]}
-# A job asking for the left-hand skill is only partly covered by the right-hand ones.
-RELATED: dict[str, list[str]] = {"azure": ["aks"], "aws": ["eks", "cloudformation"], "gcp": ["gke"], "kubernetes": ["aks", "eks", "gke"]}
+IMPLIES: dict[str, list[str]] = {"aks": ["kubernetes"], "eks": ["kubernetes"], "gke": ["kubernetes"], "cloudformation": ["aws"], "bicep": ["azure"]}
+for _family, _members in FAMILIES.items():
+    for _m in _members:
+        IMPLIES.setdefault(_m, [])
+        if _family not in IMPLIES[_m]:
+            IMPLIES[_m].append(_family)
+# A job asking for the left-hand tool is only partly covered by the right-hand ones: related, never the same.
+RELATED: dict[str, list[str]] = {
+    "azure": ["aks", "bicep"], "aws": ["eks", "cloudformation"], "gcp": ["gke"], "kubernetes": ["aks", "eks", "gke"],
+    "datadog": ["prometheus", "grafana", "newrelic", "splunk", "elk", "loki", "monitoring"],
+    "prometheus": ["datadog", "newrelic", "splunk", "elk", "loki", "grafana", "monitoring"],
+    "grafana": ["prometheus", "datadog", "elk", "monitoring"],
+    "newrelic": ["datadog", "prometheus", "monitoring"], "splunk": ["elk", "datadog", "monitoring"], "elk": ["splunk", "loki", "datadog", "prometheus", "monitoring"], "loki": ["elk", "prometheus", "monitoring"],
+    "opentelemetry": ["prometheus", "datadog", "monitoring"], "zabbix": ["nagios", "prometheus", "monitoring"], "nagios": ["zabbix", "prometheus", "monitoring"],
+    "flux": ["argocd", "gitops"], "argocd": ["flux", "gitops"],
+    "proxmox": ["vmware", "hyperv", "virtualization"], "vmware": ["proxmox", "hyperv", "virtualization"], "hyperv": ["vmware", "proxmox", "virtualization"],
+    "pulumi": ["terraform", "cloudformation", "bicep"], "terraform": ["pulumi", "cloudformation", "bicep"], "cloudformation": ["terraform", "pulumi"], "bicep": ["terraform", "pulumi", "cloudformation"],
+    "jenkins": ["github actions", "gitlab ci", "circleci", "ci/cd"], "github actions": ["gitlab ci", "jenkins", "circleci", "ci/cd"], "gitlab ci": ["github actions", "jenkins", "circleci", "ci/cd"], "circleci": ["github actions", "gitlab ci", "jenkins", "ci/cd"], "tekton": ["github actions", "gitlab ci", "jenkins", "ci/cd"],
+    "ansible": ["puppet", "chef", "salt"], "puppet": ["ansible", "chef", "salt"], "chef": ["ansible", "puppet", "salt"], "salt": ["ansible", "puppet", "chef"],
+}
 GENERIC = {"cloud"}
+# Near-universal tools a job may mention but that never decide a match ("GitHub Actions" also says "git").
+TRIVIAL = {"git"}
 # Skills that show the work itself is infrastructure work (used to resolve odd job titles).
-INFRA_SIGNAL = {"kubernetes", "aks", "eks", "gke", "docker", "terraform", "pulumi", "cloudformation", "ansible", "helm", "argocd", "aws", "azure", "gcp", "linux", "ci/cd", "monitoring", "on-call", "nginx", "vmware", "windows server", "networking"}
+INFRA_SIGNAL = {"kubernetes", "aks", "eks", "gke", "docker", "terraform", "pulumi", "cloudformation", "bicep", "ansible", "puppet", "chef", "salt", "helm", "argocd", "flux", "gitops", "aws", "azure", "gcp", "linux", "ci/cd", "jenkins", "github actions", "gitlab ci", "circleci", "tekton", "monitoring", "prometheus", "grafana", "datadog", "newrelic", "splunk", "elk", "loki", "opentelemetry", "zabbix", "nagios", "on-call", "nginx", "vmware", "proxmox", "hyperv", "virtualization", "windows server", "networking"}
 TOOL_LABELS = {
-    "monitoring": "monitoring (Prometheus, Grafana)", "argocd": "Argo CD / GitOps", "ci/cd": "CI/CD pipelines", "on-call": "on-call", "aws": "AWS", "gcp": "Google Cloud", "azure": "Azure",
-    "sql": "SQL databases", "aks": "Azure Kubernetes Service (AKS)", "eks": "Amazon EKS", "gke": "Google GKE", "cloudformation": "CloudFormation", "windows server": "Windows Server", "vmware": "VMware", "go": "Go",
+    "monitoring": "monitoring", "argocd": "Argo CD", "flux": "Flux", "gitops": "GitOps", "ci/cd": "CI/CD pipelines", "jenkins": "Jenkins", "github actions": "GitHub Actions", "gitlab ci": "GitLab CI", "circleci": "CircleCI", "tekton": "Tekton",
+    "on-call": "on-call", "aws": "AWS", "gcp": "Google Cloud", "azure": "Azure", "sql": "SQL databases", "aks": "Azure Kubernetes Service (AKS)", "eks": "Amazon EKS", "gke": "Google GKE", "cloudformation": "CloudFormation", "bicep": "Bicep",
+    "windows server": "Windows Server", "vmware": "VMware", "proxmox": "Proxmox", "hyperv": "Hyper-V", "virtualization": "virtualisation", "go": "Go", "newrelic": "New Relic", "elk": "the ELK stack", "opentelemetry": "OpenTelemetry", "datadog": "Datadog", "prometheus": "Prometheus", "grafana": "Grafana", "splunk": "Splunk", "loki": "Loki",
 }
 
 
@@ -86,7 +139,7 @@ def canonical_skill_keys(text: str) -> set[str]:
 
 def job_tools(description: str | None, title: str | None) -> set[str]:
     """Tools a job names, as canonical keys. Generic words such as 'cloud' never count."""
-    return extract_skills(f"{title or ''}\n{description or ''}") - GENERIC
+    return extract_skills(f"{title or ''}\n{description or ''}") - GENERIC - TRIVIAL
 
 
 def coverage(tools: set[str], candidate: set[str]) -> tuple[list[str], list[tuple[str, str]], list[str]]:

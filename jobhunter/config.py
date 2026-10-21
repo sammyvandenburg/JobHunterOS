@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 APP_NAME = "jobhunteros"
-POLICY_VERSION = "2026.10-5"  # matching policy version; bump when scoring rules change
+POLICY_VERSION = "2026.10-6"  # matching policy version; bump when scoring rules change
 DEFAULT_DASHBOARD_HOST = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8765
 

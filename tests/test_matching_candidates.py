@@ -147,6 +147,8 @@ def test_missing_evidence_is_told_apart_from_missing_experience(ctx, db):
     row = profile_svc.approved(db)
     kept = [f for f in row["facts"] if not (f.category == "skill" and "terraform" in f.text.lower())]
     assert len(kept) < len(row["facts"])
+    for f in kept:  # a refined profile that carries Terraform nowhere, not even as a paid role's tool
+        f.tags = [t for t in f.tags if t != "tool:terraform"]
     db.update("profile_versions", {"facts_json": json.dumps([f.model_dump(mode="json") for f in kept])}, "id = ?", (row["id"],))
     assert not any(f.category == "skill" and "terraform" in f.text.lower() for f in profile_svc.approved(db)["facts"])
     jobs = _seed(ctx, db)
