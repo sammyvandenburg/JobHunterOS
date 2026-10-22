@@ -204,3 +204,62 @@ def test_followups_have_a_changeable_date_and_stop_on_a_reply(ctx, db, tmp_path)
     assert workspace.current_followup(db, jid) is None
     with pytest.raises(workspace.WorkspaceError, match="stage"):
         workspace.set_followup(db, jid, days=7)
+
+
+def test_handoff_separates_sent_from_drafts_and_names_the_exact_cv_version(ctx, db, tmp_path):
+    from jobhunter.services import interviewos
+
+    nw, jid = _ready(ctx, db, tmp_path)
+    with pytest.raises(interviewos.HandoffError, match="I applied"):
+        workspace.run_request(ctx, db, workspace.request(db, jid, "prepare", {}, request_id="prepare:1")["request_id"])
+        interviewos.export(ctx, db, jid)
+    pkg = drafts_svc.current_package(db, jid)
+    first = next(a for a in pkg["draft"]["answers"] if a["answer"])
+    workspace.save_answer(db, jid, workspace.answer_id(first["question"]), "My confirmed words.")
+    workspace.ensure_research(db, db.fetchone("SELECT * FROM jobs WHERE id = ?", (jid,)))
+    c = workspace.add_contact(db, jid, "connection", "Sam Friend", role="SRE", route="https://www.linkedin.com/in/sam-friend")
+    draft = workspace.contact_message(db, jid, c["id"])
+    actions.mark_applied(db, jid, applied_at="2026-10-20T09:00:00+00:00", cv_choice="prepared")
+    workspace.set_followup(db, jid, due_at="2026-10-27T09:00:00+00:00")
+    drafts_svc.mark_sent(db, draft["draft_id"])
+    from jobhunter.services import notes as notes_svc
+
+    notes_svc.add(db, jid, "Ask about on-call rota.")
+    actions.set_stage(db, jid, "interview", occurred_at="2026-10-25T10:00:00+00:00")
+    res = interviewos.export(ctx, db, jid)
+    text = Path(res["path"]).read_text(encoding="utf-8")
+    assert res["cv_known"] and res["sent_items"] == 1 and res["confirmed_answers"] == 1 and res["interview_recorded"]
+    assert "## CV version you said you sent" in text and pkg["cv"]["sha256"] in text and "My CV, version 1" in text
+    assert "My confirmed words." in text and first["answer"] not in text  # Hunter's draft is never passed off as the person's
+    assert "## Messages confirmed as sent" in text and "Hi Sam Friend," in text
+    assert "## Company and role brief (with sources)" in text and "checked 2026" in text
+    assert "Ask about on-call rota." in text and "Due 2026-10-27" in text and "Interview recorded 2026-10-25" in text
+    assert "Copyable summary: " in text and "CV sent: My CV v1" in res["summary"] and "1 message confirmed sent" in res["summary"]
+    assert "Platform-focused" not in text  # no CV text travels
+    # A second export is a new snapshot; the first file is untouched.
+    res2 = interviewos.export(ctx, db, jid)
+    assert res2["path"] != res["path"] and Path(res["path"]).read_text(encoding="utf-8") == text
+    # Without a recorded CV the hand-off says unknown, never guesses.
+    other = db.fetchone("SELECT id FROM jobs WHERE id != ? LIMIT 1", (jid,))["id"]
+    actions.mark_applied(db, other, cv_choice="unknown")
+    t2 = Path(interviewos.export(ctx, db, other)["path"]).read_text(encoding="utf-8")
+    assert "Unknown: no CV version was recorded" in t2 and "you said you were not sure" in t2
+
+
+def test_followup_reminders_reach_the_email_only_when_that_preference_is_on(ctx, db, tmp_path):
+    from jobhunter.services import notifications
+
+    nw, jid = _ready(ctx, db, tmp_path)
+    actions.mark_applied(db, jid, applied_at="2026-10-01T09:00:00+00:00", cv_choice="unknown")
+    workspace.set_followup(db, jid, due_at="2026-10-02T09:00:00+00:00")
+    assert workspace.current_followup(db, jid)["overdue"]
+    other = db.fetchone("SELECT * FROM jobs WHERE id != ?", (jid,)) | {"match_group": "good"}
+    digest = notifications.compose(db, [other])
+    assert "Follow-up due" not in digest.text
+    db.set_setting(notifications.FOLLOWUP_EMAIL_SETTING, True)
+    digest = notifications.compose(db, [other])
+    assert "Follow-up due: Platform Engineer at Northwind Cloud" in digest.text and "Follow-up due" in digest.html
+    # The dashboard always shows it under Needs attention.
+    manifest = _export(ctx, db, tmp_path / "o1")
+    run = json.loads(Path(next(w["file"] for w in manifest["writes"] if w["doc_id"] == "run")).read_text())
+    assert any(a["kind"] == "followup" for a in run["attention"])

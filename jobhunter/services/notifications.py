@@ -8,6 +8,7 @@ ambiguous outcomes are marked ``uncertain`` and never blindly retried.
 
 from __future__ import annotations
 
+import html as html_mod
 import json
 import re
 import secrets
@@ -72,9 +73,25 @@ def pending_jobs(db: Database, since: str | None = None, limit: int = 15) -> lis
     return out
 
 
+FOLLOWUP_EMAIL_SETTING = "followups.email"  # off by default: reminders show on the dashboard; email is a separate choice
+
+
+def _followup_lines(db: Database) -> list[str]:
+    if not db.get_setting(FOLLOWUP_EMAIL_SETTING):
+        return []
+    from jobhunter.services import drafts as drafts_svc
+
+    due = drafts_svc.due_followups(db)[:5]
+    return [f"Follow-up due: {f['title']} at {f['employer_name'] or 'an employer'} (you applied {str(f.get('applied_at') or '')[:10] or 'earlier'})." for f in due]
+
+
 def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) -> Digest:
     lines = ["Hi,", "", f"Hunter found {len(jobs)} job(s) worth a look.", ""]
     html_items = []
+    reminders = _followup_lines(db)
+    if reminders:
+        lines += reminders + [""]
+        html_items.append("<p><b>Reminders</b><br>" + "<br>".join(html_mod.escape(r) for r in reminders) + "</p>")
     for j in jobs:
         link = j.get("direct_url") if j.get("direct_url_status") == "verified" else (j.get("apply_url") or j.get("discovery_url"))
         b, flabel = freshness.bucket(j)

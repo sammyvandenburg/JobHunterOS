@@ -87,7 +87,59 @@ def _export_inputs(db: Database) -> dict:
             "applied": _keys(db, "SELECT j.canonical_key AS k FROM jobs j JOIN applications a ON a.job_id = j.id WHERE a.stage != 'prepared'")}
     from jobhunter.services import board
 
-    return {"profile": profile, "preferences": prefs_svc.get(db).model_dump(mode="json"), "consents": consents, "exclusions": excl, "digest_transport": "claude", "board": board.export_sync_state(db)}
+    return {"profile": profile, "preferences": prefs_svc.get(db).model_dump(mode="json"), "consents": consents, "exclusions": excl, "digest_transport": "claude", "board": board.export_sync_state(db), "cvs": _export_cvs(db)}
+
+
+def _export_cvs(db: Database) -> list[dict]:
+    """My CVs as metadata only: stable keys, labels, tags, which is the default, and every version's hash, file name and
+    size. Never the file, never its text. A restored database shows the same CVs and records which version an
+    application used; the file itself is only on the computer where it was added."""
+    from jobhunter.services import documents as docs
+
+    out = []
+    for c in docs.list_cvs(db, include_archived=True, with_revisions=True):
+        out.append({k: c[k] for k in ("key", "label", "tags", "default", "profile_cv", "archived", "archived_at", "created_at")} | {"revisions": [{k: r[k] for k in ("revision_key", "number", "sha256", "filename", "bytes", "uploaded_at", "note")} for r in c["revisions"]]})
+    return out
+
+
+def _import_cvs(db: Database, cvs: list[dict]) -> int:
+    """Recreate CV variants and versions by their stable keys, with placeholder originals (no bytes here): the person
+    adds the file again on this computer when they want to preview or download it; the hash proves it is the same."""
+    from jobhunter.services import documents as docs
+
+    n = 0
+    ts = now_iso()
+    for c in cvs or []:
+        if not isinstance(c, dict) or not re.fullmatch(r"cv[0-9a-f]{10}", str(c.get("key") or "")):
+            continue
+        with db.tx():
+            v = db.fetchone("SELECT * FROM cv_variants WHERE variant_key = ?", (c["key"],))
+            if not v:
+                vid = db.insert("cv_variants", {"variant_key": c["key"], "label": str(c.get("label") or "My CV")[:60], "tags_json": json.dumps([str(t)[:30] for t in (c.get("tags") or [])][:8]), "is_default": 1 if c.get("default") else 0, "is_profile": 1 if c.get("profile_cv") else 0, "archived_at": c.get("archived_at"), "created_at": c.get("created_at") or ts, "updated_at": ts})
+                n += 1
+            else:
+                vid = v["id"]
+                db.update("cv_variants", {"label": str(c.get("label") or v["label"])[:60], "tags_json": json.dumps([str(t)[:30] for t in (c.get("tags") or [])][:8]), "is_default": 1 if c.get("default") else 0, "archived_at": c.get("archived_at"), "updated_at": ts}, "id = ?", (vid,))
+            for r in c.get("revisions") or []:
+                if not isinstance(r, dict) or not re.fullmatch(r"rev[0-9a-f]{10}", str(r.get("revision_key") or "")):
+                    continue
+                if db.fetchone("SELECT id FROM cv_revisions WHERE revision_key = ?", (r["revision_key"],)):
+                    continue
+                existing = db.fetchone("SELECT id FROM source_documents WHERE sha256 = ? AND kind IN ('cv', 'cv_variant') ORDER BY id LIMIT 1", (r.get("sha256") or "",))
+                if existing:
+                    did = existing["id"]
+                else:
+                    kind = "cv" if c.get("profile_cv") else "cv_variant"
+                    prev = db.fetchone("SELECT id, version FROM source_documents WHERE kind = ? AND superseded_by IS NULL ORDER BY version DESC LIMIT 1", (kind,))
+                    did = db.insert("source_documents", {"kind": kind, "label": c.get("label"), "original_filename": r.get("filename"), "media_type": None, "byte_size": int(r.get("bytes") or 0), "sha256": str(r.get("sha256") or ""), "version": (prev["version"] + 1) if prev else int(r.get("number") or 1), "stored_path": str(docs.placeholder_path(db, str(r.get("sha256") or ""), r.get("filename"))), "text_path": None, "extraction_status": "unavailable", "extraction_notes": "The file is not on this computer. Add this CV again to preview or download it.", "source_url": None, "created_at": r.get("uploaded_at") or ts})
+                    if prev and kind == "cv":
+                        db.update("source_documents", {"superseded_by": did}, "id = ?", (prev["id"],))
+                db.insert("cv_revisions", {"revision_key": r["revision_key"], "variant_id": vid, "document_id": did, "number": int(r.get("number") or 1), "note": r.get("note"), "review_json": None, "created_at": r.get("uploaded_at") or ts})
+    if cvs and not db.fetchone("SELECT id FROM cv_variants WHERE is_default = 1 AND archived_at IS NULL"):
+        first = db.fetchone("SELECT id FROM cv_variants WHERE archived_at IS NULL ORDER BY is_profile DESC, created_at LIMIT 1")
+        if first:
+            db.update("cv_variants", {"is_default": 1}, "id = ?", (first["id"],))
+    return n
 
 
 def _keys(db: Database, sql: str) -> list[str]:
@@ -101,7 +153,7 @@ def _acted_jobs(db: Database) -> dict[int, dict]:
         "(SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('favorited','unfavorited') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS fav_state, "
         "(SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('saved','unsaved') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS save_state, "
         "(SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('dismissed','undismissed') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS dismiss_state, "
-        "a.stage AS app_stage, a.applied_at AS app_applied_at, "
+        "a.stage AS app_stage, a.applied_at AS app_applied_at, a.cv_variant_key, a.cv_choice, a.submitted_cv_choice, a.submitted_cv_revision_key, "
         "(SELECT COUNT(*) FROM job_notes n WHERE n.job_id = j.id AND n.deleted_at IS NULL) AS notes_count, "
         f"(SELECT MAX(occurred_at) FROM events e WHERE e.job_id = j.id AND e.kind IN ({','.join('?' for _ in STATE_EVENT_KINDS)})) AS state_at "
         "FROM jobs j LEFT JOIN applications a ON a.job_id = j.id",
@@ -110,9 +162,10 @@ def _acted_jobs(db: Database) -> dict[int, dict]:
     out = {}
     for r in rows:
         stage = r.get("app_stage") if r.get("app_stage") != "prepared" else None
-        if not (r.get("state_at") or r.get("notes_count") or stage):
+        if not (r.get("state_at") or r.get("notes_count") or stage or r.get("cv_variant_key")):
             continue
         out[r["id"]] = {
+            "cv": {"variant_key": r.get("cv_variant_key"), "choice": r.get("cv_choice"), "submitted_choice": r.get("submitted_cv_choice"), "submitted_revision_key": r.get("submitted_cv_revision_key")} if (r.get("cv_variant_key") or r.get("submitted_cv_choice")) else None,
             "favorite": r.get("fav_state") == "favorited",
             "saved": r.get("save_state") == "saved",
             "dismissed": r.get("dismiss_state") == "dismissed",
@@ -262,6 +315,8 @@ def _import_inputs(db: Database, inputs: dict) -> dict:
         from jobhunter.services import board
 
         changed["board"] = board.import_sync_state(db, inputs["board"])
+    if isinstance(inputs.get("cvs"), list):
+        changed["cvs"] = _import_cvs(db, inputs["cvs"])
     db.set_setting("cloud.role", "cloud")
     return changed
 
@@ -326,8 +381,10 @@ def _import_states(db: Database, jobs: list[dict], key_to_id: dict[str, int]) ->
         jid = key_to_id.get(j["canonical_key"])
         if not isinstance(st, dict) or not jid:
             continue
+        cv_changed = _import_cv_state(db, jid, st.get("cv"))  # before "applied": the recorded CV version binds first
         when = str(st.get("at") or "")[:32]
         if when and when <= _state_at(db, jid):
+            n += cv_changed
             continue  # this database decided later (or at the same time): keep its own decision
         row = db.fetchone(
             "SELECT (SELECT kind FROM events e WHERE e.job_id = j.id AND e.kind IN ('favorited','unfavorited') AND e.reverted_by IS NULL ORDER BY e.id DESC LIMIT 1) AS fav, "
@@ -359,8 +416,34 @@ def _import_states(db: Database, jobs: list[dict], key_to_id: dict[str, int]) ->
             for ev in db.fetchall("SELECT id FROM events WHERE job_id = ? AND application_id IS NOT NULL AND reverted_by IS NULL AND kind IN ('applied','reply_received','interview','offer','rejected','withdrawn') ORDER BY id", (jid,)):
                 actions.correct(db, ev["id"], note="Undone on your other computer or in a cloud run.")
             changed = True
-        n += changed
+        n += changed or cv_changed
     return n
+
+
+def _import_cv_state(db: Database, jid: int, cv: dict | None) -> bool:
+    """The CV chosen for this job and the version recorded as sent. A recorded submission is history: it is set once
+    and never overwritten by a later restore."""
+    if not isinstance(cv, dict):
+        return False
+    app = db.fetchone("SELECT * FROM applications WHERE job_id = ?", (jid,))
+    values: dict = {}
+    vk = cv.get("variant_key")
+    if vk and re.fullmatch(r"cv[0-9a-f]{10}", str(vk)) and db.fetchone("SELECT id FROM cv_variants WHERE variant_key = ?", (vk,)) and (not app or app.get("cv_variant_key") != vk):
+        values.update({"cv_variant_key": vk, "cv_choice": cv.get("choice") if cv.get("choice") in {"default", "suggested", "student"} else "student"})
+    sc, sr = cv.get("submitted_choice"), cv.get("submitted_revision_key")
+    if sc in {"prepared", "other", "unknown"} and (not app or not app.get("submitted_cv_choice")):
+        if sr and not db.fetchone("SELECT id FROM cv_revisions WHERE revision_key = ?", (sr,)):
+            sr = None
+        values.update({"submitted_cv_choice": sc if sr or sc == "unknown" else "unknown", "submitted_cv_revision_key": sr})
+    if not values:
+        return False
+    ts = now_iso()
+    with db.tx():
+        if not app:
+            db.insert("applications", {"job_id": jid, "stage": "prepared", "stage_changed_at": ts, "created_at": ts, "updated_at": ts, **values})
+        else:
+            db.update("applications", {**values, "updated_at": ts}, "id = ?", (app["id"],))
+    return True
 
 
 def _import_matches(db: Database, jobs: list[dict], key_to_id: dict[str, int]) -> int:

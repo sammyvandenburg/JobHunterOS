@@ -185,3 +185,42 @@ def test_i_applied_records_which_version_was_sent_and_never_invents_one(ctx, db)
     # Confirming twice never changes the recorded version.
     actions.mark_applied(db, a, cv_choice=plat["key"])
     assert db.fetchone("SELECT submitted_cv_revision_key FROM applications WHERE job_id = ?", (a,))["submitted_cv_revision_key"] == pkg["cv"]["revision_key"]
+
+
+def test_cv_metadata_and_the_submitted_version_survive_a_restore_into_an_empty_database(ctx, db, tmp_path):
+    """The state file carries which CVs exist (keys, labels, versions, hashes) and which version each application
+    used, never a file or its text. The restored side records the same facts; the file comes back only when the
+    person adds it again, proven by its hash."""
+    import json
+
+    from jobhunter.config import AppContext
+    from jobhunter.services import actions, cloudstate, drafts
+
+    approve_profile(db, ctx, countries="Netherlands")
+    a, b = _two_jobs(ctx, db)
+    plat = docs.add_cv_variant(db, ctx.paths, PLATFORM_CV.encode(), "platform-en.txt", "Platform — English", tags=["platform"])
+    drafts.prepare(ctx, db, a, cv_variant_key=plat["key"])
+    actions.mark_applied(db, a, applied_at="2026-10-20T09:00:00+00:00", cv_choice="prepared")
+    bundle = cloudstate.export_bundle(ctx, db)
+    assert cloudstate.check_bundle_privacy(bundle) == []
+    raw = json.dumps(bundle)
+    assert "Platform-focused engineer" not in raw and PLATFORM_CV[:40] not in raw  # no CV text, no bytes
+    cvs = {c["key"]: c for c in bundle["inputs"]["cvs"]}
+    assert cvs[plat["key"]]["revisions"][0]["sha256"] == plat["sha256"] and "stored_path" not in raw
+    home2 = tmp_path / "cloud"
+    ctx2 = AppContext.from_env(demo=False, home=home2)
+    db2 = connect(ctx2.paths.db_path)
+    cloudstate.import_bundle(ctx2, db2, bundle, inputs=True, results=True)
+    restored = {c["key"]: c for c in docs.list_cvs(db2, include_archived=True)}
+    assert set(restored) == set(cvs) and restored[plat["key"]]["label"] == "Platform — English" and restored[plat["key"]]["file_available"] is False
+    assert docs.default_cv(db2)["profile_cv"]
+    jid2 = db2.fetchone("SELECT id FROM jobs WHERE employer_name = 'Northwind Cloud'")["id"]
+    app2 = db2.fetchone("SELECT * FROM applications WHERE job_id = ?", (jid2,))
+    assert app2["cv_variant_key"] == plat["key"] and app2["submitted_cv_choice"] == "prepared" and app2["submitted_cv_revision_key"] == plat["revision_key"]
+    with pytest.raises(docs.CVError, match="Add this CV again"):
+        docs.cv_file(db2, plat["key"])
+    # Adding the same file again restores the bytes under the same key and version; a different file is a new version.
+    r = docs.add_cv_revision(db2, ctx2.paths, plat["key"], PLATFORM_CV.encode(), "platform-en.txt")
+    assert r.get("restored") and r["version"] == 1 and docs.cv_file(db2, plat["key"])["data"] == PLATFORM_CV.encode()
+    assert docs.get_cv(db2, plat["key"])["revision_key"] == plat["revision_key"]
+    db2.close()

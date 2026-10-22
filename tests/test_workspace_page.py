@@ -6,7 +6,6 @@ and the hand-off files, never the claude.ai service."""
 
 from __future__ import annotations
 
-import json
 import time
 
 import pytest

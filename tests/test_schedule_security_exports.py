@@ -192,13 +192,15 @@ def test_acc32_interviewos_export_distinguishes_sent_from_drafts(ctx, db):
     pkg = drafts.prepare(ctx, db, jid)
     out = drafts.outreach(db, jid, "Pat")
     drafts.mark_sent(db, out["draft_id"])
-    with pytest.raises(interviewos.HandoffError):
-        interviewos.export(ctx, db, jid)
+    early = interviewos.export(ctx, db, jid)  # allowed once applied; says the interview is not recorded yet
+    assert not early["interview_recorded"]
     actions.set_stage(db, jid, "interview", actor="user")
+    follow = drafts.outreach(db, jid, "Sam", purpose="followup")  # drafted, never confirmed as sent
     res = interviewos.export(ctx, db, jid)
     text = Path(res["path"]).read_text()
-    assert "Original vacancy text" in text and "actually sent" in text and "Unsubmitted drafts" in text
-    assert f"Draft {pkg['draft_id']}" in text and "confirmed sent" in text and "SHA-256" in text
+    assert "Original vacancy text" in text and "Messages confirmed as sent" in text and "Drafts that stayed drafts" in text
+    assert f"Draft {follow['draft_id']}" in text and f"Draft {pkg['draft_id']}" not in text  # the package is Hunter's help, not a message
+    assert "you confirmed it was sent" in text and "SHA-256" in text and "Interview recorded" in text
     assert res["sent_items"] == 1 and res["unsent_drafts"] == 1 and res["cv_known"]
 
 

@@ -459,6 +459,11 @@ def add_cv_revision(db: Database, paths: Paths, variant_key: str, data: bytes, o
         raise CVError("This CV is archived. Bring it back first (unarchive) to add a version.")
     cur = _current_revision(db, v["id"])
     digest = sha256_bytes(data) if data else ""
+    if digest:
+        for r in db.fetchall("SELECT r.*, d.sha256, d.original_filename, d.stored_path FROM cv_revisions r JOIN source_documents d ON d.id = r.document_id WHERE r.variant_id = ?", (v["id"],)):
+            if r["sha256"] == digest and not _file_available(r):
+                _restore_bytes(db, paths, r, data, original_filename)
+                return {**_variant_view(db, v, with_revisions=True), "duplicate": True, "restored": True, "note": f"That is version {r['number']} of this CV, which was not on this computer yet. It is now, byte for byte (hash checked)."}
     if cur and cur["sha256"] == digest:
         return {**_variant_view(db, v, with_revisions=True), "duplicate": True, "note": "That is already the current version of this CV. Nothing changed."}
     dup = _same_bytes_elsewhere(db, digest, except_variant_id=v["id"]) if digest else None
@@ -553,6 +558,29 @@ def delete_cv(db: Database, variant_key: str) -> dict:
             if other:
                 db.update("cv_variants", {"is_default": 1}, "id = ?", (other["id"],))
     return {"key": variant_key, "deleted": True}
+
+
+def placeholder_path(db: Database, digest: str, filename: str | None) -> Path:
+    """Where the original would be once the person adds it again on this computer (same name as `add_document`)."""
+    root = Path(db.path).parent  # the database sits at the data root; originals live in documents/ next to it
+    ext = Path(filename or "").suffix.lower() if filename else ""
+    return root / "documents" / f"{digest}{ext if ext in SUPPORTED_EXTENSIONS else '.bin'}"
+
+
+def _restore_bytes(db: Database, paths: Paths, rev: dict, data: bytes, original_filename: str | None) -> None:
+    """A version whose file was missing on this computer (restored from the state file) gets its bytes back: the
+    hash already proved they are the same file. The row keeps its id, key and number."""
+    ext = _ext_for(original_filename, None) or Path(rev.get("original_filename") or "").suffix.lower() or ".bin"
+    stored = paths.documents_dir / f"{rev['sha256']}{ext}"
+    if not stored.exists():
+        write_private_file(stored, data)
+    extraction = extract_text(data, ext)
+    text_path = None
+    if extraction.text:
+        text_path = paths.derived_dir / f"{rev['sha256']}.txt"
+        write_private_file(text_path, extraction.text.encode("utf-8"))
+    with db.tx():
+        db.update("source_documents", {"stored_path": str(stored), "text_path": str(text_path) if text_path else None, "extraction_status": extraction.status, "extraction_notes": extraction.notes, "byte_size": len(data), "original_filename": rev.get("original_filename") or original_filename}, "id = ?", (rev["document_id"],))
 
 
 def cv_file(db: Database, key: str) -> dict:

@@ -866,7 +866,10 @@ def cmd_digest(args):
     ctx, db = _open(args)
     try:
         c = args.digest_cmd
-        if c == "test":
+        if c == "followups":
+            db.set_setting(notifications.FOLLOWUP_EMAIL_SETTING, args.state == "on")
+            emit(args, {"followups_in_email": args.state == "on", "note": "Reminders always show on the dashboard; the email lists due follow-ups only while this is on."})
+        elif c == "test":
             emit(args, notifications.send_test(ctx, db))
         elif c == "prepare":
             emit(args, notifications.prepare_handoff(ctx, db))
@@ -1490,6 +1493,8 @@ def build_parser() -> argparse.ArgumentParser:
     x = dgs.add_parser("transport", help="which transport sends digests (claude = Claude's own Gmail connector)")
     x.add_argument("name", choices=["claude", "show"])
     dgs.add_parser("use-connected-address", help="send digests to the Gmail address you connected")
+    x = dgs.add_parser("followups", help="include due follow-up reminders in the digest (off by default; the dashboard always shows them)")
+    x.add_argument("state", choices=["on", "off"])
     x = dgs.add_parser("retry", help="send a failed or uncertain digest again (asks for --force when it may already have arrived)")
     x.add_argument("id", type=job_ref)
     x.add_argument("--force", action="store_true")
