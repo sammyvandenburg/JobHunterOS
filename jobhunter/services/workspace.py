@@ -222,23 +222,35 @@ def _domain(url: str | None) -> str | None:
     return host or None
 
 
+RESEARCH_POLICY = "2026.10-22b"  # bump when the rules that read a posting improve: older briefs are then remade
+
+
 def research_inputs_hash(job: dict) -> str:
     from jobhunter.util import sha256_text, stable_json
 
-    return sha256_text(stable_json({k: job.get(k) for k in ("description_hash", "title", "employer_name", "direct_url", "apply_url", "discovery_url", "last_checked_at")}))
+    return sha256_text(stable_json({k: job.get(k) for k in ("description_hash", "title", "employer_name", "direct_url", "apply_url", "discovery_url", "last_checked_at")} | {"policy": RESEARCH_POLICY}))
+
+
+UNQUOTABLE_RX = re.compile(r"(@[\w.-]+\.[a-z]{2,}|https?://|\b(ignore|disregard|forget)\b[^.\n]{0,40}\b(previous|prior|above|earlier)\b|\bsystem prompt\b|\bassistant\b)", re.I)
+
+
+def _quotable(lines: list[str]) -> list[str]:
+    """Lines the brief may quote from a posting: no addresses or links (contacts are handled apart, never guessed)
+    and nothing that reads like an instruction to an assistant. The posting describes; it never instructs."""
+    return [ln for ln in lines if not UNQUOTABLE_RX.search(ln)]
 
 
 def rule_based_research(db: Database, job: dict) -> dict:
     """What can be said from the posting alone, in three labelled tiers. Nothing is fetched here; a Claude
     session may add a richer version through `research submit`, with sources it really read."""
     desc = job.get("description_text") or ""
-    vacancy = drafts_svc._section(desc, drafts_svc.REQ_HEADINGS, 5)
+    vacancy = _quotable(drafts_svc._section(desc, drafts_svc.REQ_HEADINGS, 6))[:5]
     if not vacancy:  # no recognisable heading: the lines that read like requirements, in order
-        vacancy = [ln for ln in drafts_svc._lines(desc) if REQ_LINE_RX.search(ln)][:5]
-    doing = drafts_svc._section(desc, drafts_svc.RESP_HEADINGS, 3)
-    company = drafts_svc._section(desc, ABOUT_HEADINGS, 3)
+        vacancy = _quotable([ln for ln in drafts_svc._lines(desc) if REQ_LINE_RX.search(ln)])[:5]
+    doing = _quotable(drafts_svc._section(desc, drafts_svc.RESP_HEADINGS, 4))[:3]
+    company = _quotable(drafts_svc._section(desc, ABOUT_HEADINGS, 4))[:3]
     if not company:
-        first = next((ln for ln in drafts_svc._lines(desc)[:3] if not drafts_svc.REQ_HEADINGS.match(ln)), None)
+        first = next((ln for ln in _quotable(drafts_svc._lines(desc)[:3]) if not drafts_svc.REQ_HEADINGS.match(ln)), None)
         company = [first] if first else []
     checked = job.get("last_checked_at") or job.get("last_seen_at") or job.get("first_seen_at")
     url = job.get("direct_url") if job.get("direct_url_status") == "verified" else (job.get("apply_url") or job.get("discovery_url"))
@@ -769,7 +781,7 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
             answers.append({"id": answer_id(q), "question": q, "suggested": a.get("answer") or "", "needs_user": bool(a.get("needs_user")), "note": a.get("note"), "limit": None, "user": user_answers.get(q)})
         for q in package.get("custom_questions", []):
             answers.append({"id": answer_id(q["text"]), "question": q["text"], "suggested": "", "needs_user": True, "note": q.get("note"), "limit": q.get("limit"), "user": user_answers.get(q["text"]), "custom": True})
-        research = current_research(db, job_id) or ensure_research(db, job)
+        research = ensure_research(db, job)  # the current brief, remade when the posting or the reading rules changed
         try:
             cv_text = docs.cv_text(db, cv["revision_key"]) if cv and cv.get("revision_key") else ""
         except docs.DocumentError:
