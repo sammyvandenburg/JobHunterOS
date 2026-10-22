@@ -56,7 +56,7 @@ page → I applied: date and which CV → Remind me to follow up → Find a cont
 Prepare for interview when it comes. My CVs is under your profile.
 
 ## Tests run
-`uv run pytest` (whole suite, 240 passed, 1 skipped; 13 Chromium page tests among them) and `uv run ruff
+`uv run pytest` (whole suite, 239 tests: 238 passed, 1 skipped; 13 Chromium page tests among them) and `uv run ruff
 check`. Live: the pilot page round trip above with the Artifact data tool, acting as the owner.
 
 ## Not verified in this build

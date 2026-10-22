@@ -64,4 +64,4 @@
 | Cloud / always-on mode | no | — | — | Documented as not enabled. |
 | Application submission / browser automation | no | — | — | Out of scope for v1 by design. |
 
-Tests: `uv run pytest` runs the unit, integration, dashboard, and browser tests on synthetic fixtures with no network (the command prints the real count; 203 passed and 8 skipped, plus 7 page tests in Chromium, on 2026-10-21). GitHub Actions runs the same suite with locked dependencies on every push (`.github/workflows/ci.yml`). `tests/live` holds opt-in read-only live checks (`JOBHUNTER_LIVE=1`).
+Tests: `uv run pytest` runs the unit, integration, dashboard, and browser tests on synthetic fixtures with no network (the command prints the real count; 239 tests collected (238 passed, 1 skipped), 13 of them Chromium page tests in Chromium, on 2026-10-21). GitHub Actions runs the same suite with locked dependencies on every push (`.github/workflows/ci.yml`). `tests/live` holds opt-in read-only live checks (`JOBHUNTER_LIVE=1`).
