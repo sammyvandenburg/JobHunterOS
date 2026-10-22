@@ -34,6 +34,7 @@ EVENT_KINDS = {
     "offer": "Offer",
     "withdrawn": "Withdrawn",
     "note": "Note",
+    "followup": "Follow-up reminder",
     "correction": "Correction",
     "feedback": "Feedback",
 }
@@ -128,9 +129,39 @@ def mark_prepared(db: Database, job_id: int, cv_document_id: int | None = None) 
     return {"application_id": app["id"], "stage": app["stage"]}
 
 
-def _bind_submission(db: Database, app: dict, ts: str, cv_document_id: int | None = None) -> None:
-    """Attach the CV and package that were current when the person applied. Never overwritten later."""
+def _bind_submission(db: Database, app: dict, ts: str, cv_document_id: int | None = None, cv_choice: str | None = None) -> None:
+    """Attach the CV and package that were current when the person applied, plus a snapshot of what was prepared.
+    Never overwritten later. `cv_choice`: "prepared" (the version in the package), a CV variant key ("another
+    CV": its current version), or "unknown" ("not sure": no version is invented)."""
+    from jobhunter.services import documents as docs
+
     values = {}
+    if not app.get("submitted_cv_choice"):
+        choice = cv_choice or "prepared"
+        if choice == "unknown":
+            values.update({"submitted_cv_choice": "unknown", "submitted_cv_revision_key": None})
+        elif choice == "prepared":
+            sel = db.fetchone("SELECT cv_variant_key FROM applications WHERE id = ?", (app["id"],))
+            pkg = db.fetchone("SELECT content_json FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (app["job_id"],))
+            rev = ((json.loads(pkg["content_json"] or "{}").get("cv") or {}).get("revision_key")) if pkg else None
+            if not rev:
+                try:
+                    v = docs.get_cv(db, sel["cv_variant_key"], with_revisions=False) if sel and sel.get("cv_variant_key") else docs.default_cv(db)
+                    rev = v["revision_key"] if v else None
+                except docs.DocumentError:
+                    rev = None
+            values.update({"submitted_cv_choice": "prepared" if rev else "unknown", "submitted_cv_revision_key": rev})
+            if rev:
+                r = docs.cv_revision(db, rev)
+                if r:
+                    cv_document_id = cv_document_id or r["document_id"]
+        else:
+            try:
+                v = docs.get_cv(db, choice, with_revisions=False)
+                values.update({"submitted_cv_choice": "other", "submitted_cv_revision_key": v["revision_key"]})
+                cv_document_id = cv_document_id or v["document_id"]
+            except docs.DocumentError:
+                values.update({"submitted_cv_choice": "unknown", "submitted_cv_revision_key": None})
     if not app.get("package_draft_id"):
         pkg = db.fetchone("SELECT id, content_json FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (app["job_id"],))
         if pkg:
@@ -145,12 +176,31 @@ def _bind_submission(db: Database, app: dict, ts: str, cv_document_id: int | Non
         cur = db.fetchone("SELECT id FROM source_documents WHERE kind = 'cv' ORDER BY version DESC, id DESC LIMIT 1")
         if cur:
             values["cv_document_id"] = cur["id"]
+    if not app.get("submission_json"):
+        values["submission_json"] = json.dumps(_submission_snapshot(db, app, values, ts))
     if values:
         values["updated_at"] = ts
         db.update("applications", values, "id = ?", (app["id"],))
 
 
-def mark_applied(db: Database, job_id: int, applied_at: str | None = None, source: str = "user", evidence: dict | None = None, cv_document_id: int | None = None, dedupe_key: str | None = None) -> dict:
+def _submission_snapshot(db: Database, app: dict, values: dict, ts: str) -> dict:
+    """What was prepared when the person said "I applied": the vacancy as stored, the package version, the answers
+    they confirmed (their wording, not Hunter's drafts), and the CV version. Kept as history, never recomputed."""
+    job = db.fetchone("SELECT title, employer_name, description_hash, apply_url, direct_url, location_text, salary_text, posted_at, last_checked_at FROM jobs WHERE id = ?", (app["job_id"],)) or {}
+    pkg_id = values.get("package_draft_id") or app.get("package_draft_id")
+    pkg = db.fetchone("SELECT id, content_json, created_at FROM drafts WHERE id = ?", (pkg_id,)) if pkg_id else None
+    content = json.loads(pkg["content_json"] or "{}") if pkg else {}
+    answers = {q: {"text": a.get("text"), "saved_at": a.get("saved_at")} for q, a in (content.get("user_answers") or {}).items()}
+    return {
+        "at": ts,
+        "vacancy": job,
+        "package": {"draft_id": pkg_id, "version": content.get("version"), "created_at": pkg["created_at"] if pkg else None, "inputs_hash": content.get("inputs_hash")} if pkg else None,
+        "answers": answers,
+        "cv": {"choice": values.get("submitted_cv_choice") or app.get("submitted_cv_choice"), "revision_key": values.get("submitted_cv_revision_key") or app.get("submitted_cv_revision_key")},
+    }
+
+
+def mark_applied(db: Database, job_id: int, applied_at: str | None = None, source: str = "user", evidence: dict | None = None, cv_document_id: int | None = None, dedupe_key: str | None = None, cv_choice: str | None = None) -> dict:
     """Record an application. Manual and email confirmations are deduplicated per job."""
     _require_job(db, job_id)
     ts = now_iso()
@@ -163,17 +213,19 @@ def mark_applied(db: Database, job_id: int, applied_at: str | None = None, sourc
             earliest = min(already["occurred_at"], when)
             db.update("events", {"occurred_at": earliest}, "id = ?", (already["id"],))
             db.update("applications", {"applied_at": earliest, "updated_at": ts}, "id = ?", (app["id"],))
+            if cv_choice and not app.get("submitted_cv_choice"):
+                _bind_submission(db, app, ts, cv_document_id, cv_choice)  # a late answer to "which CV?" still binds once
             return {"application_id": app["id"], "stage": app["stage"], "duplicate": True}
         _event(db, "applied", job_id, source, {"evidence": evidence or {}}, occurred_at=when, application_id=app["id"], dedupe_key=dedupe_key)
         values = {"applied_at": when, "applied_source": source, "updated_at": ts}
         if STAGE_ORDER[app["stage"]] < STAGE_ORDER["applied"]:
             values.update({"stage": "applied", "stage_changed_at": ts})
         db.update("applications", values, "id = ?", (app["id"],))
-        _bind_submission(db, app, ts, cv_document_id)
+        _bind_submission(db, app, ts, cv_document_id, cv_choice)
     return {"application_id": app["id"], "stage": "applied", "duplicate": False}
 
 
-def set_stage(db: Database, job_id: int, stage: str, actor: str = "user", occurred_at: str | None = None, payload: dict | None = None, dedupe_key: str | None = None, allow_backwards: bool = False) -> dict:
+def set_stage(db: Database, job_id: int, stage: str, actor: str = "user", occurred_at: str | None = None, payload: dict | None = None, dedupe_key: str | None = None, allow_backwards: bool = False, cv_choice: str | None = None) -> dict:
     """Move the pipeline. Automated/email events never move a confirmed pipeline backwards."""
     if stage not in STAGES:
         raise ActionError(f"Unknown stage '{stage}'.")
@@ -182,7 +234,7 @@ def set_stage(db: Database, job_id: int, stage: str, actor: str = "user", occurr
     kind = {"applied": "applied", "replied": "reply_received", "interview": "interview", "offer": "offer", "rejected": "rejected", "withdrawn": "withdrawn", "prepared": "prepared"}[stage]
     if stage == "applied" and actor == "user":
         # One path for "I applied": records the date, the CV and the package.
-        return mark_applied(db, job_id, applied_at=occurred_at, source="user", evidence=payload, dedupe_key=dedupe_key)
+        return mark_applied(db, job_id, applied_at=occurred_at, source="user", evidence=payload, dedupe_key=dedupe_key, cv_choice=cv_choice)
     with db.tx():
         app = _get_or_create_application(db, job_id, stage, ts)
         current = app["stage"]

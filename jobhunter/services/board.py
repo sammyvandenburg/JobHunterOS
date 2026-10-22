@@ -291,7 +291,13 @@ def _profile_doc(db: Database) -> dict:
     years = targets.get("professional_years_relevant")
     salary = f"{prefs.salary_min:,.0f} {prefs.salary_currency} per {prefs.salary_period or 'year'}" if prefs.salary_min else None
     prefs_sync = db.fetchone("SELECT synced_rev FROM board_sync WHERE job_key = '_prefs'")
+    cvs_sync = db.fetchone("SELECT synced_rev FROM board_sync WHERE job_key = '_cvs'")
+    from jobhunter.services import documents as docs
+
+    cvs = [{k: c[k] for k in ("key", "label", "tags", "default", "profile_cv", "archived", "version", "filename", "bytes", "uploaded_at", "file_available", "readable")} | {"review": [r["text"] for r in c.get("review") or []]} for c in docs.list_cvs(db, include_archived=True)]
     return {
+        "cvs": cvs,
+        "cvs_synced_rev": int(cvs_sync["synced_rev"]) if cvs_sync else 0,
         "schema": SCHEMA,
         "at": now_iso(),
         "headline": _headline(targets),
@@ -410,6 +416,8 @@ def _attention(db: Database, docs: list[dict]) -> list[dict]:
         items.append({"kind": "digest_failed", "text": "The last job email could not be sent. Hunter will try again, or ask Hunter to send it."})
     if notifications.unresolved(db):
         items.append({"kind": "digest_uncertain", "text": "A job email may not have arrived. Check your inbox and tell Hunter."})
+    for r in db.fetchall("SELECT r.request_id, r.kind, r.message, j.canonical_key FROM requests r LEFT JOIN jobs j ON j.id = r.job_id WHERE r.state = 'needs_input' ORDER BY r.id DESC LIMIT 3"):
+        items.append({"kind": "needs_input", "text": f"Hunter needs something from you: {r['message']}", "key": job_key(r["canonical_key"]) if r.get("canonical_key") else None})
     pending = unresolved(db)
     if pending:
         items.append({"kind": "unresolved_actions", "text": f"{len(pending)} change{'' if len(pending) == 1 else 's'} you made here {'is' if len(pending) == 1 else 'are'} for jobs Hunter has not found on this computer yet; kept, and applied when it does.", "keys": list(pending)[:5]})
@@ -450,6 +458,18 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
         body = {"schema": SCHEMA, "at": run["at"], "shard": n, "jobs": {d["key"]: d for d in shard}}
         _write(out / "board" / f"jobs-{n}.json", body)
         writes.append({"collection": "board", "doc_id": f"jobs-{n}", "file": str(out / "board" / f"jobs-{n}.json")})
+    from jobhunter.services import workspace
+
+    (out / "work").mkdir(parents=True, exist_ok=True)
+    work_written = 0
+    for jid, key in workspace.work_keys(db):
+        doc = workspace.work_doc(db, jid, key)
+        if not doc:
+            continue
+        _write(out / "work" / f"{key}.json", doc)
+        writes.append({"collection": "work", "doc_id": key, "file": str(out / "work" / f"{key}.json")})
+        work_written += 1
+    run["work"] = work_written
     _write(out / "meta" / "run.json", run)
     writes.append({"collection": "meta", "doc_id": "run", "file": str(out / "meta" / "run.json")})
     manifest = {
@@ -459,10 +479,11 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
         "jobs": len(docs),
         "recommended": len(recommended),
         "shards": len(shards),
+        "work": work_written,
         "largest_file_bytes": max((Path(w["file"]).stat().st_size for w in writes), default=0),
         "rules": [
             "Every write is a `set` of the whole file, in this order, in one batch (or two if the batch would exceed 1 MiB).",
-            "A document that already exists needs its current `version` as if_version: take it from a `list` of the `meta` and `board` collections just before.",
+            "A document that already exists needs its current `version` as if_version: take it from a `list` of the `meta`, `board` and `work` collections just before.",
             "If a write is refused because the version changed, list again and set again. Never write under actions/.",
         ],
     }
@@ -550,9 +571,9 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path, listed: in
         if rev <= int(prev.get("synced_rev") or 0):
             skipped += 1
             continue
-        if key == PREFS_KEY:
+        if key in {PREFS_KEY, CVS_KEY}:
             with db.tx():
-                changes = _apply_prefs(db, a)
+                changes = _apply_prefs(db, a) if key == PREFS_KEY else _apply_cvs(db, a)
                 values = {"synced_rev": rev, "synced_at": now_iso()}
                 if prev:
                     db.update("board_sync", values, "job_key = ?", (key,))
@@ -580,6 +601,7 @@ def import_actions(ctx: AppContext, db: Database, in_dir: str | Path, listed: in
 
 
 PREFS_KEY = "_prefs"
+CVS_KEY = "_cvs"
 UNRESOLVED_SETTING = "board.unresolved"
 ACTION_FIELDS = ("job_key", "favorite", "saved", "applied_at", "dismissed", "rev", "updated_at")
 
@@ -630,6 +652,33 @@ def apply_unresolved(db: Database) -> list[str]:
     return done
 
 
+def _apply_cvs(db: Database, a: dict) -> list[str]:
+    """My CVs edits made on the page: label, tags, default, archived. Files never come this way."""
+    from jobhunter.services import documents as docs
+
+    changes: list[str] = []
+    variants = a.get("variants")
+    if not isinstance(variants, dict):
+        return changes
+    for key, v in list(variants.items())[:40]:
+        if not isinstance(v, dict) or not re.fullmatch(r"cv[0-9a-f]{10}", str(key)):
+            continue
+        try:
+            cur = docs.get_cv(db, key, with_revisions=False)
+            if (v.get("label") and v["label"] != cur["label"]) or (isinstance(v.get("tags"), list) and v["tags"] != cur["tags"]):
+                docs.rename_cv(db, key, label=v.get("label") or None, tags=v.get("tags") if isinstance(v.get("tags"), list) else None)
+                changes.append(f"cv:{key}:renamed")
+            if v.get("default") and not cur["default"]:
+                docs.set_default_cv(db, key)
+                changes.append(f"cv:{key}:default")
+            if "archived" in v and bool(v["archived"]) != cur["archived"]:
+                docs.archive_cv(db, key, archive=bool(v["archived"]))
+                changes.append(f"cv:{key}:{'archived' if v['archived'] else 'unarchived'}")
+        except docs.DocumentError as exc:
+            changes.append(f"cv:{key}:rejected: {exc}")
+    return changes
+
+
 def _apply_prefs(db: Database, a: dict) -> list[str]:
     """The page's preference edits (location, countries, salary, remote/work modes), applied through the same
     parser the setup uses. Untrusted input: only these four strings are read, bounded in length."""
@@ -665,7 +714,8 @@ def _apply_one(db: Database, jid: int, a: dict, prev: dict) -> dict:
     is_applied = cur.get("stage") in {"applied", "replied", "interview", "offer", "rejected", "withdrawn"}
     if applied_at and not is_applied:
         when = str(applied_at)[:25] if isinstance(applied_at, str) else None
-        actions.mark_applied(db, jid, applied_at=when, source="user", evidence={"via": "dashboard"})
+        cv_choice = a.get("applied_cv")
+        actions.mark_applied(db, jid, applied_at=when, source="user", evidence={"via": "dashboard"}, cv_choice=str(cv_choice)[:40] if isinstance(cv_choice, str) and cv_choice else None)
         changes.append("applied")
     elif not applied_at and cur.get("stage") == "applied":
         ev = db.fetchone("SELECT id FROM events WHERE job_id = ? AND kind = 'applied' AND reverted_by IS NULL ORDER BY id DESC LIMIT 1", (jid,))
@@ -691,6 +741,9 @@ def _apply_one(db: Database, jid: int, a: dict, prev: dict) -> dict:
             else:
                 out["_note_id"] = notes.add(db, jid, text)["id"]
             changes.append("note")
+    from jobhunter.services import workspace
+
+    changes.extend(workspace.apply_action(db, jid, a, job_key(_canonical(db, jid))))
     return out
 
 

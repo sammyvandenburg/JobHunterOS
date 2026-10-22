@@ -159,6 +159,50 @@ def package_inputs_hash(job: dict, profile: dict, cv: dict | None) -> str:
     )
 
 
+def selected_cv(db: Database, job_id: int) -> dict | None:
+    """The CV presentation for this application: the one chosen for this job, else the default. The choice is
+    per job only; changing the default never changes an application that chose on its own."""
+    app = db.fetchone("SELECT cv_variant_key, cv_choice FROM applications WHERE job_id = ?", (job_id,))
+    chosen = (app or {}).get("cv_variant_key")
+    if chosen:
+        try:
+            v = docs.get_cv(db, chosen, with_revisions=False)
+            if not v["archived"]:
+                v["choice"] = (app or {}).get("cv_choice") or "student"
+                return v
+        except docs.DocumentError:
+            pass
+    v = docs.default_cv(db)
+    if v:
+        v["choice"] = "default"
+    return v
+
+
+def select_cv(db: Database, job_id: int, variant_key: str, choice: str = "student") -> dict:
+    """Record which CV to use for this job only. Nothing is prepared or sent; the next prepare uses it."""
+    job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    if not job:
+        raise DraftError(f"Job {job_id} not found.")
+    v = docs.get_cv(db, variant_key, with_revisions=False)
+    if v["archived"]:
+        raise DraftError(f"The CV '{v['label']}' is archived. Bring it back first.")
+    ts = now_iso()
+    with db.tx():
+        app = db.fetchone("SELECT * FROM applications WHERE job_id = ?", (job_id,))
+        if not app:
+            app_id = db.insert("applications", {"job_id": job_id, "stage": "prepared", "stage_changed_at": ts, "created_at": ts, "updated_at": ts})
+            app = db.fetchone("SELECT * FROM applications WHERE id = ?", (app_id,))
+        db.update("applications", {"cv_variant_key": variant_key, "cv_choice": choice if choice in {"default", "suggested", "student"} else "student", "updated_at": ts}, "id = ?", (app["id"],))
+    return {"job_id": job_id, "application_id": app["id"], "cv": {"variant_key": variant_key, "label": v["label"], "version": v["version"]}, "choice": choice}
+
+
+def _cv_block(db: Database, cv: dict | None) -> dict | None:
+    if not cv:
+        return None
+    integrity = cv.get("file_available")
+    return {"variant_key": cv["key"], "label": cv["label"], "revision_key": cv["revision_key"], "document_id": cv["document_id"], "filename": cv["filename"], "sha256": cv["sha256"], "version": cv["version"], "unchanged": bool(integrity), "choice": cv.get("choice") or "default"}
+
+
 def _require_ready_profile(db: Database) -> tuple[dict, list[Fact]]:
     profile, facts = _facts(db)
     if db.get_setting("profile.needs_review"):
@@ -189,28 +233,33 @@ def package_is_outdated(db: Database, job: dict, package: dict | None) -> bool:
         profile, _ = _facts(db)
     except DraftError:
         return False
-    cv = docs.current_document(db, "cv")
+    cv = selected_cv(db, job["id"])
     return package.get("inputs_hash") != package_inputs_hash(job, profile, cv)
 
 
-def prepare(ctx: AppContext, db: Database, job_id: int, use_model: bool = False, regenerate: bool = False) -> dict:
+def prepare(ctx: AppContext, db: Database, job_id: int, use_model: bool = False, regenerate: bool = False, cv_variant_key: str | None = None) -> dict:
     """Build the application package: unchanged CV, links, answers, checklist.
 
-    Idempotent: the same job, approved facts, CV and policy give back the same package.
+    Idempotent: the same job, approved facts, selected CV version and policy give back the same package.
     When any of those changed, older packages are marked outdated and a new version is made.
     Repeated or simultaneous clicks never create duplicates (unique index + one write transaction).
+    `cv_variant_key` chooses the CV presentation for this job only (the default is used otherwise).
     """
     job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (job_id,))
     if not job:
         raise DraftError(f"Job {job_id} not found.")
     profile, facts = _require_ready_profile(db)
-    cv = docs.current_document(db, "cv")
+    if cv_variant_key:
+        select_cv(db, job_id, cv_variant_key)
+    cv = selected_cv(db, job_id)
     inputs_hash = package_inputs_hash(job, profile, cv)
     existing = db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' AND status = 'draft' ORDER BY id DESC LIMIT 1", (job_id,))
     if existing and existing.get("inputs_hash") == inputs_hash and not regenerate:
         return _package_result(existing, reused=True)
 
-    integrity = [r for r in docs.verify_integrity(db) if cv and r["id"] == cv["id"]]
+    suggestion = docs.suggest_cv(db, job)
+    if suggestion and suggestion["variant_key"] == cv["key"]:
+        suggestion = None
     links = [e.ref for f in facts if f.category == "project" for e in f.evidence if e.type in {"repository", "link"}]
     draft = rule_based_answers(job, facts)
     created_by = "rules"
@@ -237,7 +286,9 @@ def prepare(ctx: AppContext, db: Database, job_id: int, use_model: bool = False,
     package = {
         "fit": fit,
         "job": {"id": job["id"], "title": job["title"], "employer": job.get("employer_name"), "apply_url": job.get("apply_url") or job.get("direct_url") or job.get("discovery_url")},
-        "cv": {"document_id": cv["id"], "path": cv["stored_path"], "filename": cv["original_filename"], "sha256": cv["sha256"], "version": cv["version"], "unchanged": bool(integrity and integrity[0]["ok"])} if cv else None,
+        "cv": _cv_block(db, cv),
+        "cv_suggestion": suggestion,
+        "inputs": {"job": job.get("description_hash"), "profile": _profile_fingerprint(profile), "cv": cv["sha256"] if cv else None, "policy": PACKAGE_POLICY_VERSION},
         "project_links": links,
         "draft": draft.model_dump(mode="json"),
         "created_by": created_by,
@@ -256,7 +307,7 @@ def prepare(ctx: AppContext, db: Database, job_id: int, use_model: bool = False,
         version = db.fetchone("SELECT COUNT(*) AS n FROM drafts WHERE job_id = ? AND kind = 'package'", (job_id,))["n"] + 1
         package["version"] = version
         draft_id = db.insert("drafts", {"job_id": job_id, "kind": "package", "content_json": json.dumps(package), "validation_json": json.dumps(problems), "created_by": created_by, "created_at": now_iso(), "inputs_hash": inputs_hash})
-        app = actions.mark_prepared(db, job_id, cv_document_id=cv["id"] if cv else None)
+        app = actions.mark_prepared(db, job_id, cv_document_id=cv["document_id"] if cv else None)
         db.update("drafts", {"application_id": app["application_id"]}, "id = ?", (draft_id,))
     package["draft_id"] = draft_id
     package["application_id"] = app["application_id"]

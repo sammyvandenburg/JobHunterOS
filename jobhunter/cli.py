@@ -190,6 +190,134 @@ def cmd_docs(args):
         raise CliError(str(exc)) from exc
 
 
+def cmd_cv(args):
+    """My CVs: several finished presentations of one factual profile. Originals are stored byte for byte."""
+    from jobhunter.services import documents as docs
+
+    ctx, db = _open(args)
+    try:
+        c = args.cv_cmd
+        if c == "list":
+            emit(args, docs.list_cvs(db, include_archived=args.all, with_revisions=args.versions))
+        elif c == "show":
+            emit(args, docs.get_cv(db, args.key))
+        elif c == "add":
+            p = Path(args.path).expanduser()
+            if not p.is_file():
+                raise CliError(f"File not found: {p}")
+            emit(args, docs.add_cv_variant(db, ctx.paths, p.read_bytes(), p.name, args.label, tags=args.tags, make_default=args.default))
+        elif c == "revise":
+            p = Path(args.path).expanduser()
+            if not p.is_file():
+                raise CliError(f"File not found: {p}")
+            emit(args, docs.add_cv_revision(db, ctx.paths, args.key, p.read_bytes(), p.name, note=args.note))
+        elif c == "default":
+            emit(args, docs.set_default_cv(db, args.key))
+        elif c == "rename":
+            emit(args, docs.rename_cv(db, args.key, label=args.label, tags=args.tags))
+        elif c == "archive":
+            emit(args, docs.archive_cv(db, args.key, archive=True))
+        elif c == "unarchive":
+            emit(args, docs.archive_cv(db, args.key, archive=False))
+        elif c == "delete":
+            emit(args, docs.delete_cv(db, args.key))
+        elif c == "file":
+            f = docs.cv_file(db, args.key)
+            data = f.pop("data")
+            if args.out:
+                out = Path(args.out).expanduser()
+                if out.is_dir():
+                    out = out / (f["filename"] or f"{f['revision_key']}.bin")
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(data)
+                f["written"] = str(out)
+            emit(args, f)
+        elif c == "text":
+            print(docs.cv_text(db, args.key))
+        elif c == "select":
+            from jobhunter.services import drafts
+
+            emit(args, drafts.select_cv(db, args.id, args.key))
+    except docs.DocumentError as exc:
+        raise CliError(str(exc)) from exc
+    except Exception as exc:
+        from jobhunter.services import drafts
+
+        if isinstance(exc, drafts.DraftError):
+            raise CliError(str(exc)) from exc
+        raise
+
+
+def cmd_work(args):
+    """The application workspace: requests from the dashboard, research, contacts, follow-ups, answers."""
+    from jobhunter.services import workspace
+    from jobhunter.services.board import job_key
+
+    ctx, db = _open(args)
+    try:
+        c = args.work_cmd
+        if c == "requests":
+            emit(args, workspace.list_requests(db, state=None if args.all else "requested"))
+        elif c == "run":
+            if args.request_id:
+                emit(args, workspace.run_request(ctx, db, args.request_id, use_model=args.model))
+            else:
+                emit(args, workspace.run_pending(ctx, db, use_model=args.model))
+        elif c == "request":
+            params = json.loads(args.params) if args.params else {}
+            row = workspace.request(db, args.id, args.kind, params)
+            emit(args, workspace.run_request(ctx, db, row["request_id"], use_model=args.model) if not args.no_run else row)
+        elif c == "show":
+            key = job_key(db.fetchone("SELECT canonical_key FROM jobs WHERE id = ?", (args.id,))["canonical_key"])
+            emit(args, workspace.work_doc(db, args.id, key))
+        elif c == "research":
+            if args.file:
+                payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
+                emit(args, workspace.submit_research(db, args.id, payload))
+            else:
+                job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (args.id,))
+                if not job:
+                    raise CliError(f"Job {args.id} not found.")
+                emit(args, workspace.ensure_research(db, job, force=args.refresh))
+        elif c == "questions":
+            qs = [{"text": q, "limit": args.limit} for q in args.question]
+            emit(args, workspace.add_questions(db, args.id, qs))
+        elif c == "answer":
+            emit(args, workspace.save_answer(db, args.id, args.answer_id, " ".join(args.text)))
+        elif c == "text":
+            job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (args.id,))
+            if not job:
+                raise CliError(f"Job {args.id} not found.")
+            emit(args, workspace.write_optional_text(db, job, args.kind))
+        elif c == "contacts":
+            emit(args, workspace.list_contacts(db, args.id))
+        elif c == "contact-find":
+            job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (args.id,))
+            if not job:
+                raise CliError(f"Job {args.id} not found.")
+            emit(args, workspace.find_contact(db, job, {"name": args.name, "role": args.role, "url": args.url}))
+        elif c == "contact-add":
+            emit(args, workspace.add_contact(db, args.id, args.type, args.name, role=args.role, relevance=args.relevance, source_url=args.source, route=args.route))
+        elif c == "contact-message":
+            emit(args, workspace.contact_message(db, args.id, args.contact_id))
+        elif c == "contacted":
+            emit(args, workspace.mark_contacted(db, args.id, args.contact_id, when=args.when, channel=args.channel))
+        elif c == "followup":
+            if args.action == "set":
+                emit(args, workspace.set_followup(db, args.id, due_at=args.due, days=args.days, timezone=args.timezone))
+            else:
+                emit(args, workspace.followup_action(db, args.id, args.action, due_at=args.due, days=args.days or 3))
+    except (workspace.WorkspaceError, json.JSONDecodeError) as exc:
+        raise CliError(str(exc)) from exc
+    except Exception as exc:
+        from jobhunter.services import documents as docs
+        from jobhunter.services import drafts
+
+        if isinstance(exc, (drafts.DraftError, docs.DocumentError)):
+            raise CliError(str(exc)) from exc
+        raise
+
+
 def cmd_evidence(args):
     from jobhunter.services import consent, github_evidence
     from jobhunter.services import documents as docs
@@ -543,7 +671,7 @@ def cmd_act(args):
         elif c == "undismiss":
             emit(args, actions.dismiss_job(db, args.id, undo=True))
         elif c == "applied":
-            emit(args, actions.mark_applied(db, args.id, applied_at=args.when))
+            emit(args, actions.mark_applied(db, args.id, applied_at=args.when, cv_choice=args.cv))
         elif c == "stage":
             emit(args, actions.set_stage(db, args.id, args.stage, actor="user", occurred_at=args.when, allow_backwards=True))
         elif c == "contacted":
@@ -566,7 +694,7 @@ def cmd_apply(args):
     ctx, db = _open(args)
     try:
         if args.apply_cmd == "prepare":
-            emit(args, drafts.prepare(ctx, db, args.id, use_model=args.model, regenerate=args.regenerate))
+            emit(args, drafts.prepare(ctx, db, args.id, use_model=args.model, regenerate=args.regenerate, cv_variant_key=args.cv))
         elif args.apply_cmd == "followup":
             emit(args, drafts.schedule_followup(db, args.id, days=args.days))
         elif args.apply_cmd == "handoff":
@@ -979,6 +1107,102 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--text")
     d.set_defaults(fn=cmd_docs)
 
+    cv = sub.add_parser("cv", help="My CVs: several finished presentations, stored byte for byte (never rewritten)")
+    cvs = cv.add_subparsers(dest="cv_cmd", required=True)
+    x = cvs.add_parser("list")
+    x.add_argument("--all", action="store_true", help="include archived CVs")
+    x.add_argument("--versions", action="store_true", help="list every version of each CV")
+    x = cvs.add_parser("show")
+    x.add_argument("key")
+    x = cvs.add_parser("add", help="add another finished CV (never replaces the default)")
+    x.add_argument("path")
+    x.add_argument("--label", required=True, help="your own name for it, for example 'Platform — English'")
+    x.add_argument("--tags", help="comma-separated, for example 'platform, english'")
+    x.add_argument("--default", action="store_true", help="also make it the default")
+    x = cvs.add_parser("revise", help="upload a new version of one CV (a new immutable version)")
+    x.add_argument("key")
+    x.add_argument("path")
+    x.add_argument("--note")
+    x = cvs.add_parser("default")
+    x.add_argument("key")
+    x = cvs.add_parser("rename")
+    x.add_argument("key")
+    x.add_argument("--label")
+    x.add_argument("--tags")
+    for name in ("archive", "unarchive", "delete"):
+        x = cvs.add_parser(name)
+        x.add_argument("key")
+    x = cvs.add_parser("file", help="the original bytes of a CV or version, verified by hash")
+    x.add_argument("key", help="a CV key (current version) or a version key")
+    x.add_argument("--out", help="write the file here (a folder or a file name)")
+    x = cvs.add_parser("text")
+    x.add_argument("key")
+    x = cvs.add_parser("select", help="use this CV for one job only")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("key")
+    cv.set_defaults(fn=cmd_cv)
+
+    wk = sub.add_parser("work", help="the application workspace: dashboard requests, research, answers, contacts, follow-ups")
+    wks = wk.add_subparsers(dest="work_cmd", required=True)
+    x = wks.add_parser("requests", help="what the dashboard asked Hunter for")
+    x.add_argument("--all", action="store_true")
+    x = wks.add_parser("run", help="do the pending requests (or one by id)")
+    x.add_argument("request_id", nargs="?")
+    x.add_argument("--model", action="store_true")
+    x = wks.add_parser("request", help="ask for work on one job from the command line")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("kind", choices=["prepare", "research", "contact", "intro", "letter", "followup_draft", "handoff", "cv_file"])
+    x.add_argument("--params", help="JSON")
+    x.add_argument("--model", action="store_true")
+    x.add_argument("--no-run", action="store_true")
+    x = wks.add_parser("show", help="the whole workspace of one job (what the page shows)")
+    x.add_argument("id", type=job_ref)
+    x = wks.add_parser("research", help="the company and role brief; --file submits a validated brief with sources")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("--file")
+    x.add_argument("--refresh", action="store_true")
+    x = wks.add_parser("questions", help="add the application form's questions")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("question", nargs="+")
+    x.add_argument("--limit", type=int)
+    x = wks.add_parser("answer", help="save the person's own wording for one answer")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("answer_id")
+    x.add_argument("text", nargs="+")
+    x = wks.add_parser("text", help="draft the optional short introduction or cover letter")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("kind", choices=["intro", "letter"])
+    x = wks.add_parser("contacts")
+    x.add_argument("id", type=job_ref)
+    x = wks.add_parser("contact-find", help="find a contact: from the posting, or someone the person names")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("--name")
+    x.add_argument("--role")
+    x.add_argument("--url")
+    x = wks.add_parser("contact-add", help="a contact found on a public page (with its URL) or named by the person")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("--type", required=True, choices=["listed", "team", "connection"])
+    x.add_argument("--name", required=True)
+    x.add_argument("--role")
+    x.add_argument("--relevance")
+    x.add_argument("--source", help="the https page where it was found")
+    x.add_argument("--route", help="a public email address or link, exactly as published")
+    x = wks.add_parser("contact-message", help="draft a short message to one contact (never sent by Hunter)")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("contact_id", type=int)
+    x = wks.add_parser("contacted", help="the person says they contacted someone")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("contact_id", type=int)
+    x.add_argument("--when")
+    x.add_argument("--channel", default="message")
+    x = wks.add_parser("followup", help="remind me to follow up: set, snooze, done, stop")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("action", choices=["set", "snooze", "done", "stop"])
+    x.add_argument("--due")
+    x.add_argument("--days", type=int)
+    x.add_argument("--timezone")
+    wk.set_defaults(fn=cmd_work)
+
     e = sub.add_parser("evidence", help="optional project evidence")
     es = e.add_subparsers(dest="evidence_cmd", required=True)
     x = es.add_parser("github")
@@ -1111,6 +1335,7 @@ def build_parser() -> argparse.ArgumentParser:
     x = acs.add_parser("applied")
     x.add_argument("id", type=job_ref)
     x.add_argument("--when")
+    x.add_argument("--cv", help="which CV you sent: 'prepared' (the one in the package), a CV key, or 'unknown'")
     x = acs.add_parser("stage")
     x.add_argument("id", type=job_ref)
     x.add_argument("stage", choices=["prepared", "applied", "replied", "interview", "offer", "rejected", "withdrawn"])
@@ -1134,6 +1359,7 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("id", type=job_ref)
     x.add_argument("--model", action="store_true")
     x.add_argument("--regenerate", action="store_true", help="make a new version even if nothing changed")
+    x.add_argument("--cv", help="use this CV (key from `cv list`) for this job only")
     x = aps.add_parser("followup")
     x.add_argument("id", type=job_ref)
     x.add_argument("--days", type=int, default=7)
