@@ -206,7 +206,8 @@ def run_pending(ctx: AppContext, db: Database, use_model: bool = False) -> list[
 # Research: the company and role brief, with sources
 # ---------------------------------------------------------------------------
 ABOUT_HEADINGS = re.compile(r"^(about (us|the company|[A-Z][\w&. -]{1,40})|who we are|our (mission|company|story)|the company)\b", re.I)
-REQ_ID_RX = re.compile(r"\b(req(?:uisition)?\s*(?:id|#|no\.?)?\s*[:#]?\s*([A-Z0-9-]{4,20}))\b", re.I)
+REQ_ID_RX = re.compile(r"\b(?:requisition|req\.?|job|vacancy|reference)\s*(?:id|#|no\.?|number|code)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{2,19})\b", re.I)
+REQ_LINE_RX = re.compile(r"\b(\d\+?\s*years?|experience|proficien|familiar|knowledge of|hands-on|expertise|track record|comfortable with)\b", re.I)
 
 
 def _domain(url: str | None) -> str | None:
@@ -232,6 +233,8 @@ def rule_based_research(db: Database, job: dict) -> dict:
     session may add a richer version through `research submit`, with sources it really read."""
     desc = job.get("description_text") or ""
     vacancy = drafts_svc._section(desc, drafts_svc.REQ_HEADINGS, 5)
+    if not vacancy:  # no recognisable heading: the lines that read like requirements, in order
+        vacancy = [ln for ln in drafts_svc._lines(desc) if REQ_LINE_RX.search(ln)][:5]
     doing = drafts_svc._section(desc, drafts_svc.RESP_HEADINGS, 3)
     company = drafts_svc._section(desc, ABOUT_HEADINGS, 3)
     if not company:
@@ -351,7 +354,8 @@ def route_view(db: Database, job: dict) -> dict:
     primary = job.get("direct_url") if job.get("direct_url_status") == "verified" else (job.get("apply_url") or job.get("discovery_url"))
     others = [{"source": o["source_id"].split(":")[0], "url": o["url"], "seen_at": o["last_observed_at"]} for o in obs if o.get("url") and o["url"] not in {primary, job.get("apply_url"), job.get("direct_url")}][:5]
     m = REQ_ID_RX.search(job.get("description_text") or "")
-    req_id = job.get("requisition_id") or (m.group(2) if m else None) or (obs[0]["external_id"] if obs and obs[0].get("external_id") and not obs[0]["external_id"].isdigit() else None)
+    ext = (obs[0].get("external_id") or "") if obs else ""
+    req_id = job.get("requisition_id") or (m.group(1) if m else None) or (ext if 4 <= len(ext) <= 20 and any(ch.isdigit() for ch in ext) and not ext.isdigit() else None)
     availability = job.get("availability") or "open"
     label = {"open": "Listed when Hunter last checked", "closed": "No longer listed where Hunter found it", "unknown": "Hunter could not check this listing"}.get(availability, availability)
     note = None

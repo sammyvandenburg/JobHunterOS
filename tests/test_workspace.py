@@ -263,3 +263,16 @@ def test_followup_reminders_reach_the_email_only_when_that_preference_is_on(ctx,
     manifest = _export(ctx, db, tmp_path / "o1")
     run = json.loads(Path(next(w["file"] for w in manifest["writes"] if w["doc_id"] == "run")).read_text())
     assert any(a["kind"] == "followup" for a in run["attention"])
+
+
+def test_the_brief_reads_upper_case_headings_and_never_invents_a_reference_id(ctx, db, tmp_path):
+    nw, jid = _ready(ctx, db, tmp_path)
+    desc = ("ABOUT THE ROLE\n\nYou join Cloud Engineering.\n\nWHAT YOU’LL BE RESPONSIBLE FOR\n\n - Designing cloud governance across AWS and GCP.\n\n"
+            "YOU MIGHT BE A GOOD FIT IF YOU\n\n - Have 5+ years of experience in platform engineering.\n\n - Enjoy building internal platforms for other engineers.\n\nWe review requirements carefully.")
+    db.execute("UPDATE jobs SET description_text = ?, description_hash = 'h2' WHERE id = ?", (desc, jid))
+    job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (jid,))
+    brief = workspace.rule_based_research(db, job)
+    assert any("5+ years" in x for x in brief["vacancy_says"]) and any(x.startswith("Day to day: Designing cloud governance") for x in brief["vacancy_says"])
+    assert workspace.route_view(db, job)["requisition_id"] is None  # "requirements" is not a reference
+    db.execute("UPDATE jobs SET description_text = description_text || '\nRequisition ID: REQ-2231' WHERE id = ?", (jid,))
+    assert workspace.route_view(db, db.fetchone("SELECT * FROM jobs WHERE id = ?", (jid,)))["requisition_id"] == "REQ-2231"

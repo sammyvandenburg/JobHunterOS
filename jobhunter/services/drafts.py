@@ -407,8 +407,8 @@ def list_drafts(db: Database, job_id: int | None = None) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Who they want / how you fit / how to present yourself
 # ---------------------------------------------------------------------------
-REQ_HEADINGS = re.compile(r"^(what you('ll)? bring|what we('re| are) looking for|requirements|qualifications|you have|about you|who you are|must have|you are|what you need|skills|experience)\b", re.I)
-RESP_HEADINGS = re.compile(r"^(what you('ll| will) do|responsibilities|the role|your role|you will|what you'll be doing|in this role)\b", re.I)
+REQ_HEADINGS = re.compile(r"^(what you('ll|’ll)? bring|what we('re|’re| are) looking for|requirements|qualifications|you have|about you|who you are|must have|you are|what you need|skills|experience|you might be a (good )?fit|you may be a (good )?fit|what we need|we expect you to have|what we expect|your profile|you bring|ideal candidate|what you('ll|’ll) need)\b", re.I)
+RESP_HEADINGS = re.compile(r"^(what you('ll|’ll| will) do|responsibilities|the role|your role|you will|what you('ll|’ll) be doing|in this role|what you('ll|’ll) be responsible for|what you('ll|’ll) own|your responsibilities|the role entails|what your day will look like)\b", re.I)
 SKIP_LINE = re.compile(r"^(we offer|benefits|perks|about us|our company|equal opportunity|diversity)", re.I)
 
 
