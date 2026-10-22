@@ -42,8 +42,10 @@ profile approval, the confirmed digest address), the keys of dismissed and appli
 jobs with a snippet and their match outcome, every job the person acted on (favorite, saved, not
 interested, applied date and stage, whether a note exists, the time of the last decision) with its
 description so a restore into an empty database rebuilds the work, cloud run summaries, the email
-history, and the dashboard link. `seen_jobs.json`: emailed job keys with time and status.
-Never: CV or LinkedIn text, the text of notes, drafts, application details (packages, contacts),
+history, the dashboard link, My CVs as metadata (keys, labels, tags, which is the default, every version's
+hash, file name and size) and, per acted-on job, which CV was chosen and which version was recorded as sent.
+`seen_jobs.json`: emailed job keys with time and status.
+Never: CV files or CV/LinkedIn text, the text of notes, drafts and answers, research, contacts,
 tokens, mailbox contents, or which dashboard revisions a database applied (each database acknowledges a
 page revision only after applying its values itself, so a restored database re-reads the page; replay is
 safe). `cloud save` refuses a bundle with a forbidden section. The copy is private on GitHub; the profile

@@ -44,7 +44,7 @@ Your private data lives in `~/.jobhunteros` (change with `JOBHUNTER_HOME`). Noth
 | "Let's get set up" | Four steps: finished? → your CV and LinkedIn PDF → "does this look right?" → three quick basics in one go (where you live and can work, pay, remote or hybrid). |
 | "Find jobs" | Reads 85 validated employer job boards (Greenhouse, Lever, Ashby) plus discovery feeds (Remotive, Arbeitnow; Adzuna optional) that introduce new employers, removes duplicates across sources, checks dates, and matches against your approved profile. |
 | "Show me the best options" | Good matches, Worth a shot, Backup options, only in the countries you can work in. Each with the real remote rule, pay as stated, freshness, plain reasons tied to your CV, things to check, links, and one next step. No percentages. |
-| "Help me apply" | Shows who they are looking for, how well you fit and why, how to present yourself, draft answers from your CV, and what only you can answer. You apply yourself. |
+| "Prepare application" | One workspace per job on your dashboard: which CV to send, a brief of the company and the role with sources, where to apply, your strongest case, draft answers you rewrite in your own words, an optional introduction or cover letter, a checklist, "I applied" with which CV, follow-up reminders, contacts, and the InterviewOS hand-off. You apply yourself. |
 | "I applied" / "they replied" | Tracks the pipeline from your confirmations or from job-search emails you let it read (Gmail, read-only, optional). Automated receipts never count as replies. |
 | "Look every day" | Automatic hunting runs inside Hunter on your schedule (or, after your explicit approval, as a small login task when Hunter is closed) and, if you ask, emails a digest to one confirmed address. Dashboard-only is the default. |
 | "Interview confirmed" | Exports an InterviewOS hand-off (Markdown) with the vacancy snapshot, the exact CV version, what was actually sent versus drafts, evidence, and gaps. |
@@ -56,7 +56,8 @@ uv run jobhunter next                 # next setup question or next useful actio
 uv run jobhunter hunt run             # find jobs now
 uv run jobhunter jobs list            # best new matches (views: new, favorites, saved, applied, finished, old, excluded)
 uv run jobhunter jobs show <id>
-uv run jobhunter apply prepare <id>   # application package (nothing is submitted)
+uv run jobhunter apply prepare <id>   # application package (nothing is submitted); `jobhunter work run` does what the dashboard asked
+uv run jobhunter cv list              # My CVs: several finished presentations, kept byte for byte
 uv run jobhunter act applied <id>     # you applied; Hunter records it
 uv run jobhunter prefs set remote "remote preferred, hybrid ok, no office"   # or: prefs set work_modes remote,hybrid
 uv run jobhunter act favorite <id>    # star a job (act save <id> bookmarks it; act note <id> your words here keeps a private note)

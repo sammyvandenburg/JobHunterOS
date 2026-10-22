@@ -22,6 +22,13 @@ All fetches go through one client: HTTPS only, public hosts only (private, loopb
 ## Dashboard
 Binds to 127.0.0.1 only, rejects other `Host` headers, checks `Origin`/`Referer` on every state-changing request, uses a per-installation CSRF token tied to a session cookie, sets a strict Content-Security-Policy and other security headers, exposes no file-read or raw-query endpoints, and limits uploads by size and type. No public tunnel. Binding to another address prints a warning and is your deliberate choice; it has no authentication layer for remote use in this version.
 
+## The application workspace
+The dashboard's database is private to its owner (owner-only read and write rules). It holds the student's own
+application drafts, answers, contacts, follow-ups and CV names, because that is where they edit them; it never
+holds a CV file or its text, nor a token. CV files live only in Hunter's data folder on the computer where they
+were added; the state file in the student's private repository carries CV names, versions and hashes, never
+files, text, notes, answers or drafts. Requests from the page carry only a kind, an id and bounded parameters.
+
 ## Backups, export, deletion
 `uv run jobhunter data backup` copies the database (copy the documents folder too for a full backup). `data export` writes JSON per table plus your original documents; secrets are excluded. `data delete --confirm DELETE` removes secrets first, then the database, documents, derived text, exports, cache, logs, and locks; backups are kept on purpose and listed so you can remove them yourself. Copies you exported or emailed, and anything held by Google or your mail provider, are outside Hunter's reach; the deletion screen says so. "CV immutability" means Hunter never modifies originals in normal use; you can always delete them.
 

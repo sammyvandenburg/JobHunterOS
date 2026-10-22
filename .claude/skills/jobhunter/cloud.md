@@ -49,6 +49,9 @@ is done and which comes next from the evidence in the database, so check it when
    in [board.md](board.md) (list the `actions` collection, `board import --listed <total>`): after a restore every
    action on the page is read again, which is harmless. Hunter refuses to hunt or email before this. If the
    page is linked and you have no Artifact tools, stop and say so: nothing is hunted or emailed blind.
+3b. **Do what the page asked.** `uv run jobhunter work run --json` (requests from the dashboard: prepare, contacts,
+   drafts, hand-offs; see [applying.md](applying.md)). A CV file request can only say "add this CV again" here:
+   the files are on their computer, never in the state.
 4. **Hunt.** `uv run jobhunter hunt run --trigger cloud --json`, then `uv run jobhunter cloud tag-run cloud:$(date -u +%Y%m%dT%H%M%SZ)`.
    One failing source is not a failed hunt; report it in one line.
 5. **Digest.** `uv run jobhunter digest prepare --json`. When it is `ready`, first `uv run jobhunter cloud save --branch main --json`
@@ -105,5 +108,5 @@ Tell them what arrived: how many new jobs, and the last email.
 ## Never
 - Send to any address other than the one in `digest prepare`'s output, or add recipients.
 - Email an employer, recruiter, or anyone else. Hunter prepares; the person sends.
-- Put the CV, a note's text, drafts, or any token in `state/`, anywhere else in the repository, in a prompt, or in a report.
+- Put the CV (file or text), a note's text, drafts or answers, or any token in `state/`, anywhere else in the repository, in a prompt, or in a report. (CV names, keys, versions and hashes do travel in `state/`; the files never.)
 - Claim an email was sent before Gmail returned a message id, or claim a hunt ran when the command failed.

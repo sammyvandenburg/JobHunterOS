@@ -40,11 +40,15 @@ get past it on their behalf.
    revision that records it; replaying the same files is harmless.
    If the command prints nothing at all (seen once while a search was running), run it again: applying is safe to repeat.
    Tell them in one line what came in ("I saw 2 favorites and a note from your dashboard.").
+   **Then do what the page asked for:** `uv run jobhunter work run --json` runs every request the page recorded
+   (Prepare application, a contact, a draft, the hand-off, a CV file); each ends ready, needs_input or failed, and
+   the page shows that state after step 2. See [applying.md](applying.md) for what each kind means and when you
+   write the company brief yourself.
    Then run the hunt and/or prepare the digest if that is what this sync is for.
 2. **Write what Hunter knows.** `uv run jobhunter board export --out <DIR>/out --json`. The result is a
    manifest: `writes` (files to `set`, in order), `delete_if_present` (leftover shard names). Documents
-   that already exist need their current version: `ArtifactData` list collection `meta` (limit 10) and
-   collection `board` (limit 40); each line shows `version N`. Then one `ArtifactData` batch with a `set`
+   that already exist need their current version: `ArtifactData` list collection `meta` (limit 10),
+   collection `board` (limit 40) and collection `work` (limit 300); each line shows `version N`. Then one `ArtifactData` batch with a `set`
    per file (`file_path` = the file, `if_version` = that version; omit `if_version` only for a document
    the lists did not show), plus a `delete` (with its version) for every `delete_if_present` name the
    `board` list did show. If the batch would exceed 1 MiB, split it: shards first, `meta/run` last.
@@ -52,7 +56,20 @@ get past it on their behalf.
 3. Say what the page shows now: how many recommended, and the link.
 
 Never write under `actions/` (that is the page's), never republish the page with a student's data in it,
-never put the CV, notes, drafts or tokens in any document (the export command refuses that on its own).
+never put a CV file or its text, or a token, in any document. The `work/<key>` documents do carry the student's
+own application drafts and answers: the page's database is owner-only, and that is where their edits live.
+
+## A direct line from the page to Hunter (optional, with their approval)
+Without one, a button on the page saves the request and shows "Continue in Claude now" (it copies
+`/jobhunter continue <request id>`). With one, the page reaches Hunter at once through the viewer's own
+Claude Code Remote connector: publish the page with the extra capability
+`"mcp": {"servers": [{"server": "Claude Code Remote", "tools": ["fire_trigger", "send_message"]}]}` next to
+`db` and `user`, and tell Hunter where to knock: `uv run jobhunter board channel routine trig_…` (a poke-only
+Routine whose prompt is "/jobhunter continue" followed by the text it receives, in their own copy) or
+`board channel session session_…` (a session that stays open). Both are the student's own resources: ask
+before creating a Routine or republishing with the new capability, and say that the page will ask them once
+to allow the connector. `board channel none` removes it. Never claim the line works until a request made on
+the page came back `ready` on the page.
 
 ## What the page does on its own
 - Shows a one-line profile (headline, where, arrangement, years from dated paid work), four counters, Top
@@ -65,8 +82,18 @@ never put the CV, notes, drafts or tokens in any document (the export command re
 - "Edit preferences" on the page writes `actions/_prefs` (where they live, countries, lowest pay, remote).
   `board import` applies it through the same parser as setup and reports "rejected: …" when it cannot;
   tell them in one line what changed. Until the next sync the page shows "new preferences: Hunter next run".
-- Favorite, Save, Mark applied, Not interested, and a private note per job: saved immediately, marked
-  "Hunter: next run" until the next sync applies them.
+- Favorite, Save, Not interested, and a private note per job: saved immediately, marked "waiting for Hunter"
+  until the next sync applies them.
+- One job page with three sections, Overview, My application, People & notes, and one main action: **Prepare
+  application** → **Continue application** → **View application**; "Open application" is always there. My
+  application holds the CV choice for this job (default preselected, one-reason suggestion), the company and
+  role brief with its Sources, the vacancy and where to apply, Your strongest case, the answers in the student's
+  own wording (Save my wording, Copy, limits, questions pasted from the form), the optional introduction and
+  cover letter with "Facts used", the checklist, **I applied** (date and which CV: prepared, another, not sure),
+  the follow-up reminder (date, Snooze, Done, Stop) and "Prepare for interview". People & notes: Find a contact,
+  Add someone you know, a drafted message, "I contacted them", and the notes.
+- **My CVs** under Profile: each CV's name, tags, version, default, whether the file is on Hunter's computer;
+  Make default, Archive, rename, Preview / download (Hunter hands the file over in Claude; files never go on the page).
 - Survives closing and reopening: the data lives in the page's database, not in the browser.
 - Works for the owner only. Signed-out visitors see a sign-in message; others see nothing.
 

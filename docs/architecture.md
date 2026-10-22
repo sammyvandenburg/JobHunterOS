@@ -18,7 +18,7 @@ Fetching (`services/http.py`, SSRF-safe), adapters and the provider registry (`s
 ## The model only
 Interprets documents into facts (validated by `profile.validate_draft`), explains fit (validated by `engine.validate_explanations`), asks questions, drafts text (validated by `drafts.validate_draft`). Schemas live in `models.py`. In Claude Code the session model does this through CLI commands; unattended, `services/model/provider.py` runs `claude -p` with no tools and a budget, or the `anthropic` SDK.
 
-## Data model (migrations `0001_init.sql`, `0002_notes_favorites.sql`)
+## Data model (migrations `0001_init.sql` … `0007_workspace.sql`)
 settings, source_documents, profile_versions, profile_questions, preference_changes, employers, watch_sources, hunt_runs, source_runs, jobs, job_observations, matches, recommendations, applications, events, drafts, contacts, followups, email_accounts, email_messages, notifications, consents, feedback, schedule, worker_heartbeat, model_cache, model_calls, handoffs. Indexes on canonical keys, employers, dates, groups, dedupe keys. `0002` adds `job_notes` (private notes keyed by the stable job id, soft-deleted, never touched by rediscovery) and an index for the favorite/save toggles, which are `favorited`/`unfavorited` and `saved`/`unsaved` events (latest unreverted event wins). Later migrations are added as numbered SQL files and applied automatically; no migration ever deletes user rows.
 
 ## Counting rules
@@ -64,3 +64,24 @@ missing folder, an unreadable file or a count that differs from the finished lis
 an empty one. `jobhunter plan` shows the one run contract every session, worker and routine follows
 (restore, read the dashboard, hunt, digest with a durable reservation, save, publish), judged from evidence. Job keys are `"j" + sha1(canonical_key)[:20]`, identical on every machine. The local FastAPI
 dashboard (`jobhunter dashboard`) is unchanged and remains the path without Claude.
+
+## The application workspace (`services/workspace.py`, `documents.py` My CVs, `drafts.py`, `actions.py`, `interviewos.py`)
+Migration `0007_workspace.sql`: `cv_variants` (stable `variant_key`, label, tags, default, the profile CV flag,
+archived) and `cv_revisions` (stable `revision_key`, number, the immutable `source_documents` row with hash,
+file name and path); `applications.cv_variant_key` / `cv_choice` (per job only) and `submitted_cv_choice` /
+`submitted_cv_revision_key` / `submission_json` (set once at "I applied", never overwritten); `requests` (the
+page's request id, kind, bounded params, state requested → running → ready | needs_input | failed, message,
+result); `research` (versioned brief with sources, rules or a validated model submission); contact and
+follow-up columns (type, relevance, source, checked and contacted times; snooze and timezone).
+The page writes workspace fields into the job's action document (`requests`, `cv_variant`, `answers` by answer
+id and revision, `texts`, `applied_cv`, `contacts_new`, `contacted`, `followup`) and My CVs edits into
+`actions/_cvs`; `board import` applies them in the same transaction as the rest of the document;
+`work run` does the requests; `board export` writes one `work/<key>` document per job with an application or a
+request (states, brief, route, case, answers with the person's wording, optional texts with facts used,
+checklist, contacts, follow-up, hand-off). Idempotent packages hash the job text, the profile fingerprint, the
+selected CV version and the policy; a change shows as **Needs review** and the person's wording survives the
+next version. The direct line from the page is the viewer's own Claude Code Remote connector through the
+`mcp` capability (a poke-only Routine or a session that `board channel` names); without it the page shows
+"Continue in Claude now" with the request id. The state file carries CV metadata and per-job CV state (never
+files, text, answers or drafts); a restored database recreates the CVs as placeholders and restores the bytes
+when the same file is added again (hash proven).

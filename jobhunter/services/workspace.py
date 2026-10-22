@@ -741,6 +741,7 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
     reqs = db.fetchall("SELECT * FROM requests WHERE job_id = ? ORDER BY id", (job_id,))
     if not app and not reqs:
         return None
+    apply_pending(db, job_id, key)
     profile = profile_svc.approved(db)
     facts = [f for f in profile["facts"] if f.status != "rejected"] if profile else []
     cv = drafts_svc.selected_cv(db, job_id)
@@ -832,6 +833,43 @@ def work_keys(db: Database) -> list[tuple[int, str]]:
 # ---------------------------------------------------------------------------
 # What the page wrote: workspace fields of an action document
 # ---------------------------------------------------------------------------
+PENDING_SETTING = "work.pending"  # page edits that arrived before the package they belong to exists (kept, applied later)
+
+
+def _remember_pending(db: Database, key: str, kind: str, ident: str, value: dict) -> None:
+    pending = db.get_setting(PENDING_SETTING) or {}
+    slot = pending.setdefault(key, {}).setdefault(kind, {})
+    if int(value.get("rev") or 0) >= int((slot.get(ident) or {}).get("rev") or 0):
+        slot[ident] = {"text": str(value.get("text") or "")[:8000], "rev": int(value.get("rev") or 0), "updated_at": str(value.get("updated_at") or "")[:25]}
+        db.set_setting(PENDING_SETTING, pending)
+
+
+def apply_pending(db: Database, jid: int, key: str) -> list[str]:
+    """Edits kept from an earlier read (an answer saved on the page before Hunter had prepared the job here, as
+    after a restore) land once the package exists. Never lost, never applied twice."""
+    pending = db.get_setting(PENDING_SETTING) or {}
+    slot = pending.get(key)
+    if not slot or not _package_row(db, jid):
+        return []
+    changes: list[str] = []
+    for aid, v in list((slot.get("answers") or {}).items()):
+        try:
+            save_answer(db, jid, aid, v.get("text") or "", rev=v.get("rev"), when=v.get("updated_at") or None)
+            changes.append("answer")
+            slot["answers"].pop(aid, None)
+        except WorkspaceError:
+            slot["answers"].pop(aid, None)  # the question is gone: nothing to keep
+    for kind, v in list((slot.get("texts") or {}).items()):
+        try:
+            save_optional_text(db, jid, kind, v.get("text"), rev=v.get("rev"), when=v.get("updated_at") or None)
+            changes.append(f"text:{kind}")
+        except WorkspaceError:
+            pass
+        slot["texts"].pop(kind, None)
+    if not (slot.get("answers") or slot.get("texts")):
+        pending.pop(key, None)
+    db.set_setting(PENDING_SETTING, pending)
+    return changes
 def apply_action(db: Database, jid: int, a: dict, key: str) -> list[str]:
     """Workspace fields of one action document, applied once with the rest of it (same transaction, same
     `rev`). Untrusted input: only known fields, bounded. Returns the list of changes."""
@@ -877,7 +915,8 @@ def apply_action(db: Database, jid: int, a: dict, key: str) -> list[str]:
                 save_answer(db, jid, aid, str(v.get("text") or ""), rev=rev, when=str(v.get("updated_at") or "")[:25] or None)
                 changes.append("answer")
             except WorkspaceError:
-                continue
+                _remember_pending(db, key, "answers", str(aid), v)
+                changes.append("answer:kept")
     texts = a.get("texts")
     if isinstance(texts, dict):
         for kind in ("intro", "letter"):
@@ -891,7 +930,8 @@ def apply_action(db: Database, jid: int, a: dict, key: str) -> list[str]:
                         save_optional_text(db, jid, kind, v.get("text"), rev=rev, when=str(v.get("updated_at") or "")[:25] or None)
                         changes.append(f"text:{kind}")
                 except WorkspaceError:
-                    continue
+                    _remember_pending(db, key, "texts", kind, v)
+                    changes.append(f"text:{kind}:kept")
     # Contacts the person named or confirmed.
     for c in (a.get("contacts_new") or [])[:5] if isinstance(a.get("contacts_new"), list) else []:
         if isinstance(c, dict) and c.get("name") and c.get("tmp"):

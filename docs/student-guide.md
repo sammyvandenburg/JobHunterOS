@@ -46,15 +46,29 @@ dashboard: a private page at claude.ai that only you can open, on your phone too
 - **Needs checking**: jobs whose location or kind of work is unclear. **Older**: good matches older than 14 days.
 - Where the job is, the pay as the posting states it, the contract type, and work authorization as stated.
 
-On the dashboard you can star a **Favorite**, **Save for later**, press **Mark applied** after you applied,
+On the dashboard you can star a **Favorite**, **Save for later**, press **I applied** after you applied,
 mark **Not interested**, and write a private note. Each change says "Saved to your dashboard" at once, and
 "Waiting for Hunter" until Hunter's next run picks it up; then "Synced". If a save fails you see
 "Couldn't save" and a **Retry** button; nothing you typed is lost. The page is also fine with two tabs open:
 it never overwrites a note silently.
 
-**Help me apply** copies a short command; paste it to Hunter in Claude Code and Hunter prepares the
-application (facts from your CV, what to check, what only you can answer). You send it yourself. When you have,
-tell Hunter or press Mark applied.
+**Applying.** Open a job and press **Prepare application**. The request is saved on your page at once; Hunter
+picks it up on its next run, or press **Continue in Claude now** to have it done right away (it copies a short
+command for Hunter). Then the job page shows **My application**: which CV to send (your default is chosen;
+Hunter may suggest another with one reason; you decide, for this job only), a short brief of the company and
+the role with its sources, where to apply, your strongest case (what your profile proves and whether your CV
+says it), draft answers you rewrite in your own words, an optional introduction or cover letter if you ask for
+one, and a short checklist. Paste the form's questions and Hunter adds them; pay, visa, start date and personal
+questions are always yours to answer. You apply on the employer's page yourself. Then press **I applied**: Hunter
+records the date and asks which CV you sent (the prepared one, another, or not sure), and never guesses.
+After that: **Remind me to follow up** (pick the date; Snooze, Done, Stop), **Find a contact** (only someone
+the posting names, a public team page, or someone you know; Hunter never guesses addresses or messages anyone),
+and **Prepare for interview**, which writes a hand-off file for InterviewOS.
+
+**My CVs** (under your profile): keep several finished CVs, for example "Platform — English" and "DevOps —
+Dutch". Give a file to Hunter in Claude and say what to call it. Hunter never rewrites a CV; every upload is
+kept exactly as sent, a new version never replaces an old one, and each application remembers the version you
+sent. Files stay on the computer where Hunter runs; ask Hunter in Claude to hand one back.
 
 ## Step 4: optional: daily email and nightly hunting
 - Say "email me the jobs". Hunter asks for one address, confirms it, and sends today's digest through your own
