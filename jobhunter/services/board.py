@@ -33,6 +33,7 @@ from jobhunter.util import now, now_iso, truncate
 
 SCHEMA = "hunter-board/1"
 URL_SETTING = "board.url"
+CHANNEL_SETTING = "board.channel"  # how the page reaches Hunter now: a routine or a session in the person's Claude account
 SHARD_SIZE = 30
 RECOMMENDED_LIMIT = 150
 EXTRA_LIST_LIMIT = 40  # "Older" and "Needs checking" lists on the page
@@ -92,6 +93,22 @@ def link(db: Database, url: str) -> dict:
             # A new page starts with an empty database: nothing on it has been applied yet.
             db.execute("DELETE FROM board_sync")
     return status(db)
+
+
+def set_channel(db: Database, kind: str | None, ident: str | None = None, label: str | None = None) -> dict:
+    """The page's direct line to Hunter: a poke-only routine (`trig_…`) or a session (`session_…`) in the person's own
+    Claude account, called through the page's `mcp` capability (Claude Code Remote connector, the viewer's own
+    credentials). Without one the page still records every request and offers "Continue in Claude"."""
+    if not kind:
+        db.delete_setting(CHANNEL_SETTING)
+        return {"channel": None}
+    if kind not in {"routine", "session"} or not ident:
+        raise BoardError("A channel is `routine <trig_id>` or `session <session_id>`.")
+    if (kind == "routine" and not ident.startswith("trig_")) or (kind == "session" and not ident.startswith("session_")):
+        raise BoardError("That id does not look like a " + ("routine (trig_…)" if kind == "routine" else "session (session_…)") + ".")
+    value = {"kind": kind, "id": ident, "label": label or ("Hunter routine" if kind == "routine" else "Hunter session"), "server": "Claude Code Remote", "set_at": now_iso()}
+    db.set_setting(CHANNEL_SETTING, value)
+    return {"channel": value}
 
 
 def unlink(db: Database) -> dict:
@@ -295,9 +312,11 @@ def _profile_doc(db: Database) -> dict:
     from jobhunter.services import documents as docs
 
     cvs = [{k: c[k] for k in ("key", "label", "tags", "default", "profile_cv", "archived", "version", "filename", "bytes", "uploaded_at", "file_available", "readable")} | {"review": [r["text"] for r in c.get("review") or []]} for c in docs.list_cvs(db, include_archived=True)]
+    cv_requests = {r["request_id"]: {"state": r["state"], "message": r.get("message"), "at": r.get("finished_at") or r["requested_at"]} for r in db.fetchall("SELECT request_id, state, message, finished_at, requested_at FROM requests WHERE kind = 'cv_file' ORDER BY id DESC LIMIT 10")}
     return {
         "cvs": cvs,
         "cvs_synced_rev": int(cvs_sync["synced_rev"]) if cvs_sync else 0,
+        "cv_requests": cv_requests,
         "schema": SCHEMA,
         "at": now_iso(),
         "headline": _headline(targets),
@@ -374,6 +393,7 @@ def _hunter_status(db: Database) -> dict:
     last_sent = db.fetchone("SELECT sent_at FROM notifications WHERE kind = 'digest' AND status = 'sent' ORDER BY sent_at DESC LIMIT 1")
     last_digest = db.fetchone("SELECT status, sent_at, created_at FROM notifications WHERE kind = 'digest' AND channel = 'email' ORDER BY id DESC LIMIT 1")
     return {
+        "channel": db.get_setting(CHANNEL_SETTING),
         "last_successful_hunt_at": ok.get("finished_at") if ok else None,
         "last_run": {"status": last["status"], "trigger": last.get("trigger"), "at": last.get("finished_at") or last.get("started_at")} if last else None,
         "automatic_hunting": "running" if (sched.get("enabled") and running) else ("set up, not running now" if sched.get("enabled") else "off"),
@@ -676,6 +696,18 @@ def _apply_cvs(db: Database, a: dict) -> list[str]:
                 changes.append(f"cv:{key}:{'archived' if v['archived'] else 'unarchived'}")
         except docs.DocumentError as exc:
             changes.append(f"cv:{key}:rejected: {exc}")
+    reqs = a.get("requests")
+    if isinstance(reqs, dict) and isinstance(reqs.get("cv_file"), dict) and reqs["cv_file"].get("id"):
+        from jobhunter.services import workspace
+
+        r = reqs["cv_file"]
+        try:
+            before = db.fetchone("SELECT id FROM requests WHERE request_id = ?", (workspace._clean_request_id(r["id"]),))
+            workspace.request(db, None, "cv_file", r.get("params") if isinstance(r.get("params"), dict) else {}, request_id=r["id"], job_key=CVS_KEY)
+            if not before:
+                changes.append("request:cv_file")
+        except workspace.WorkspaceError:
+            pass
     return changes
 
 

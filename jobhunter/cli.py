@@ -772,6 +772,8 @@ def cmd_board(args):
             emit(args, board.link(db, args.url))
         elif c == "unlink":
             emit(args, board.unlink(db))
+        elif c == "channel":
+            emit(args, board.set_channel(db, None if args.kind == "none" else args.kind, args.id, args.label))
         elif c == "status":
             emit(args, board.status(db))
         elif c == "page":
@@ -1423,6 +1425,10 @@ def build_parser() -> argparse.ArgumentParser:
     bds.add_parser("page", help="where the page file is (Claude publishes it once per student)")
     x = bds.add_parser("build", help="write the page to publish, with the KubeCraft mark inlined when brand/KubeCraft-Cog-3.png exists")
     x.add_argument("--out", required=True)
+    x = bds.add_parser("channel", help="how the page reaches Hunter now: `routine trig_…`, `session session_…`, or `none`")
+    x.add_argument("kind", choices=["routine", "session", "none"])
+    x.add_argument("id", nargs="?")
+    x.add_argument("--label")
     x = bds.add_parser("export", help="write the documents for the page into a folder, plus a manifest Claude follows")
     x.add_argument("--out", required=True)
     x.add_argument("--limit", type=int, default=150, help="how many recommended jobs to show (default 150)")

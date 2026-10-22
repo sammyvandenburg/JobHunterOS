@@ -136,6 +136,24 @@ label{display:grid;gap:4px;font-size:13px;color:var(--ink-2)}
 .conflict .theirs{white-space:pre-wrap;margin:6px 0;color:var(--ink)}
 .modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;width:min(480px,100%);display:grid;gap:10px;max-height:90vh;overflow:auto}
+.drawer.wide{width:min(960px,100%)}
+.drawer header .hacts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.secnav button[aria-current="true"]{color:var(--ink);background:var(--panel-2)}
+.part{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;margin:8px 0;background:var(--bg)}
+.part>summary{cursor:pointer;font-weight:700;font-family:var(--display);font-size:14px}
+.part>summary::marker{color:var(--muted)}
+details.sub{margin-top:6px}details.sub>summary{cursor:pointer;font-size:13px;color:var(--ink-2);font-weight:600}
+.tier{margin:8px 0 2px;font-size:13.5px}
+table.case{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0}
+table.case th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
+table.case td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
+ul.check{list-style:none;margin:0;padding:0}ul.check li{margin:3px 0}ul.check li.done{color:var(--good)}
+.ans,.contact,.cvrow,.opt,.fu,.applied,.cvpick{border-top:1px solid var(--line);padding:8px 0;display:grid;gap:6px}
+.ans .q,.contact .q,.cvrow .q{font-weight:600}
+.sug{background:var(--panel-2);border-radius:var(--r-sm);padding:8px;font-size:14px}
+.cvrow.off{opacity:.65}
+label.radio{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}
+input[type=date]{border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:7px;color:inherit}
 @media (max-width:860px){
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
   .who .acts{margin-left:0}
@@ -166,7 +184,7 @@ label{display:grid;gap:4px;font-size:13px;color:var(--ink-2)}
     <div class="tools"><input type="search" id="q" placeholder="Search title, company or place" aria-label="Search jobs"><div class="fchips" id="chips" role="tablist"></div><select class="fsel" id="fsel" aria-label="Which jobs"></select></div>
     <div class="list" id="list" role="list"><div class="empty">Loading your jobs…</div></div>
   </section>
-  <p class="foot">Only you can see this page. Hunter keeps it in step with your computer and your nightly hunts; what you do here reaches Hunter on its next run. To prepare an application, ask Hunter in Claude Code: /jobhunter apply.</p>
+  <p class="foot">Only you can see this page. Hunter keeps it in step with your computer and your nightly hunts; what you do here reaches Hunter on its next run. Open a job and press “Prepare application” to start; you apply yourself, Hunter never sends anything.</p>
 </main>
 <div id="overlay"></div>
 
@@ -260,6 +278,7 @@ const Core = (() => {
     let n = 0;
     for (const [k, a] of actions) {
       if (k === "_prefs") { if (Number(a.rev) > Number((profile && profile.prefs_synced_rev) || 0)) n++; continue; }
+      if (k === "_cvs") { if (Number(a.rev) > Number((profile && profile.cvs_synced_rev) || 0)) n++; continue; }
       const s = ((jobs.get(k) || {}).state) || {}; if (Number(a.rev) > Number(s.synced_rev || 0)) n++;
     }
     return n;
@@ -268,7 +287,63 @@ const Core = (() => {
     if (!q) return true; const s = q.toLowerCase();
     return [job.title, job.employer, job.location].some((x) => (x || "").toLowerCase().includes(s));
   }
-  return { commit, effective, setFlag, saveNote, setPrefs, tabsFor, topPicks, pendingCount, matches, blankAction, clone, sleep };
+  /* ----- workspace: requests, CV choice, answers, texts, follow-ups (pure) ----- */
+  const REQUEST_KINDS = ["prepare", "research", "contact", "message", "intro", "letter", "followup_draft", "handoff", "cv_file"];
+  const requestId = (kind) => kind + ":" + new Date().toISOString().replace(/[^0-9TZ]/g, "").slice(0, 15) + ":" + Math.random().toString(36).slice(2, 6);
+  const setFields = (jobKey, fields, seen) => (cur) => ({ doc: Object.assign(blankAction(jobKey), seenToAction(seen), cur, fields) });
+  const setRequest = (jobKey, kind, id, params, seen) => (cur) => {
+    const d = Object.assign(blankAction(jobKey), seenToAction(seen), cur);
+    d.requests = Object.assign({}, d.requests || {}, { [kind]: { id, at: new Date().toISOString(), params: params || {} } });
+    return { doc: d };
+  };
+  const saveAnswer = (jobKey, aid, text, baseRev, seen) => (cur) => {
+    const d = Object.assign(blankAction(jobKey), seenToAction(seen), cur);
+    const stored = Number(((d.answers || {})[aid] || {}).rev || 0);
+    if (stored > baseRev) return { conflict: true };
+    d.answers = Object.assign({}, d.answers || {}, { [aid]: { text: String(text || "").slice(0, 4000), rev: Math.max(stored, baseRev) + 1, updated_at: new Date().toISOString() } });
+    return { doc: d };
+  };
+  const saveText = (jobKey, kind, text, baseRev, seen) => (cur) => {
+    const d = Object.assign(blankAction(jobKey), seenToAction(seen), cur);
+    const stored = Number(((d.texts || {})[kind] || {}).rev || 0);
+    if (stored > baseRev) return { conflict: true };
+    d.texts = Object.assign({}, d.texts || {}, { [kind]: { text: String(text || "").slice(0, 8000), rev: Math.max(stored, baseRev) + 1, updated_at: new Date().toISOString() } });
+    return { doc: d };
+  };
+  const setCv = (key, fields) => (cur) => { const d = Object.assign({ job_key: "_cvs", variants: {} }, cur); d.variants = Object.assign({}, d.variants || {}, { [key]: Object.assign({}, (d.variants || {})[key] || {}, fields) }); return { doc: d }; };
+  const setCvRequest = (key, id) => (cur) => { const d = Object.assign({ job_key: "_cvs", variants: {} }, cur); d.requests = Object.assign({}, d.requests || {}, { cv_file: { id, at: new Date().toISOString(), params: { cv: key } } }); return { doc: d }; };
+  // The state of one request as the page should show it: the page's own latest request wins until Hunter has
+  // recorded that very id; then Hunter's state (running, ready, needs_input, failed) is the truth.
+  function requestState(work, action, kind) {
+    const mine = action && action.requests && action.requests[kind];
+    const theirs = work && work.requests && work.requests[kind];
+    if (mine && (!theirs || theirs.id !== mine.id)) return { state: "requested", id: mine.id, at: mine.at, mine: true };
+    if (theirs) return { state: theirs.state, id: theirs.id, at: theirs.at, message: theirs.message, result: theirs.result || null, mine: false };
+    return null;
+  }
+  // One main action per job: Prepare application -> Continue application -> View application.
+  function mainAction(work, action) {
+    const applied = !!(action && Number(action.rev) > 0 ? action.applied_at : (work && work.state === "applied"));
+    const prep = requestState(work, action, "prepare");
+    if (applied) return { kind: "view", label: "View application" };
+    if (work && work.package) return { kind: "continue", label: "Continue application" };
+    if (prep && prep.state === "requested") return { kind: "continue", label: "Continue application" };
+    if (prep && (prep.state === "running")) return { kind: "continue", label: "Continue application" };
+    return { kind: "prepare", label: "Prepare application" };
+  }
+  function parseQuestions(text) {
+    const out = [];
+    for (const raw of String(text || "").split(/\n+/)) {
+      let line = raw.trim(); if (!line) continue;
+      let limit = null; const m = /\(\s*(\d{2,5})\s*(?:chars?|characters|words?)?\s*\)\s*$/i.exec(line);
+      if (m) { limit = Number(m[1]); line = line.slice(0, m.index).trim(); }
+      if (line.length >= 3) out.push({ text: line.slice(0, 300), limit });
+      if (out.length >= 12) break;
+    }
+    return out;
+  }
+  return { commit, effective, setFlag, saveNote, setPrefs, tabsFor, topPicks, pendingCount, matches, blankAction, clone, sleep,
+    REQUEST_KINDS, requestId, setFields, setRequest, saveAnswer, saveText, setCv, setCvRequest, requestState, mainAction, parseQuestions };
 })();
 /* ===CORE-END=== */
 
@@ -279,7 +354,9 @@ const Core = (() => {
   const CHIPS = [["recommended", "All recommended"], ["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"], ["uncertain", "Needs checking"], ["old", "Older"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Not interested"], ["all", "Everything"]];
   const GROUPS = [["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"]];
   const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null,
-    tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, drafts: {}, prefsDraft: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false }, dbError: null, prefsOpen: false, prefsStatus: null };
+    tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, drafts: {}, prefsDraft: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false, work: false }, dbError: null, prefsOpen: false, prefsStatus: null,
+    work: new Map(), mcp: null, section: "overview", wide: false, askApplied: null, addContact: null, cvsOpen: false, cvsArchived: false, reqStatus: {}, answerDrafts: {}, answerStatus: {}, textDrafts: {}, textStatus: {} };
+  try { st.wide = !!localStorage.getItem("hunter.wide"); } catch {}
   try { const t = localStorage.getItem("hunter.tab"); if (t && CHIPS.some((x) => x[0] === t)) st.tab = t; } catch {}
 
   const el = (tag, attrs = {}, ...kids) => {
@@ -347,7 +424,7 @@ const Core = (() => {
     const pendingPrefs = st.actions.get("_prefs") && Number(st.actions.get("_prefs").rev) > Number(p.prefs_synced_rev || 0);
     box.replaceChildren(
       el("div", { style: "min-width:0" }, el("h1", {}, p.headline || "Your profile"), el("div", { class: "line" }, line, pendingPrefs ? el("span", { class: "pill p-pending", style: "margin-left:8px" }, "new preferences: Hunter next run") : null)),
-      el("div", { class: "acts" }, el("button", { class: "btn sm", onclick: () => { const d = $("whoMore"); d.open = !d.open; } }, "View profile"), el("button", { class: "btn sm", onclick: () => { st.prefsOpen = true; renderOverlay(); } }, "Edit preferences")),
+      el("div", { class: "acts" }, el("button", { class: "btn sm", onclick: () => { const d = $("whoMore"); d.open = !d.open; } }, "View profile"), el("button", { class: "btn sm", onclick: () => { st.cvsOpen = true; renderOverlay(); } }, "My CVs" + ((p.cvs || []).filter((c) => !c.archived).length > 1 ? " (" + (p.cvs || []).filter((c) => !c.archived).length + ")" : "")), el("button", { class: "btn sm", onclick: () => { st.prefsOpen = true; renderOverlay(); } }, "Edit preferences")),
       el("details", { id: "whoMore" }, el("summary", {}, "Profile"), el("div", { class: "more" },
         p.summary ? el("p", {}, p.summary) : null,
         (p.roles || []).length ? [el("div", {}, el("b", {}, "Paid work: "), p.roles.join(" · "))] : null,
@@ -411,6 +488,7 @@ const Core = (() => {
     const marks = el("div", { class: "marks" });
     if (e.favorite) marks.append(el("span", { class: "star", title: "Favorite" }, "★"));
     if (e.applied_at) marks.append(el("span", { class: "pill p-applied" }, "Applied"));
+    else if (Core.mainAction(st.work.get(k), st.actions.get(k)).kind === "continue") marks.append(el("span", { class: "pill p-fresh" }, "In progress"));
     if (e.dismissed && st.tab !== "dismissed") marks.append(el("span", { class: "pill p-dismissed" }, "Not interested"));
     if (e.pending) marks.append(el("span", { class: "pill p-pending", title: "Hunter reads this on its next run" }, "waiting for Hunter"));
     if (j.freshness_label && /last 2 days|today|yesterday/i.test(j.freshness_label)) marks.append(el("span", { class: "pill p-fresh" }, "New"));
@@ -444,21 +522,249 @@ const Core = (() => {
     }
     box.replaceChildren(...keys.map(rowFor));
   }
-  /* ---------- drawer (job page) ---------- */
-  function saveLine(k) {
-    const s = st.saving[k]; const e = eff(k);
-    if (!s || (s.status === "saved" && !e.pending)) return el("div", { class: "save " + (e.pending ? "warn" : "ok"), role: "status" }, e.pending ? "Waiting for Hunter: it reads this on its next run." : (st.actions.has(k) ? "Synced with Hunter." : ""));
+  /* ---------- drawer: the job page and its application workspace ---------- */
+  function saveLine(k, echo) {
+    // One live status line per job (role=status, in the overview); the notes block repeats its text without the role.
+    const s = st.saving[k]; const e = eff(k); const attrs = echo ? {} : { role: "status" };
+    if (!s || (s.status === "saved" && !e.pending)) return el("div", Object.assign({ class: "save " + (e.pending ? "warn" : "ok") }, attrs), e.pending ? "Waiting for Hunter: it reads this on its next run." : (st.actions.has(k) ? "Synced with Hunter." : ""));
     const cls = { saving: "", saved: "ok", conflict: "warn", busy: "warn", error: "err" }[s.status] || "";
     const txt = { saving: "Saving…", saved: "Saved to your dashboard. Waiting for Hunter: it reads this on its next run.", conflict: "Changed in another tab or device. Nothing was overwritten.", busy: "Another tab is saving. Nothing was lost.", error: "Couldn't save (" + (s.code || "error") + "). Your change is still on screen." }[s.status];
-    const retry = (s.status === "error" || s.status === "busy") && s.retry ? el("button", { class: "btn sm", style: "margin-left:8px", onclick: () => s.retry() }, "Retry") : null;
-    return el("div", { class: "save " + cls, role: "status" }, txt, retry);
+    const retry = !echo && (s.status === "error" || s.status === "busy") && s.retry ? el("button", { class: "btn sm", style: "margin-left:8px", onclick: () => s.retry() }, "Retry") : null;
+    return el("div", Object.assign({ class: "save " + cls }, attrs), txt, retry);
+  }
+  const work = (k) => st.work.get(k) || null;
+  const act = (k) => st.actions.get(k) || null;
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fmtDay = (iso) => { if (!iso) return ""; const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + "T12:00:00") : new Date(iso); return isFinite(d) ? d.getDate() + " " + MONTHS[d.getMonth()] + " " + d.getFullYear() : String(iso).slice(0, 10); };
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const plusDays = (iso, n) => { const d = new Date(iso || Date.now()); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  function copyBtn(text, label) { return el("button", { class: "btn sm", type: "button", onclick: (ev) => { copyText(text); ev.target.textContent = "Copied"; setTimeout(() => { ev.target.textContent = label || "Copy"; }, 1500); } }, label || "Copy"); }
+  /* The request chain. A request is written to the page's database first (it is never lost), then Hunter is reached
+     directly when this page has a line to it (the mcp capability and a channel Hunter set); otherwise the person
+     continues in Claude with the request id. Every state is shown; nothing waits silently. */
+  function requestLine(k, kind, labels) {
+    const r = Core.requestState(work(k), act(k), kind); const local = (st.reqStatus[k] || {})[kind];
+    if (!r) return null;
+    const parts = [];
+    if (r.state === "requested") {
+      if (local && local.status === "sent") parts.push(el("div", { class: "save ok", role: "status" }, "Sent to Hunter in your Claude account (" + local.text + "). This page updates when it is done."));
+      else if (local && local.status === "sending") parts.push(el("div", { class: "save", role: "status" }, "Reaching Hunter…"));
+      else parts.push(el("div", { class: "save warn", role: "status" }, "Saved. Hunter does this on its next run." + (local && local.code ? " Direct line: " + local.code + "." : "")),
+        el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm primary", type: "button", onclick: () => continueInClaude(r.id) }, "Continue in Claude now"), el("span", { class: "foot", style: "align-self:center" }, "Copies “/jobhunter continue " + r.id + "” and opens Claude; paste it there.")));
+    } else if (r.state === "running") parts.push(el("div", { class: "save", role: "status" }, "Hunter is working on this…"));
+    else if (r.state === "needs_input") parts.push(el("div", { class: "save warn", role: "status" }, "Hunter needs something from you: " + (r.message || "")), el("button", { class: "btn sm", type: "button", style: "margin-top:6px", onclick: () => doRequest(k, kind) }, "Ask again"));
+    else if (r.state === "failed") parts.push(el("div", { class: "save err", role: "status" }, "Hunter could not do this: " + (r.message || "unknown error")), el("button", { class: "btn sm", type: "button", style: "margin-top:6px", onclick: () => doRequest(k, kind) }, "Try again"));
+    else if (r.state === "ready" && labels && labels.ready) parts.push(el("div", { class: "save ok", role: "status" }, labels.ready));
+    return parts.length ? el("div", {}, ...parts) : null;
+  }
+  function mainActionButton(k, compact) {
+    const w = work(k); const a = act(k); const m = Core.mainAction(w, a);
+    const busy = st.saving[k] && st.saving[k].status === "saving";
+    return el("button", { class: "btn primary" + (compact ? " sm" : ""), disabled: busy || !can(), onclick: () => { if (m.kind === "prepare") doRequest(k, "prepare"); else { st.section = "app"; renderOverlay(); const s = $("sec-app"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); } } }, m.label);
   }
   function renderDrawer() {
     const k = st.sel; const j = k && st.jobs.get(k); if (!j) return null;
     const e = eff(k); const busy = st.saving[k] && st.saving[k].status === "saving";
     const flag = (field, on, labelOn, labelOff) => el("button", { class: "btn" + (on ? " on" : ""), disabled: busy || !can(), "aria-pressed": String(on), onclick: () => doFlag(k, field, !on) }, on ? labelOn : labelOff);
     const links = j.links || {}; const direct = safeUrl(links.direct) || safeUrl(links.apply) || safeUrl(links.discovery);
+    const openBtn = (cls) => direct ? el("a", { class: cls, style: "text-align:center;text-decoration:none", href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application") : el("span", { class: cls, disabled: true }, "No link available");
+    const w = work(k);
+    const secs = [["overview", "Overview"], ["app", "My application"], ["people", "People & notes"]];
+    const body = el("div", { class: "dbody", id: "dbody" },
+      el("div", { class: "sec", id: "sec-overview" }, el("h3", {}, "Overview"),
+        el("div", { class: "kv" }, el("span", {}, "Where"), el("span", {}, where(j) || "Not stated"), el("span", {}, "Pay"), el("span", {}, j.salary || "Not listed"), el("span", {}, "Posted"), el("span", {}, [j.freshness_label, j.verification].filter(Boolean).join(" · ")), el("span", {}, "Type"), el("span", {}, j.employment_type || "Not stated"), el("span", {}, "Work authorization"), el("span", {}, j.authorization || "Not stated in the posting.")),
+        el("h3", { style: "margin-top:12px" }, "Why it fits"),
+        el("ul", { class: "r" }, (j.reasons || []).map((r) => el("li", {}, r))),
+        (j.gaps || []).length ? [el("h3", { style: "margin-top:10px" }, "Check before you apply"), el("ul", { class: "r" }, j.gaps.map((g) => el("li", {}, g)))] : null,
+        j.next_step ? el("p", { class: "s", style: "margin:8px 0 0;color:var(--ink-2)" }, el("b", {}, "Next step: "), j.next_step) : null,
+        el("div", { class: "actions", style: "margin-top:10px" }, openBtn("btn"), mainActionButton(k),
+          flag("favorite", e.favorite, "★ Favorite", "☆ Favorite"), flag("saved", e.saved, "Saved", "Save for later"),
+          el("button", { class: "btn" + (e.applied_at ? " on" : ""), disabled: busy || !can(), onclick: () => { if (e.applied_at) doFlag(k, "applied", false); else { st.askApplied = k; st.section = "app"; renderOverlay(); } } }, e.applied_at ? "Applied ✓ (undo)" : "I applied"),
+          flag("dismissed", e.dismissed, "Not interested", "Not interested?")),
+        saveLine(k),
+        el("h3", { style: "margin-top:12px" }, "Description"), el("div", { class: "desc" }, j.description || "No description. Open the listing."),
+        el("div", { class: "links", style: "margin-top:10px" },
+          safeUrl(links.direct) ? el("a", { href: safeUrl(links.direct), target: "_blank", rel: "noopener noreferrer" }, "Employer’s listing") : null,
+          safeUrl(links.apply) && links.apply !== links.direct ? el("a", { href: safeUrl(links.apply), target: "_blank", rel: "noopener noreferrer" }, "Apply page") : null,
+          safeUrl(links.discovery) && links.discovery !== links.apply && links.discovery !== links.direct ? el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it") : null)),
+      el("div", { class: "sec", id: "sec-app" }, el("h3", {}, "My application"), renderApplication(k, j, w, e)),
+      el("div", { class: "sec", id: "sec-people" }, el("h3", {}, "People & notes"), renderPeople(k, j, w), renderNotes(k, e)));
+    const salary = j.salary ? " · " + j.salary : "";
+    const drawer = el("aside", { class: "drawer" + (st.wide ? " wide" : ""), role: "dialog", "aria-label": j.title || "Job" },
+      el("header", {}, el("div", { style: "min-width:0;flex:1" }, el("h2", {}, j.title || "Untitled job"), el("div", { class: "sub" }, [j.employer, j.location_label || where(j)].filter(Boolean).join(" · ") + salary), el("div", { style: "margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center" }, el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"), e.applied_at ? el("span", { class: "pill p-applied" }, "Applied " + fmtDay(e.applied_at)) : null, w && w.application && w.application.stage && w.application.stage !== "applied" && w.application.stage !== "prepared" ? el("span", { class: "pill p-pending" }, w.application.stage_label) : null)),
+        el("div", { class: "hacts" }, mainActionButton(k, true), openBtn("btn sm"), el("button", { class: "btn sm", "aria-label": st.wide ? "Narrow" : "Expand", title: st.wide ? "Narrow" : "Expand", onclick: () => { st.wide = !st.wide; try { localStorage.setItem("hunter.wide", st.wide ? "1" : ""); } catch {} renderOverlay(); } }, st.wide ? "⇥" : "⇤"), el("button", { class: "btn sm", "aria-label": "Close", onclick: () => { st.sel = null; st.askApplied = null; render(); } }, "Close"))),
+      el("nav", { class: "secnav" }, secs.map(([id, label]) => el("button", { "aria-current": String(st.section === id), onclick: () => { st.section = id; const s = $("sec-" + id); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); renderOverlay(); } }, label))),
+      body);
+    return [el("div", { class: "scrim", onclick: () => { st.sel = null; st.askApplied = null; render(); } }), drawer];
+  }
+  /* ----- My application ----- */
+  function renderApplication(k, j, w, e) {
+    const pkg = w && w.package; const out = [];
+    const prep = Core.requestState(w, act(k), "prepare");
+    if (!pkg) {
+      out.push(el("p", { class: "s", style: "margin:0 0 8px;color:var(--ink-2)" }, "Hunter prepares: a short brief of the company and the role with its sources, where to apply, your strongest case from your own facts, and draft answers you edit in your words. You apply yourself; Hunter never sends anything."));
+      if (!prep || prep.state === "ready") out.push(el("div", { class: "actions" }, mainActionButton(k)));
+      out.push(requestLine(k, "prepare"));
+      out.push(renderCvChoice(k, w));
+      out.push(renderApplied(k, w, e));
+      return out;
+    }
+    if (pkg.needs_review && pkg.needs_review.length) out.push(el("div", { class: "conflict", role: "status" }, el("b", {}, "Needs review. "), pkg.needs_review.join(" "), el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "prepare") }, "Prepare again (keeps your wording)"))));
+    out.push(requestLine(k, "prepare", { ready: "Prepared " + rel(pkg.created_at) + " (version " + pkg.version + ")." }));
+    out.push(renderCvChoice(k, w));
+    // A. Company and role brief
+    const b = pkg.brief || {};
+    const tier = (title, lines) => lines && lines.length ? [el("div", { class: "tier" }, el("b", {}, title)), el("ul", { class: "r" }, lines.map((x) => el("li", {}, x)))] : null;
+    out.push(el("details", { class: "part", open: true }, el("summary", {}, "Company and role brief"),
+      b.confidential ? el("p", { class: "s" }, "The employer is not named in the posting, so Hunter says nothing about the company.") : null,
+      tier("The vacancy says", b.vacancy_says), tier("The company describes itself", b.company_describes), tier("Hunter’s reading", b.interpretation),
+      el("details", { class: "sub" }, el("summary", {}, "Sources"), el("ul", { class: "r" }, (b.sources || []).map((s) => el("li", {}, safeUrl(s.url) ? el("a", { href: safeUrl(s.url), target: "_blank", rel: "noopener noreferrer" }, s.label || s.url) : (s.label || "source"), " · checked " + fmtDay(s.checked_at) + (s.certainty ? " · " + s.certainty : "")))), b.uncertainty ? el("p", { class: "foot" }, b.uncertainty) : null, el("p", { class: "foot" }, "Brief version " + (b.version || 1) + ", " + (b.created_by === "claude" ? "written by Claude from pages it read" : "from the posting only") + ".")),
+      el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "research") }, "Refresh the brief")), requestLine(k, "research", { ready: "" })));
+    // B. The vacancy and where to apply
+    const r = pkg.route || {};
+    out.push(el("details", { class: "part", open: true }, el("summary", {}, "The vacancy and where to apply"),
+      el("div", { class: "kv" }, el("span", {}, "Status"), el("span", {}, r.availability_label || ""), el("span", {}, "Last checked"), el("span", {}, r.last_checked_at ? fmtDay(r.last_checked_at) + " (" + rel(r.last_checked_at) + ")" : "unknown"), r.requisition_id ? [el("span", {}, "Reference"), el("span", {}, r.requisition_id)] : null),
+      r.note ? el("p", { class: "foot" }, r.note) : null,
+      el("div", { class: "links", style: "margin-top:6px" }, safeUrl(r.apply_url) ? el("a", { href: safeUrl(r.apply_url), target: "_blank", rel: "noopener noreferrer" }, "Apply here (opens the employer’s page)") : null, safeUrl(r.employer_url) && r.employer_url !== r.apply_url ? el("a", { href: safeUrl(r.employer_url), target: "_blank", rel: "noopener noreferrer" }, "Employer’s own listing") : null),
+      (r.other_listings || []).length ? el("details", { class: "sub" }, el("summary", {}, "Other listings (" + r.other_listings.length + ")"), el("ul", { class: "r" }, r.other_listings.map((o) => el("li", {}, safeUrl(o.url) ? el("a", { href: safeUrl(o.url), target: "_blank", rel: "noopener noreferrer" }, o.source) : o.source, " · seen " + fmtDay(o.seen_at))))) : null));
+    // C. Your strongest case
+    const c = pkg.case || {};
+    out.push(el("details", { class: "part", open: true }, el("summary", {}, "Your strongest case"),
+      (c.items || []).length ? el("table", { class: "case" }, el("thead", {}, el("tr", {}, el("th", {}, "They ask for"), el("th", {}, "Your profile"), el("th", {}, "Your CV says it"))),
+        el("tbody", {}, c.items.map((i) => el("tr", {}, el("td", {}, i.requirement), el("td", {}, i.profile_supports ? el("span", {}, el("b", {}, "Yes, " + (i.evidence_type || "")), i.evidence ? el("div", { class: "foot" }, i.evidence) : null) : el("span", {}, "Not in your profile yet")), el("td", {}, i.profile_supports ? (i.cv_communicates ? "Yes" : "Not in so many words") : "–"))))) : el("p", { class: "s" }, "The posting names no specific tools; your case is your story."),
+      el("ul", { class: "r" }, (c.items || []).filter((i) => i.gap || i.note).map((i) => el("li", {}, i.gap || i.note))),
+      (c.examples || []).length ? [el("div", { class: "tier" }, el("b", {}, "Examples you can tell")), el("ul", { class: "r" }, c.examples.map((x) => el("li", {}, x.text, " ", el("span", { class: "foot" }, "(" + x.kind + ")"))))] : null,
+      c.note ? el("p", { class: "foot" }, c.note) : null));
+    // D. Answers
+    out.push(el("details", { class: "part", open: true }, el("summary", {}, "Application answers"), renderAnswers(k, w)));
+    // E. Optional texts
+    out.push(el("details", { class: "part" }, el("summary", {}, "Short introduction and cover letter (optional)"), renderOptional(k, w, "intro", "short introduction", "about 60 to 100 words"), renderOptional(k, w, "letter", "cover letter", "about 180 to 250 words")));
+    // F. Checklist, I applied, follow-up, hand-off
+    out.push(el("details", { class: "part", open: true }, el("summary", {}, "Before you send"),
+      el("ul", { class: "check" }, (pkg.checklist || []).map((i) => el("li", { class: i.done ? "done" : "" }, (i.done ? "✓ " : "○ ") + i.text))),
+      el("p", { class: "foot" }, "A guide, not a gate. " + (pkg.reminder || ""))));
+    out.push(renderApplied(k, w, e));
+    return out;
+  }
+  function renderCvChoice(k, w) {
+    const cv = w && w.cv; const a = act(k) || {};
+    const options = (cv && cv.options) || ((st.profile && st.profile.cvs) || []).filter((c) => !c.archived).map((c) => ({ key: c.key, label: c.label, version: c.version, default: c.default }));
+    if (!options.length) return el("p", { class: "foot" }, "No CV on file yet.");
+    const selectedKey = a.cv_variant || (cv && cv.selected && cv.selected.key) || (options.find((o) => o.default) || options[0]).key;
+    const sel = el("select", { id: "cv-select", "aria-label": "CV for this application", disabled: !can(), onchange: (ev) => doField(k, "cv_variant", ev.target.value, { cv_choice: cv && cv.suggestion && cv.suggestion.key === ev.target.value ? "suggested" : "student" }) });
+    for (const o of options) sel.append(el("option", { value: o.key, selected: o.key === selectedKey }, o.label + " (version " + o.version + ")" + (o.default ? " · default" : "")));
+    const sug = cv && cv.suggestion && cv.suggestion.key !== selectedKey ? el("p", { class: "s", style: "margin:4px 0 0;color:var(--ink-2)" }, "Hunter suggests “" + cv.suggestion.label + "”: " + cv.suggestion.reason + " ", el("button", { class: "btn sm", onclick: () => doField(k, "cv_variant", cv.suggestion.key, { cv_choice: "suggested" }) }, "Use it for this job")) : null;
+    return el("div", { class: "cvpick" }, el("label", {}, "CV for this application (this job only)", sel), sug, a.cv_variant && (!cv || !cv.selected || cv.selected.key !== a.cv_variant) ? el("div", { class: "foot" }, "Chosen here; Hunter uses it on its next run.") : null);
+  }
+  function answerValue(k, a) {
+    const d = (st.answerDrafts[k] || {})[a.id]; if (d !== undefined) return d;
+    const mine = ((act(k) || {}).answers || {})[a.id]; const theirs = a.user;
+    if (mine && Number(mine.rev) > Number((theirs && theirs.rev) || 0)) return mine.text || "";
+    return (theirs && theirs.text) || "";
+  }
+  function renderAnswers(k, w) {
+    const pkg = w.package; const list = pkg.answers || []; const items = [];
+    for (const a of list) {
+      const val = answerValue(k, a); const limit = a.limit; const n = val.length;
+      const saved = ((act(k) || {}).answers || {})[a.id];
+      const st_ = (st.answerStatus[k] || {})[a.id];
+      items.push(el("div", { class: "ans" },
+        el("div", { class: "q" }, a.question, a.needs_user ? el("span", { class: "pill p-pending", style: "margin-left:6px" }, a.custom ? "your words" : "only you can answer") : null),
+        a.suggested ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (from your facts only):"), el("div", {}, a.suggested), el("div", { class: "actions", style: "grid-template-columns:auto auto;justify-content:start;margin-top:4px" }, copyBtn(a.suggested, "Copy draft"), el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.suggested; renderOverlay(); } }, "Use as my starting point"))) : null,
+        a.note ? el("div", { class: "foot" }, a.note) : null,
+        el("textarea", { id: "ans-" + a.id, "aria-label": "Your answer: " + a.question, placeholder: a.needs_user ? "Only you can answer this. Write it here so it is saved with the application." : "Your own wording", oninput: (ev) => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = ev.target.value; const c = $("cnt-" + a.id); if (c) c.textContent = ev.target.value.length + (limit ? " / " + limit : "") + " characters"; } }, val),
+        el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr;align-items:center" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doAnswer(k, a.id, $("ans-" + a.id).value) }, "Save my wording"), copyBtn(val, "Copy"), el("span", { class: "foot", id: "cnt-" + a.id, style: limit && n > limit ? "color:var(--bad)" : "" }, n + (limit ? " / " + limit : "") + " characters")),
+        st_ ? el("div", { class: "save " + (st_.ok ? "ok" : "err"), role: "status" }, st_.text) : (saved && saved.rev > Number((a.user && a.user.rev) || 0) ? el("div", { class: "save warn", role: "status" }, "Saved here; Hunter keeps it on its next run.") : null)));
+    }
+    const qbox = el("textarea", { id: "newq", "data-keep": true, placeholder: "Paste a question from the application form, one per line. Add a limit like “(500)” at the end of a line.", "aria-label": "Questions from the form" });
+    items.push(el("div", { class: "ans" }, el("div", { class: "q" }, "Questions from the application form"), qbox, el("div", { class: "actions", style: "grid-template-columns:auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => { const qs = Core.parseQuestions(qbox.value); if (qs.length) doRequest(k, "prepare", { questions: qs }); } }, "Add these questions"), el("span", { class: "foot" }, "Hunter adds them to this list; sensitive ones stay yours to answer."))));
+    return items;
+  }
+  function renderOptional(k, w, kind, name, target) {
+    const o = ((w.package || {}).optional || {})[kind]; const a = act(k) || {}; const mine = (a.texts || {})[kind];
+    const latest = o && o.latest; const user = o && o.user_text;
+    const val = (st.textDrafts[k] || {})[kind] !== undefined ? st.textDrafts[k][kind] : (mine && Number(mine.rev) > Number((user && user.rev) || 0) ? mine.text : (user && user.text) || (latest && latest.text) || "");
+    const parts = [el("div", { class: "tier" }, el("b", {}, name[0].toUpperCase() + name.slice(1)), el("span", { class: "foot" }, " · " + target + ", only if you want one"))];
+    if (!latest) parts.push(el("div", { class: "actions", style: "grid-template-columns:auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, kind) }, "Draft a " + name)), requestLine(k, kind));
+    else {
+      parts.push(requestLine(k, kind, { ready: "" }));
+      if (latest.problems && latest.problems.length && !latest.text) parts.push(el("div", { class: "save err", role: "status" }, "Hunter did not write this draft: " + latest.problems.join("; ")));
+      parts.push(el("textarea", { id: "txt-" + kind, "aria-label": "Your " + name, style: "min-height:140px", oninput: (ev) => { (st.textDrafts[k] = st.textDrafts[k] || {})[kind] = ev.target.value; } }, val));
+      parts.push(el("div", { class: "actions", style: "grid-template-columns:auto auto auto 1fr;align-items:center" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doText(k, kind, $("txt-" + kind).value) }, "Save my version"), copyBtn(val, "Copy"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, kind) }, "New draft (keeps yours)"), el("span", { class: "foot" }, (o.versions || 1) + " Hunter version" + (o.versions === 1 ? "" : "s") + " · " + val.split(/\s+/).filter(Boolean).length + " words")));
+      parts.push(el("details", { class: "sub" }, el("summary", {}, "Facts used in Hunter’s draft"), (latest.facts_used || []).length ? el("ul", { class: "r" }, latest.facts_used.map((f) => el("li", {}, f.text + " (" + f.kind + ")"))) : el("p", { class: "foot" }, "Hunter’s draft names nothing beyond the role and the employer."), el("p", { class: "foot" }, "Hunter’s draft uses only facts from your approved profile. Dates, pay, legal questions and numbers are never invented; what you type here is yours.")));
+      const s_ = (st.textStatus[k] || {})[kind]; if (s_) parts.push(el("div", { class: "save " + (s_.ok ? "ok" : "err"), role: "status" }, s_.text));
+    }
+    return el("div", { class: "opt" }, ...parts);
+  }
+  function renderApplied(k, w, e) {
+    const parts = []; const app = w && w.application; const a = act(k) || {};
+    if (e.applied_at) {
+      const sub = app && app.submitted_cv; const pendingCv = a.applied_cv && (!sub || sub.choice === "unknown" && a.applied_cv !== "unknown");
+      parts.push(el("div", { class: "tier" }, el("b", {}, "Applied " + fmtDay(e.applied_at))), el("div", { class: "s" }, sub && sub.label ? "CV sent: " + sub.label + " (version " + sub.version + ")" : (a.applied_cv === "unknown" || (sub && sub.choice === "unknown") ? "CV sent: not sure" : (pendingCv ? "CV sent: noted here; Hunter records it on its next run." : "CV sent: not recorded"))));
+      parts.push(renderFollowup(k, w, e));
+      if (app && (app.stage === "interview" || app.stage === "offer") || true) parts.push(el("div", { class: "actions", style: "grid-template-columns:auto 1fr;margin-top:8px" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "handoff") }, "Prepare for interview"), el("span", { class: "foot" }, "Hunter writes a hand-off for InterviewOS: the vacancy as seen, the brief with sources, the exact CV sent, what was sent and what stayed a draft, and the timeline.")), requestLine(k, "handoff", { ready: w && w.handoff ? "Hand-off written " + rel(w.handoff.at) + ". Ask Hunter in Claude for the file." : "" }));
+      return el("div", { class: "applied" }, ...parts);
+    }
+    if (st.askApplied !== k) return el("div", { class: "actions", style: "grid-template-columns:auto 1fr;margin-top:8px" }, el("button", { class: "btn", disabled: !can(), onclick: () => { st.askApplied = k; renderOverlay(); const n = $("applied-when"); if (n) n.focus(); } }, "I applied"), el("span", { class: "foot" }, "Press this after you applied on the employer’s page. Hunter records the date and which CV you sent; opening or copying never counts."));
+    const cv = w && w.cv; const options = (cv && cv.options) || ((st.profile && st.profile.cvs) || []).filter((c) => !c.archived);
+    const prepared = (cv && cv.selected) || null; const chosenKey = a.cv_variant || (prepared && prepared.key);
+    const preparedLabel = options.find((o) => o.key === chosenKey);
+    const other = el("select", { id: "applied-other", "data-keep": true, "aria-label": "Which other CV", disabled: !can() }); for (const o of options) other.append(el("option", { value: o.key }, o.label + " (version " + o.version + ")"));
+    const form = el("form", { class: "applied", onsubmit: (ev) => { ev.preventDefault(); const fd = new FormData(ev.target); const choice = String(fd.get("cv")); doApplied(k, String(fd.get("when") || todayIso()), choice === "other" ? other.value : choice); } },
+      el("div", { class: "tier" }, el("b", {}, "You applied. Well done.")),
+      el("label", {}, "When", el("input", { type: "date", name: "when", id: "applied-when", "data-keep": true, value: todayIso(), max: todayIso() })),
+      el("div", { class: "s" }, "Which CV did you send?"),
+      el("label", { class: "radio" }, el("input", { type: "radio", name: "cv", value: "prepared", id: "applied-cv-prepared", "data-keep": true, checked: true }), preparedLabel ? "The one prepared here: " + preparedLabel.label + " (version " + preparedLabel.version + ")" : "The CV prepared here"),
+      el("label", { class: "radio" }, el("input", { type: "radio", name: "cv", value: "other", id: "applied-cv-other", "data-keep": true }), "Another CV: ", other),
+      el("label", { class: "radio" }, el("input", { type: "radio", name: "cv", value: "unknown", id: "applied-cv-unknown", "data-keep": true }), "Not sure"),
+      el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Record it"), el("button", { class: "btn", type: "button", onclick: () => { st.askApplied = null; renderOverlay(); } }, "Not yet")));
+    return form;
+  }
+  function renderFollowup(k, w, e) {
+    const a = act(k) || {}; const f = w && w.followup; const pend = a.followup && (!w || !w.followup || a.followup.at > (w.at || ""));
+    const stage = w && w.application && w.application.stage;
+    if (["replied", "interview", "offer", "rejected", "withdrawn"].includes(stage)) return el("p", { class: "foot" }, "No reminder: this application is at “" + (w.application.stage_label || stage) + "”.");
+    const eff_ = pend ? { action: a.followup.action, due: (a.followup.due_at || "").slice(0, 10) } : (f ? { action: "set", due: f.due } : null);
+    const due = eff_ && eff_.action !== "done" && eff_.action !== "stop" ? eff_.due : null;
+    const input = el("input", { type: "date", id: "fu-when", "data-keep": true, "aria-label": "Follow-up date", value: due || plusDays(e.applied_at, 7), min: todayIso() });
+    const line = due ? el("div", { class: "s" }, "Follow-up reminder: " + fmtDay(due) + (f && f.overdue && !pend ? " · due now" : "") + (pend ? " · Hunter keeps it on its next run" : "")) : el("div", { class: "s" }, "No reminder set." + (eff_ && eff_.action === "stop" ? " Reminders stopped." : eff_ && eff_.action === "done" ? " Last follow-up done." : ""));
+    return el("div", { class: "fu" }, line,
+      el("div", { class: "actions", style: "grid-template-columns:1fr auto;align-items:end" }, el("label", {}, due ? "Change the date" : "Remind me to follow up on", input), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "set", input.value) }, due ? "Change" : "Remind me")),
+      due ? el("div", { class: "actions", style: "grid-template-columns:auto auto auto auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "followup_draft") }, "Draft follow-up"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "snooze", plusDays(due, 3)) }, "Snooze 3 days"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "done") }, "Done"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "stop") }, "Stop reminding")) : null,
+      requestLine(k, "followup_draft", { ready: "Follow-up message drafted; ask Hunter in Claude to show it, then send it yourself." }),
+      el("p", { class: "foot" }, "Reminders show here. They stop by themselves after a reply, an interview, a rejection or a withdrawal. Email reminders are a separate preference."));
+  }
+  /* ----- People & notes ----- */
+  function renderPeople(k, j, w) {
+    const a = act(k) || {}; const contacts = (w && w.contacts) || []; const parts = [];
+    parts.push(el("p", { class: "s", style: "margin:0 0 6px;color:var(--ink-2)" }, "Only real contacts: someone the posting names, someone on a public team page Hunter read, or someone you know. Hunter never guesses an email address and never messages anyone."));
+    const line = requestLine(k, "contact", { ready: "" });
+    parts.push(el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "contact") }, "Find a contact"), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = st.addContact === k ? null : k; renderOverlay(); } }, "Add someone you know")), line);
+    if (st.addContact === k) parts.push(el("form", { class: "applied", onsubmit: (ev) => { ev.preventDefault(); const fd = new FormData(ev.target); doAddContact(k, { name: String(fd.get("name") || "").trim(), role: String(fd.get("role") || "").trim(), route: String(fd.get("route") || "").trim() }); } },
+      el("label", {}, "Name", el("input", { type: "text", name: "name", id: "ct-name", "data-keep": true, required: true, maxlength: "120" })), el("label", {}, "Their role (optional)", el("input", { type: "text", name: "role", id: "ct-role", "data-keep": true, maxlength: "120" })), el("label", {}, "A public link or address you have (optional)", el("input", { type: "text", name: "route", id: "ct-route", "data-keep": true, maxlength: "400", placeholder: "https://… or name@company" })),
+      el("div", { class: "actions" }, el("button", { class: "btn primary sm", type: "submit", disabled: !can() }, "Keep this contact"), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = null; renderOverlay(); } }, "Cancel"))));
+    const pendingNew = (a.contacts_new || []).filter((c) => !contacts.some((x) => x.type === "connection" && x.name === c.name));
+    for (const c of pendingNew) parts.push(el("div", { class: "contact" }, el("div", { class: "q" }, c.name, el("span", { class: "pill p-pending", style: "margin-left:6px" }, "Your connection · Hunter keeps it on its next run")), c.role ? el("div", { class: "s" }, c.role) : null));
+    for (const c of contacts) {
+      const done = c.contacted_at || ((a.contacted || {})[c.id] || {}).at;
+      parts.push(el("div", { class: "contact" },
+        el("div", { class: "q" }, c.name || "Unnamed", el("span", { class: "pill " + (c.type === "connection" ? "p-fresh" : "g-worth_a_shot"), style: "margin-left:6px" }, c.type_label || c.type)),
+        c.role ? el("div", { class: "s" }, c.role) : null,
+        el("div", { class: "foot" }, c.relevance || "", c.source_url && safeUrl(c.source_url) ? [" · ", el("a", { href: safeUrl(c.source_url), target: "_blank", rel: "noopener noreferrer" }, "source")] : null, c.checked_at ? " · checked " + fmtDay(c.checked_at) : null),
+        c.route ? el("div", { class: "s" }, "Public route: " + c.route) : el("div", { class: "foot" }, "No public contact route was given; Hunter does not guess one."),
+        c.message ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (you send it, if you want to):"), el("div", { style: "white-space:pre-wrap" }, c.message), el("div", { class: "actions", style: "grid-template-columns:auto 1fr" }, copyBtn(c.message, "Copy message"))) : null,
+        done ? el("div", { class: "save ok", role: "status" }, "You contacted them " + fmtDay(done) + ".") : el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "message", { contact: c.id }) }, c.message ? "New draft message" : "Draft a short message"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doContacted(k, c.id) }, "I contacted them")),
+        requestLine(k, "message", { ready: "" })));
+    }
+    if (!contacts.length && !pendingNew.length) {
+      const r = Core.requestState(w, a, "contact");
+      if (!r) parts.push(el("p", { class: "foot" }, "No contacts yet."));
+    }
+    return el("div", { class: "people" }, ...parts);
+  }
+  function renderNotes(k, e) {
     const savedText = (e.note && e.note.text) || "";
+    const busy = st.saving[k] && st.saving[k].status === "saving";
     const ta = el("textarea", { id: "note", "aria-label": "Private note", placeholder: "A private note, only for you",
       onfocus: () => { if (!(k in st.noteBase)) st.noteBase[k] = (e.note && Number(e.note.rev)) || 0; },
       oninput: (ev) => { if (ev.target.value === savedText) delete st.drafts[k]; else st.drafts[k] = ev.target.value; } });
@@ -467,37 +773,43 @@ const Core = (() => {
       el("div", { class: "theirs" }, "Saved version: " + (st.conflicts[k].theirs || "(empty)")),
       el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => { const c = st.conflicts[k]; delete st.conflicts[k]; st.noteBase[k] = c.theirsRev; doNote(k, c.mine); } }, "Keep mine"),
         el("button", { class: "btn", onclick: () => { delete st.conflicts[k]; delete st.noteBase[k]; renderOverlay(); } }, "Use saved version"))) : null;
-    const secs = [["opp", "Opportunity"], ["why", "Why it fits"], ["next", "Next actions"], ["notes", "My notes"], ["desc", "Description"]];
-    const body = el("div", { class: "dbody", id: "dbody" },
-      el("div", { class: "sec", id: "sec-opp" }, el("h3", {}, "Opportunity"),
-        el("div", { class: "kv" }, el("span", {}, "Where"), el("span", {}, where(j) || "Not stated"), el("span", {}, "Pay"), el("span", {}, j.salary || "Not listed"), el("span", {}, "Posted"), el("span", {}, [j.freshness_label, j.verification].filter(Boolean).join(" · ")), el("span", {}, "Type"), el("span", {}, j.employment_type || "Not stated"), el("span", {}, "Work authorization"), el("span", {}, j.authorization || "Not stated in the posting.")),
-        direct ? el("p", { style: "margin:8px 0 0" }, el("a", { href: direct, target: "_blank", rel: "noopener noreferrer" }, safeUrl(links.direct) ? "Open the employer’s listing" : "Open the listing")) : null),
-      el("div", { class: "sec", id: "sec-why" }, el("h3", {}, "Why it fits"),
-        el("ul", { class: "r" }, (j.reasons || []).map((r) => el("li", {}, r))),
-        (j.gaps || []).length ? [el("h3", { style: "margin-top:10px" }, "Check before you apply"), el("ul", { class: "r" }, j.gaps.map((g) => el("li", {}, g)))] : null,
-        j.next_step ? el("p", { class: "s", style: "margin:8px 0 0;color:var(--ink-2)" }, el("b", {}, "Next step: "), j.next_step) : null),
-      el("div", { class: "sec", id: "sec-next" }, el("h3", {}, "Next actions"),
-        el("div", { class: "actions" },
-          direct ? el("a", { class: "btn primary", style: "text-align:center;text-decoration:none", href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application") : el("span", { class: "btn", disabled: true }, "No link available"),
-          el("button", { class: "btn", title: "Copies a command with this job's key; paste it to Hunter in Claude Code", onclick: () => copyText("/jobhunter apply " + k) }, "Help me apply (copy for Claude Code)"),
-          flag("favorite", e.favorite, "★ Favorite", "☆ Favorite"), flag("saved", e.saved, "Saved", "Save for later"),
-          flag("applied", !!e.applied_at, "Applied ✓", "Mark applied"), flag("dismissed", e.dismissed, "Not interested", "Not interested?")),
-        saveLine(k)),
-      el("div", { class: "sec", id: "sec-notes" }, el("h3", {}, "My notes"), conflict, ta,
-        el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn primary", disabled: busy || !can(), onclick: () => doNote(k, $("note").value) }, "Save note"),
-          el("button", { class: "btn", disabled: busy || !can() || !(e.note && e.note.text), onclick: () => doNote(k, null) }, "Delete note")),
-        el("div", { class: "foot" }, "Notes stay with the job through every search and update.")),
-      el("div", { class: "sec", id: "sec-desc" }, el("h3", {}, "Description"), el("div", { class: "desc" }, j.description || "No description. Open the listing."),
-        el("div", { class: "links", style: "margin-top:10px" },
-          safeUrl(links.direct) ? el("a", { href: safeUrl(links.direct), target: "_blank", rel: "noopener noreferrer" }, "Employer’s listing") : null,
-          safeUrl(links.apply) && links.apply !== links.direct ? el("a", { href: safeUrl(links.apply), target: "_blank", rel: "noopener noreferrer" }, "Apply page") : null,
-          safeUrl(links.discovery) && links.discovery !== links.apply && links.discovery !== links.direct ? el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it") : null)));
-    const drawer = el("aside", { class: "drawer", role: "dialog", "aria-label": j.title || "Job" },
-      el("header", {}, el("div", { style: "min-width:0;flex:1" }, el("h2", {}, j.title || "Untitled job"), el("div", { class: "sub" }, [j.employer, where(j)].filter(Boolean).join(" · ")), el("div", { style: "margin-top:6px" }, el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"), e.applied_at ? el("span", { class: "pill p-applied", style: "margin-left:6px" }, "Applied") : null)),
-        el("button", { class: "btn sm", "aria-label": "Close", onclick: () => { st.sel = null; render(); } }, "Close")),
-      el("nav", { class: "secnav" }, secs.map(([id, label]) => el("button", { onclick: () => { const s = $("sec-" + id); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); } }, label))),
-      body);
-    return [el("div", { class: "scrim", onclick: () => { st.sel = null; render(); } }), drawer];
+    return el("div", { class: "notes", style: "margin-top:12px" }, el("div", { class: "tier" }, el("b", {}, "My notes")), conflict, ta,
+      el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn primary", disabled: busy || !can(), onclick: () => doNote(k, $("note").value) }, "Save note"),
+        el("button", { class: "btn", disabled: busy || !can() || !(e.note && e.note.text), onclick: () => doNote(k, null) }, "Delete note")),
+      saveLine(k, true),
+      el("div", { class: "foot" }, "Notes stay with the job through every search and update, and go into the interview hand-off."));
+  }
+  /* ----- My CVs (under Profile) ----- */
+  function renderCvs() {
+    const p = st.profile || {}; const cur = st.actions.get("_cvs") || {}; const edits = (cur.variants || {});
+    const list = (p.cvs || []).map((c) => Object.assign({}, c, edits[c.key] || {}));
+    const pending = Number(cur.rev || 0) > Number(p.cvs_synced_rev || 0);
+    const rows = list.filter((c) => st.cvsArchived || !c.archived).map((c) => {
+      const label = el("input", { type: "text", id: "cvl-" + c.key, "data-keep": true, value: c.label, maxlength: "60", "aria-label": "Name of this CV" });
+      const tags = el("input", { type: "text", id: "cvt-" + c.key, "data-keep": true, value: (c.tags || []).join(", "), maxlength: "200", "aria-label": "Tags", placeholder: "tags, for example: platform, english" });
+      const req = cur.requests && cur.requests.cv_file; const mine = req && req.params && req.params.cv === c.key; const known = mine && (p.cv_requests || {})[req.id];
+      let fstate = null;
+      if (known) fstate = { ok: known.state === "ready", text: (known.state === "ready" ? "Hunter has the file, unchanged: " : known.state === "needs_input" ? "" : "Hunter: ") + (known.message || known.state) + (known.state === "ready" ? " Ask Hunter in Claude to hand it to you." : "") };
+      else fstate = (st.reqStatus._cvs || {})[c.key] || (mine ? { ok: true, text: "Asked Hunter for the file (request " + req.id + "). In Claude: “/jobhunter continue " + req.id + "”." } : null);
+      return el("div", { class: "cvrow" + (c.archived ? " off" : "") },
+        el("div", { class: "q" }, c.label, c.default ? el("span", { class: "pill p-applied", style: "margin-left:6px" }, "default") : null, c.profile_cv ? el("span", { class: "pill g-backup", style: "margin-left:6px" }, "your profile was built from this") : null, c.archived ? el("span", { class: "pill p-dismissed", style: "margin-left:6px" }, "archived") : null),
+        el("div", { class: "s" }, [c.filename, "version " + c.version, c.uploaded_at ? "uploaded " + fmtDay(c.uploaded_at) : null, c.file_available ? "file on Hunter’s computer" : "file not on Hunter’s computer"].filter(Boolean).join(" · ")),
+        (c.review || []).length ? el("div", { class: "conflict", role: "status" }, el("b", {}, "Check: "), c.review.join(" ")) : null,
+        el("div", { class: "actions", style: "grid-template-columns:1fr 1fr auto" }, label, tags, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvEdit(c.key, { label: label.value.trim() || c.label, tags: tags.value.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean) }) }, "Save name")),
+        el("div", { class: "actions", style: "grid-template-columns:auto auto auto auto 1fr" },
+          c.default || c.archived ? null : el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvEdit(c.key, { default: true }) }, "Make default"),
+          el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvEdit(c.key, { archived: !c.archived }) }, c.archived ? "Bring back" : "Archive"),
+          el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvFile(c.key) }, "Preview / download"),
+          el("span", { class: "foot" }, "To upload a new version, give the file to Hunter in Claude: “new version of " + c.label + "”.")),
+        fstate ? el("div", { class: "save " + (fstate.ok ? "ok" : "warn"), role: "status" }, fstate.text) : null);
+    });
+    const box = el("div", { class: "box", style: "width:min(680px,100%)" }, el("h2", {}, "My CVs"),
+      el("p", { class: "s", style: "margin:0;color:var(--muted)" }, "One factual profile; several ways to present it. Hunter never rewrites a CV. Each upload is kept exactly as you sent it; a new version never replaces an old one, and applications remember which version you sent."),
+      pending ? el("div", { class: "save warn", role: "status" }, "Changes you made here wait for Hunter’s next run.") : null,
+      rows.length ? rows : el("p", { class: "s" }, "No CV on file yet."),
+      el("p", { class: "foot" }, "Add another CV: give the file to Hunter in Claude (drag it into the chat) and say what to call it, for example “Platform — English”. Files stay on the computer where Hunter runs, never on this page."),
+      el("div", { class: "actions" }, el("label", { class: "radio" }, el("input", { type: "checkbox", checked: st.cvsArchived, onchange: (ev) => { st.cvsArchived = ev.target.checked; renderOverlay(); } }), "Show archived"), el("button", { class: "btn", type: "button", onclick: () => { st.cvsOpen = false; renderOverlay(); } }, "Close")));
+    return [el("div", { class: "modal" }, box)];
   }
   function renderPrefs() {
     const p = st.profile || {}; const pr = p.prefs || {}; const cur = st.actions.get("_prefs") || {};
@@ -519,18 +831,22 @@ const Core = (() => {
     const o = $("overlay");
     const active = document.activeElement; const keep = active && o.contains(active) && active.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
     const body = $("dbody"); const scroll = body ? body.scrollTop : 0;
-    const parts = st.prefsOpen ? renderPrefs() : (renderDrawer() || []);
+    // What the person typed into a form that is not yet saved survives a re-render (a snapshot from Hunter, a status line).
+    const kept = {}; for (const n of o.querySelectorAll("[data-keep][id]")) kept[n.id] = n.type === "radio" || n.type === "checkbox" ? { checked: n.checked } : { value: n.value };
+    const parts = st.prefsOpen ? renderPrefs() : st.cvsOpen ? renderCvs() : (renderDrawer() || []);
     o.replaceChildren(...parts);
+    for (const n of o.querySelectorAll("[data-keep][id]")) { const v = kept[n.id]; if (!v) continue; if ("checked" in v) n.checked = v.checked; else if (n.value !== v.value) n.value = v.value; }
     document.body.style.overflow = parts.length ? "hidden" : "";
     const nb = $("dbody"); if (nb && scroll) nb.scrollTop = scroll;
     if (keep) { const n = $(keep.id); if (n) { n.focus({ preventScroll: true }); if (typeof keep.start === "number" && n.setSelectionRange) { try { n.setSelectionRange(keep.start, keep.end); } catch {} } } }
   }
   window.addEventListener("beforeunload", (ev) => {
-    const dirty = Object.keys(st.drafts).length > 0 || Object.keys(st.conflicts).length > 0 || Object.keys(st.prefsDraft).length > 0;
-    if (dirty) { ev.preventDefault(); ev.returnValue = "You have an unsaved note."; }
+    const dirty = Object.keys(st.drafts).length > 0 || Object.keys(st.conflicts).length > 0 || Object.keys(st.prefsDraft).length > 0
+      || Object.values(st.answerDrafts).some((d) => Object.keys(d).length) || Object.values(st.textDrafts).some((d) => Object.keys(d).length);
+    if (dirty) { ev.preventDefault(); ev.returnValue = "You have unsaved text."; }
   });
   function render() { renderBar(); renderNotice(); renderWho(); renderMetrics(); renderPicks(); renderAttention(); renderTools(); renderList(); renderOverlay(); }
-  function select(k) { st.sel = k; st.prefsOpen = false; render(); }
+  function select(k) { st.sel = k; st.prefsOpen = false; st.cvsOpen = false; st.askApplied = null; st.addContact = null; st.section = "overview"; render(); }
   async function copyText(text) { try { await navigator.clipboard.writeText(text); } catch {} }
 
   /* ---------- writes ---------- */
@@ -560,6 +876,87 @@ const Core = (() => {
     st.prefsStatus = res.status === "saved" ? { ok: true, text: "Saved to your dashboard. Waiting for Hunter: it applies this on its next run." } : { ok: false, text: "Couldn't save (" + (res.code || res.status) + "). Your changes are still on screen; try again." };
     render();
   }
+  /* ---------- workspace writes ---------- */
+  async function doField(k, field, value, extra) {
+    const op = nextOp(k);
+    st.saving[k] = { status: "saving" }; renderOverlay();
+    const res = await Core.commit(st.db, "actions/" + k, Core.setFields(k, Object.assign({ [field]: value }, extra || {}), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
+    if (st.ops[k] !== op) return;
+    if (res.status === "saved") st.actions.set(k, res.doc);
+    st.saving[k] = { status: res.status, code: res.code, retry: () => doField(k, field, value, extra) }; render();
+  }
+  async function doRequest(k, kind, params) {
+    const id = Core.requestId(kind);
+    st.reqStatus[k] = Object.assign({}, st.reqStatus[k], { [kind]: { status: "sending" } }); renderOverlay();
+    const res = await Core.commit(st.db, "actions/" + k, Core.setRequest(k, kind, id, params, eff(k)), TAB_ID, { blank: Core.blankAction(k) });
+    if (res.status !== "saved") { st.reqStatus[k][kind] = { status: "error", code: res.code || res.status }; st.saving[k] = { status: res.status, code: res.code, retry: () => doRequest(k, kind, params) }; render(); return; }
+    st.actions.set(k, res.doc);
+    const reached = await reachHunter(id, k);
+    st.reqStatus[k][kind] = reached; render();
+  }
+  async function reachHunter(id, k) {
+    const ch = st.run && st.run.hunter && st.run.hunter.channel; const command = "/jobhunter continue " + id;
+    if (!st.mcp || !ch || !ch.id) return { status: "handoff", code: !st.mcp ? (ch && ch.id ? "no direct line on this page" : "no direct line set") : "no direct line set" };
+    try {
+      const server = ch.server || "Claude Code Remote";
+      if (ch.kind === "routine") await st.mcp.callTool(server, "fire_trigger", { trigger_id: ch.id, text: command });
+      else await st.mcp.callTool(server, "send_message", { session_id: ch.id, message: command, priority: "next" });
+      return { status: "sent", text: ch.label || ch.kind };
+    } catch (e) { return { status: "handoff", code: (e && e.code) || "unavailable" }; }
+  }
+  function continueInClaude(id) { copyText("/jobhunter continue " + id); try { window.open("https://claude.ai/code", "_blank", "noopener"); } catch {} }
+  async function doAnswer(k, aid, text) {
+    const base = Number((((act(k) || {}).answers || {})[aid] || {}).rev || 0);
+    const wa = ((((work(k) || {}).package || {}).answers) || []).find((x) => x.id === aid); const theirs = Number(((wa && wa.user) || {}).rev || 0);
+    (st.answerStatus[k] = st.answerStatus[k] || {})[aid] = { ok: true, text: "Saving…" }; renderOverlay();
+    const res = await Core.commit(st.db, "actions/" + k, Core.saveAnswer(k, aid, text, Math.max(base, theirs), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
+    if (res.status === "saved") { st.actions.set(k, res.doc); if (st.answerDrafts[k]) delete st.answerDrafts[k][aid]; st.answerStatus[k][aid] = { ok: true, text: "Saved to your dashboard. Hunter keeps it on its next run." }; }
+    else if (res.status === "conflict") st.answerStatus[k][aid] = { ok: false, text: "This answer changed in another tab or device. Nothing was overwritten; copy your text, reload, and paste it again." };
+    else st.answerStatus[k][aid] = { ok: false, text: "Couldn't save (" + (res.code || res.status) + "). Your text is still here." };
+    render();
+  }
+  async function doText(k, kind, text) {
+    const base = Number((((act(k) || {}).texts || {})[kind] || {}).rev || 0);
+    const w = work(k); const theirs = Number(((((w && w.package && w.package.optional) || {})[kind] || {}).user_text || {}).rev || 0);
+    (st.textStatus[k] = st.textStatus[k] || {})[kind] = { ok: true, text: "Saving…" }; renderOverlay();
+    const res = await Core.commit(st.db, "actions/" + k, Core.saveText(k, kind, text, Math.max(base, theirs), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
+    if (res.status === "saved") { st.actions.set(k, res.doc); if (st.textDrafts[k]) delete st.textDrafts[k][kind]; st.textStatus[k][kind] = { ok: true, text: "Saved to your dashboard. Hunter keeps it on its next run." }; }
+    else st.textStatus[k][kind] = { ok: false, text: res.status === "conflict" ? "Changed in another tab or device. Nothing was overwritten." : "Couldn't save (" + (res.code || res.status) + "). Your text is still here." };
+    render();
+  }
+  async function doApplied(k, when, cv) {
+    const at = when && /^\d{4}-\d{2}-\d{2}$/.test(when) ? new Date(when + "T12:00:00Z").toISOString() : new Date().toISOString();
+    st.askApplied = null;
+    await doField(k, "applied_at", at, { applied_cv: cv || "prepared" });
+  }
+  async function doFollowup(k, action, due) {
+    await doField(k, "followup", { action, due_at: due ? new Date(due + "T09:00:00").toISOString() : null, at: new Date().toISOString() });
+  }
+  async function doContacted(k, cid) {
+    const a = act(k) || {}; const contacted = Object.assign({}, a.contacted || {}, { [String(cid)]: { at: new Date().toISOString(), channel: "message" } });
+    await doField(k, "contacted", contacted);
+  }
+  async function doAddContact(k, c) {
+    if (!c.name) return;
+    const a = act(k) || {}; const list = (a.contacts_new || []).slice(0, 4).concat([{ tmp: "c" + Date.now().toString(36), name: c.name.slice(0, 120), role: (c.role || "").slice(0, 120), route: (c.route || "").slice(0, 400) }]);
+    st.addContact = null;
+    await doField(k, "contacts_new", list);
+  }
+  async function doCvEdit(key, fields) {
+    const res = await Core.commit(st.db, "actions/_cvs", Core.setCv(key, fields), TAB_ID, { blank: { job_key: "_cvs", variants: {}, rev: 0 } });
+    if (res.status === "saved") st.actions.set("_cvs", res.doc);
+    (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = res.status === "saved" ? { ok: true, text: "Saved to your dashboard. Hunter applies it on its next run." } : { ok: false, text: "Couldn't save (" + (res.code || res.status) + ")." };
+    renderOverlay();
+  }
+  async function doCvFile(key) {
+    const id = Core.requestId("cv_file");
+    const res = await Core.commit(st.db, "actions/_cvs", Core.setCvRequest(key, id), TAB_ID, { blank: { job_key: "_cvs", variants: {}, rev: 0 } });
+    if (res.status !== "saved") { (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = { ok: false, text: "Couldn't save the request (" + (res.code || res.status) + ")." }; renderOverlay(); return; }
+    st.actions.set("_cvs", res.doc);
+    const reached = await reachHunter(id);
+    (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = reached.status === "sent" ? { ok: true, text: "Asked Hunter for the file. It hands it to you in Claude (the file never goes on this page)." } : { ok: true, text: "Files stay with Hunter. In Claude, say “/jobhunter continue " + id + "” and Hunter hands you the original file, or tells you to add it again if it is not on that computer." };
+    renderOverlay();
+  }
   function rebuildJobs() {
     const n = st.run ? Number(st.run.shards) : Infinity; const jobs = new Map();
     for (const [id, doc] of st.shards) { const m = /^jobs-(\d+)$/.exec(id); if (!m || Number(m[1]) >= n) continue; for (const [k, j] of Object.entries(doc.jobs || {})) jobs.set(k, j); }
@@ -576,6 +973,9 @@ const Core = (() => {
     db.doc("meta/profile").onSnapshot((d) => { st.profile = d.exists ? d.data() : null; render(); }, fail);
     db.collection("board").limit(40).onSnapshot((s) => { st.shards = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.board = true; rebuildJobs(); render(); }, fail);
     db.collection("actions").limit(1000).onSnapshot((s) => { st.actions = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.actions = true; render(); }, fail);
+    db.collection("work").limit(300).onSnapshot((s) => { st.work = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.work = true; render(); }, fail);
+    // A direct line to Hunter: only when this page was published with the mcp capability and Hunter set a channel.
+    window.claude.use("mcp").then((m) => { st.mcp = m || null; }).catch(() => { st.mcp = null; });
   }
   boot();
 })();

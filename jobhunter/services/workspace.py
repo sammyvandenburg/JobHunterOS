@@ -30,7 +30,7 @@ from jobhunter.services import drafts as drafts_svc
 from jobhunter.services import profile as profile_svc
 from jobhunter.util import now, now_iso, parse_iso, truncate
 
-REQUEST_KINDS = ("prepare", "research", "contact", "intro", "letter", "followup_draft", "handoff", "cv_file")
+REQUEST_KINDS = ("prepare", "research", "contact", "message", "intro", "letter", "followup_draft", "handoff", "cv_file")
 STATES = ("requested", "running", "ready", "needs_input", "failed")
 MAX_ANSWER_CHARS = 4000
 MAX_QUESTION_CHARS = 300
@@ -99,6 +99,11 @@ def _clean_params(kind: str, params: dict) -> dict:
                 out[k] = str(params[k]).strip()[:MAX_CONTACT_FIELD if k != "url" else 400]
     if kind == "followup_draft" and params.get("contact"):
         out["contact"] = str(params["contact"]).strip()[:MAX_CONTACT_FIELD]
+    if kind == "message" and params.get("contact") is not None:
+        try:
+            out["contact"] = int(params["contact"])
+        except (TypeError, ValueError):
+            pass
     if kind == "cv_file" and params.get("cv"):
         out["cv"] = str(params["cv"])[:40]
     return out
@@ -163,6 +168,11 @@ def run_request(ctx: AppContext, db: Database, request_id: str, use_model: bool 
         if kind in {"intro", "letter"}:
             res = write_optional_text(db, job, kind)
             return _finish(db, rid, "ready", f"Your {'short introduction' if kind == 'intro' else 'cover letter'} is drafted. Read it, change it, and only use what is true.", {"version": res["version"]})
+        if kind == "message":
+            if params.get("contact") is None:
+                return _finish(db, rid, "needs_input", "Which contact? Pick one under People & notes first.")
+            d = contact_message(db, job["id"], int(params["contact"]))
+            return _finish(db, rid, "ready", "Message drafted. Read it, change it, and send it yourself if you want to.", {"draft_id": d["draft_id"], "contact": int(params["contact"])})
         if kind == "followup_draft":
             d = drafts_svc.outreach(db, job["id"], params.get("contact"), purpose="followup")
             return _finish(db, rid, "ready", "Follow-up message drafted. Hunter never sends it.", {"draft_id": d["draft_id"]})
@@ -598,7 +608,20 @@ def contact_view(c: dict) -> dict:
 
 
 def list_contacts(db: Database, job_id: int) -> list[dict]:
-    return [contact_view(c) for c in db.fetchall("SELECT * FROM contacts WHERE job_id = ? AND COALESCE(status,'found') != 'dismissed' ORDER BY id", (job_id,))]
+    """Contacts with the latest drafted message for each (the draft is shown; sending is the person's own act)."""
+    out = []
+    drafts = db.fetchall("SELECT content_json, created_at FROM drafts WHERE job_id = ? AND kind = 'outreach' ORDER BY id DESC", (job_id,))
+    for c in db.fetchall("SELECT * FROM contacts WHERE job_id = ? AND COALESCE(status,'found') != 'dismissed' ORDER BY id", (job_id,)):
+        v = contact_view(c)
+        greeting = f"Hi {c.get('name')}," if c.get("name") else "Hello,"
+        for d in drafts:
+            body = (json.loads(d["content_json"] or "{}").get("body") or "")
+            if body.startswith(greeting):
+                v["message"] = body
+                v["message_at"] = d["created_at"]
+                break
+        out.append(v)
+    return out
 
 
 def contact_message(db: Database, job_id: int, contact_id: int) -> dict:
