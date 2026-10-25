@@ -7,14 +7,14 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
-/* A personal job-hunting workspace: a narrow dark navigation rail, the job list, and the selected job beside it.
+/* The visual side of the running Hunter session: a dark navigation rail, the job list, the selected job beside it.
    Light first (the design reference), dark mirrored. The KubeCraft mark is the supplied file, never drawn here.
-   Orange is for the one primary action and the selected destination; green only means a good or reliable state. */
+   Orange marks the one primary action and the selected destination; green means a good or reliable state. */
 :root{
   color-scheme:light;
   --bg:#f3f4f6;--panel:#ffffff;--panel-2:#f6f7f9;--line:#e3e5ea;--line-2:#d2d6dd;--ink:#15171b;--ink-2:#3d424b;--muted:#6b717c;
   --accent:#e8720c;--accent-hover:#d3660a;--accent-ink:#ffffff;--accent-dim:rgba(232,114,12,.1);
-  --good:#1e8e4c;--good-dim:#e6f5ec;--warn:#9a6500;--warn-dim:#fff4d6;--bad:#c23b3b;--bad-dim:#fdeaea;--info:#3458c7;--info-dim:#e8eefb;--tag:#5a2fbe;--tag-dim:#efe9fb;
+  --good:#1e8e4c;--good-dim:#e6f5ec;--warn:#9a6500;--warn-dim:#fff4d6;--bad:#c23b3b;--bad-dim:#fdeaea;--info:#3458c7;--info-dim:#e8eefb;--fit:#fff8ee;--fit-line:#f3dfc0;
   --rail:#131417;--rail-ink:#f3f4f6;--rail-muted:#9aa0ab;--rail-sel:#2a1c0e;
   --shadow:0 6px 24px rgba(20,22,30,.08);
   --display:"Manrope",ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
@@ -25,7 +25,7 @@
   color-scheme:dark;
   --bg:#0f1013;--panel:#17191e;--panel-2:#1f2228;--line:#2a2e37;--line-2:#363b46;--ink:#f1f2f4;--ink-2:#c4c8d0;--muted:#8c929d;
   --accent:#ff7f1f;--accent-hover:#ff9240;--accent-ink:#141414;--accent-dim:rgba(255,127,31,.14);
-  --good:#4fd283;--good-dim:rgba(79,210,131,.14);--warn:#f1b84a;--warn-dim:rgba(241,184,74,.16);--bad:#ff6b6b;--bad-dim:rgba(255,107,107,.14);--info:#8aaeff;--info-dim:rgba(138,174,255,.14);--tag:#b79bff;--tag-dim:rgba(183,155,255,.14);
+  --good:#4fd283;--good-dim:rgba(79,210,131,.14);--warn:#f1b84a;--warn-dim:rgba(241,184,74,.16);--bad:#ff6b6b;--bad-dim:rgba(255,107,107,.14);--info:#8aaeff;--info-dim:rgba(138,174,255,.14);--fit:#1f2228;--fit-line:#2a2e37;
   --rail:#0a0b0d;--rail-ink:#f3f4f6;--rail-muted:#9aa0ab;--rail-sel:#2b1a0a;
   --shadow:0 10px 32px rgba(0,0,0,.45);
 }}
@@ -33,200 +33,209 @@
   color-scheme:dark;
   --bg:#0f1013;--panel:#17191e;--panel-2:#1f2228;--line:#2a2e37;--line-2:#363b46;--ink:#f1f2f4;--ink-2:#c4c8d0;--muted:#8c929d;
   --accent:#ff7f1f;--accent-hover:#ff9240;--accent-ink:#141414;--accent-dim:rgba(255,127,31,.14);
-  --good:#4fd283;--good-dim:rgba(79,210,131,.14);--warn:#f1b84a;--warn-dim:rgba(241,184,74,.16);--bad:#ff6b6b;--bad-dim:rgba(255,107,107,.14);--info:#8aaeff;--info-dim:rgba(138,174,255,.14);--tag:#b79bff;--tag-dim:rgba(183,155,255,.14);
+  --good:#4fd283;--good-dim:rgba(79,210,131,.14);--warn:#f1b84a;--warn-dim:rgba(241,184,74,.16);--bad:#ff6b6b;--bad-dim:rgba(255,107,107,.14);--info:#8aaeff;--info-dim:rgba(138,174,255,.14);--fit:#1f2228;--fit-line:#2a2e37;
   --rail:#0a0b0d;--rail-ink:#f3f4f6;--rail-muted:#9aa0ab;--rail-sel:#2b1a0a;
   --shadow:0 10px 32px rgba(0,0,0,.45);
 }
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.45 var(--body);overflow:hidden}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.42 var(--body);overflow:hidden}
 button,textarea,input,select{font:inherit;color:inherit}
 h1,h2,h3,h4{font-family:var(--display);margin:0;text-wrap:balance}
 a{color:var(--accent)}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* ---- shell ---- */
-.app{display:grid;grid-template-columns:88px minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100dvh;height:100vh}
-.side{background:var(--rail);color:var(--rail-ink);display:flex;flex-direction:column;align-items:stretch;padding:12px 8px calc(10px + env(safe-area-inset-bottom,0px));gap:4px;border-right:1px solid rgba(255,255,255,.06)}
-.brand-head{display:block;margin:0 0 10px;padding:4px 2px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
-.brand{display:flex;flex-direction:column;align-items:center;gap:6px;font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.2px;text-align:center;line-height:1.15}
-.brand .mark{width:40px;height:40px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:#000;color:#fff;font-size:12px;font-weight:800;letter-spacing:.5px;overflow:hidden}.brand .mark img{width:40px;height:40px;display:block}
-.brand small{display:block;font-weight:600;color:var(--rail-muted);font-size:8.5px;letter-spacing:.5px;text-transform:uppercase;margin-top:1px}
-.nav{display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;color:var(--rail-muted);border-radius:10px;padding:9px 4px 8px;cursor:pointer;font-size:11.5px;font-weight:600;line-height:1}
-.nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.app{display:grid;grid-template-columns:84px minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100dvh;height:100vh}
+.side{background:var(--rail);color:var(--rail-ink);display:flex;flex-direction:column;align-items:stretch;padding:10px 8px calc(10px + env(safe-area-inset-bottom,0px));gap:2px;border-right:1px solid rgba(255,255,255,.06)}
+.brand-head{display:block;margin:0 0 8px;padding:2px 2px 10px;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand{display:flex;flex-direction:column;align-items:center;gap:5px;font-family:var(--display);font-weight:800;font-size:10.5px;letter-spacing:.2px;text-align:center;line-height:1.15}
+.brand .mark{width:38px;height:38px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:#000;color:#fff;font-size:12px;font-weight:800;letter-spacing:.5px;overflow:hidden}.brand .mark img{width:38px;height:38px;display:block}
+.brand small{display:block;font-weight:600;color:var(--rail-muted);font-size:8px;letter-spacing:.5px;text-transform:uppercase;margin-top:1px}
+.nav{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;color:var(--rail-muted);border-radius:10px;padding:8px 4px 7px;cursor:pointer;font-size:11px;font-weight:600;line-height:1}
+.nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .nav:hover{color:var(--rail-ink);background:rgba(255,255,255,.06)}
 .nav[aria-current="page"]{color:var(--accent);background:var(--rail-sel);box-shadow:inset 3px 0 0 var(--accent)}
 .nav.settings{margin-top:auto}
-.nav .n{position:absolute;top:4px;right:10px;min-width:16px;height:16px;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
-.nav{position:relative}
-main{display:grid;grid-template-columns:minmax(320px,38%) minmax(0,1fr);min-width:0;min-height:0;height:100%}
+.nav .n{position:absolute;top:3px;right:9px;min-width:15px;height:15px;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+main{display:grid;grid-template-columns:minmax(320px,37%) minmax(0,1fr);min-width:0;min-height:0;height:100%}
 .col{min-width:0;min-height:0;height:100%;overflow:auto;overscroll-behavior:contain}
-.list-col{border-right:1px solid var(--line);background:var(--bg);padding:16px 16px 40px}
-.detail-col{background:var(--bg);padding:16px 20px 48px}
-.colhead{display:flex;align-items:flex-start;gap:12px;margin:2px 0 12px}
-.colhead h1{font-size:19px;line-height:1.2}
-.colhead .sub{color:var(--muted);font-size:13px;margin-top:2px}
+.list-col{border-right:1px solid var(--line);background:var(--bg);padding:14px 14px 40px}
+.detail-col{background:var(--bg);padding:14px 16px 48px}
+.colhead{display:flex;align-items:flex-start;gap:10px;margin:0 0 10px}
+.colhead h1{font-size:18px;line-height:1.2}
+.colhead .sub{color:var(--muted);font-size:12.5px;margin-top:1px}
 .colhead .right{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .stat{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:3px 9px;border:1px solid var(--line);background:var(--panel);border-radius:999px;white-space:nowrap}
+button.stat{cursor:pointer}
+.stat.bad{color:var(--bad);border-color:var(--bad)}
 .dot{width:7px;height:7px;border-radius:50%;background:#9aa0ab;flex:none}
 .dot.ok{background:var(--good)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
-.notice{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px}
-.notice h2{font-size:16px;margin-bottom:4px}.notice p{margin:0;color:var(--ink-2)}
-section.block{margin-bottom:18px}
-section.block>h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-family:var(--body);font-weight:600;margin:0 0 8px;display:flex;align-items:baseline;gap:8px}
+.banner{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--warn-dim);border:1px solid var(--warn);border-radius:var(--r-sm);padding:7px 12px;font-size:13px;margin-bottom:10px}
+.banner button{margin-left:auto}
+.notice{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.notice h2{font-size:15px;margin-bottom:3px}.notice p{margin:0;color:var(--ink-2)}
+section.block{margin-bottom:14px}
+section.block>h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-family:var(--body);font-weight:600;margin:0 0 6px;display:flex;align-items:baseline;gap:8px}
 section.block>h2 small{text-transform:none;letter-spacing:0;font-weight:400}
-.foot{color:var(--muted);font-size:12.5px}
-.empty{padding:22px 14px;color:var(--muted);text-align:center;background:var(--panel);border:1px dashed var(--line-2);border-radius:var(--r)}
+.foot{color:var(--muted);font-size:12px}
+.empty{padding:18px 14px;color:var(--muted);text-align:center;background:var(--panel);border:1px dashed var(--line-2);border-radius:var(--r)}
 /* ---- buttons, pills, tags ---- */
-.btn{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:7px 12px;cursor:pointer;font-weight:600;font-size:13px;line-height:1.2;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:var(--ink)}
+.btn{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:6px 11px;cursor:pointer;font-weight:600;font-size:13px;line-height:1.2;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:var(--ink)}
 .btn:hover{border-color:var(--ink-2)}
 .btn.on{background:var(--accent-dim);border-color:var(--accent);color:var(--ink)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
 .btn.ghost{border-color:transparent;background:transparent}
-.btn.sm{padding:5px 9px;font-size:12.5px}
-.btn.lg{padding:10px 16px;font-size:14px}
-.btn:disabled{opacity:.5;cursor:default}
-.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.btn:focus-visible,.row:focus-visible,.nav:focus-visible,.fchip:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.btn.lg{padding:9px 15px;font-size:14px}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:default}
+.btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn:focus-visible,.row:focus-visible,.nav:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible,.approw:focus-visible,.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .pill{font-size:11.5px;border-radius:999px;padding:2px 8px;white-space:nowrap;border:1px solid transparent;font-weight:600;display:inline-flex;align-items:center;gap:4px}
 .g-good{background:var(--good-dim);color:var(--good)}.g-worth_a_shot{background:var(--info-dim);color:var(--info)}
 .g-backup{background:var(--panel-2);color:var(--ink-2);border-color:var(--line)}.g-uncertain{background:var(--warn-dim);color:var(--warn)}.g-other{background:var(--panel-2);color:var(--muted);border-color:var(--line)}
 .p-applied{background:var(--good-dim);color:var(--good)}.p-dismissed{background:var(--bad-dim);color:var(--bad)}.p-pending{background:var(--warn-dim);color:var(--warn)}.p-fresh{background:var(--accent-dim);color:var(--accent)}
 .tag{font-size:11.5px;border-radius:var(--r-xs);padding:2px 7px;background:var(--info-dim);color:var(--info);font-weight:600;white-space:nowrap}
 .tag.role{background:var(--accent-dim);color:var(--accent)}
-.tags{display:flex;gap:4px;flex-wrap:wrap}
+.tags{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .star{color:var(--accent)}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
 /* ---- icons and logos ---- */
-.ricon{width:36px;height:36px;flex:none;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-2)}
-.ricon svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.ricon.lg{width:48px;height:48px;border-radius:12px}.ricon.lg svg{width:26px;height:26px}
-.logo{width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line);background:var(--panel);display:inline-flex;align-items:center;justify-content:center;overflow:hidden;font-family:var(--display);font-weight:800;font-size:14px;color:var(--ink-2);letter-spacing:.3px}
-.logo img{width:28px;height:28px;object-fit:contain;display:block}
+.ricon{width:34px;height:34px;flex:none;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:var(--accent-dim);border:1px solid var(--fit-line);color:var(--accent)}
+.ricon svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ricon.lg{width:44px;height:44px;border-radius:11px}.ricon.lg svg{width:24px;height:24px}
+.ricon.xs{width:20px;height:20px;border-radius:6px;border:0}.ricon.xs svg{width:13px;height:13px}
+.logo{width:42px;height:42px;flex:none;border-radius:10px;border:1px solid var(--line);background:var(--panel);display:inline-flex;align-items:center;justify-content:center;overflow:hidden;font-family:var(--display);font-weight:800;font-size:13.5px;color:var(--ink-2);letter-spacing:.3px}
+.logo img{width:26px;height:26px;object-fit:contain;display:block}
 .logo.sm{width:22px;height:22px;border-radius:6px;font-size:9px}.logo.sm img{width:16px;height:16px}
 /* ---- job rows ---- */
-.list{display:grid;gap:8px}
-.grouph{padding:6px 2px 0;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
-.row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:start;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;cursor:pointer;color:var(--ink)}
+.list{display:grid;gap:7px}
+.grouph{padding:4px 2px 0;font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:11px;align-items:start;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 11px;cursor:pointer;color:var(--ink)}
 .row:hover{border-color:var(--line-2);box-shadow:var(--shadow)}
 .row[aria-current="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-.row .t{font-weight:700;font-family:var(--display);font-size:15px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.row .s{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
-.row .tags{margin-top:7px}
-.row .rside{display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.row .t{font-weight:700;font-family:var(--display);font-size:14.5px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .s{color:var(--muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.row .tags{margin-top:6px}
+.row .rside{display:flex;flex-direction:column;align-items:flex-end;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
 .row .rside .chev{color:var(--muted);font-size:16px;line-height:1}
 .row .marks{display:flex;gap:4px;align-items:center}
-.pickhead{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap}
-.viewall{margin-top:8px;display:flex;justify-content:flex-end}
-/* ---- filters ---- */
-.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
-.tools input[type=search]{flex:1 1 180px;min-width:0;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:7px 12px}
-.fsel{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:7px 10px;max-width:100%}
-/* ---- attention / today items ---- */
+.pickhead{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.viewall{margin-top:6px;display:flex;justify-content:flex-end}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.tools input[type=search]{flex:1 1 180px;min-width:0;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:6px 12px}
+.fsel{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:6px 10px;max-width:100%}
 .items{display:grid;gap:6px}
-.item{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-sm);padding:9px 12px;font-size:13.5px}
+.item{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-sm);padding:8px 12px;font-size:13px}
 .item.good{border-left-color:var(--good)}.item.warn{border-left-color:var(--warn)}.item.bad{border-left-color:var(--bad)}
 .item button,.item a.btn{margin-left:auto;white-space:nowrap}
-.activity{display:flex;gap:8px;flex-wrap:wrap}
-.activity .stat{background:var(--panel)}
+.activity{display:flex;gap:6px;flex-wrap:wrap}.activity .stat{white-space:normal}
 /* ---- detail ---- */
 .detail{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);min-height:60vh;display:flex;flex-direction:column;min-width:0}
 .detail.placeholder{align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px 24px;border-style:dashed;background:transparent}
-.dhead{padding:16px 18px 12px;border-bottom:1px solid var(--line);display:grid;gap:10px}
-.dhead .top{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.dhead{padding:12px 16px 10px;border-bottom:1px solid var(--line);display:grid;gap:7px}
+.dhead .top{display:flex;gap:11px;align-items:flex-start;flex-wrap:wrap}
 .dhead .top>.ttl{min-width:0;flex:1 1 260px}
-.dhead h2{font-size:21px;line-height:1.2}
-.dhead .co{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--ink-2);font-size:13.5px;margin-top:4px}
+.dhead h2{font-size:19px;line-height:1.2}
+.dhead .co{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--ink-2);font-size:13px;margin-top:3px}
 .dhead .co a{color:var(--ink-2);text-decoration:none;font-weight:600}.dhead .co a:hover{text-decoration:underline}
 .dhead .hacts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-self:flex-start}
-.facts{display:flex;gap:14px;flex-wrap:wrap;color:var(--ink-2);font-size:13px}
-.facts span{display:inline-flex;align-items:center;gap:5px}
-.facts svg{width:14px;height:14px;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.dbody{padding:14px 18px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:14px;min-width:0}
-.help{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 18px;align-items:center}
-.help h3{font-size:15.5px;margin-bottom:2px}
-.help p{margin:0 0 8px;color:var(--ink-2);font-size:13.5px}
-.help ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 14px;font-size:13px;color:var(--ink-2)}
-.help li{display:flex;gap:6px;align-items:center}.help li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--good);flex:none}
-.help .cta{display:flex;flex-direction:column;gap:8px;min-width:200px}
-.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-.card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--panel);min-width:0}
-.card h3{font-size:14.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
-.card h3 svg{width:17px;height:17px;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.card.fit{background:var(--warn-dim);border-color:transparent}
-:root[data-theme="dark"] .card.fit,:root:not([data-theme="light"]) .card.fit{background:var(--panel-2);border-color:var(--line)}
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .card.fit{background:#fff8ee;border-color:#f3dfc0}}
-.kv{display:grid;grid-template-columns:minmax(110px,auto) minmax(0,1fr);gap:5px 12px;font-size:13.5px}
+.facts{display:flex;gap:6px;flex-wrap:wrap;color:var(--ink-2);font-size:12.5px;align-items:center}
+.facts span+span::before{content:"·";color:var(--muted);margin-right:6px}
+.dbody{padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:10px;min-width:0}
+.help{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:8px}
+.help .hrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.help h3{font-size:14.5px}
+.help p{margin:0;color:var(--ink-2);font-size:13px}
+.help .cta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{font-size:12.5px;border:1px solid var(--line-2);border-radius:999px;padding:4px 10px;background:var(--panel);cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;color:var(--ink)}
+.chip:hover{border-color:var(--ink-2)}
+.chip.busy{color:var(--muted);cursor:default}
+.chip.done{border-color:var(--good);color:var(--good)}
+.chip.bad{border-color:var(--bad);color:var(--bad)}
+.chip:disabled{opacity:.6;cursor:default}
+.chip svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.statusrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);padding-top:6px;border-top:1px solid var(--line)}
+.statusrow b{font-family:var(--display);color:var(--ink)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--panel);min-width:0}
+.card h3{font-size:13.5px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.card h3 svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.card.fit{background:var(--fit);border-color:var(--fit-line)}
+.kv{display:grid;grid-template-columns:minmax(96px,auto) minmax(0,1fr);gap:3px 10px;font-size:12.5px}
 .kv span:first-child{color:var(--muted)}
 .kv a{word-break:break-word}
 ul.r{margin:0;padding-left:18px}ul.r li{margin:3px 0}
-ul.fitl{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13.5px}
-ul.fitl li{display:flex;gap:8px;align-items:flex-start}
+ul.fitl{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13px}
+ul.fitl li{display:flex;gap:7px;align-items:flex-start}
 ul.fitl li::before{content:"✓";color:var(--good);font-weight:700;flex:none}
-ul.fitl.check li::before{content:"•";color:var(--warn)}
-.card h4{font-size:13px;margin:10px 0 5px;display:flex;align-items:center;gap:6px;color:var(--ink-2)}
-.card h4 svg{width:15px;height:15px;stroke:var(--warn);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.desc{white-space:pre-wrap;color:var(--ink-2);font-size:14px;max-width:76ch}
-.desc.lead{max-height:7.6em;overflow:hidden;position:relative}
-.links{display:flex;gap:10px;flex-wrap:wrap;font-size:13.5px;margin-top:8px}
-.sec h3{font-size:14.5px;margin-bottom:6px}
-.status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2)}
-.status b{font-family:var(--display)}
+ul.fitl.check li::before{content:"△";color:var(--warn)}
+.card h4{font-size:12.5px;margin:8px 0 4px;display:flex;align-items:center;gap:6px;color:var(--ink-2)}
+.desc{white-space:pre-wrap;color:var(--ink-2);font-size:13.5px;max-width:76ch}
+.desc.lead{max-height:4.4em;overflow:hidden}
+.links{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;margin-top:6px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.save{font-size:12.5px;min-height:18px;margin:4px 0 0;color:var(--muted)}
+.save{font-size:12.5px;min-height:16px;margin:3px 0 0;color:var(--muted)}
 .save.ok{color:var(--good)}.save.err{color:var(--bad)}.save.warn{color:var(--warn)}
-textarea{width:100%;min-height:90px;border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:8px;resize:vertical}
-input[type=text],input[type=date],select{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:8px;color:inherit}
+textarea{width:100%;min-height:80px;border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:8px;resize:vertical}
+input[type=text],input[type=date],select{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:7px;color:inherit}
 input[type=text],select{width:100%}
-label{display:grid;gap:4px;font-size:13px;color:var(--ink-2)}
-label.radio{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}
+label{display:grid;gap:3px;font-size:12.5px;color:var(--ink-2)}
+label.radio{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink)}
 .conflict{border:1px solid var(--warn);background:var(--warn-dim);border-radius:var(--r-sm);padding:8px;margin:6px 0;font-size:13px}
 .conflict .theirs{white-space:pre-wrap;margin:6px 0;color:var(--ink)}
 /* ---- workspace ---- */
-.ws .step{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--panel)}
-.ws .step>h3{font-size:14.5px;display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.ws .step>h3 .num{width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:12.5px;display:inline-flex;align-items:center;justify-content:center;flex:none}
-.ws .step.done>h3 .num{background:var(--good)}
-.part{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;margin:8px 0;background:var(--panel-2)}
-.part>summary{cursor:pointer;font-weight:700;font-family:var(--display);font-size:13.5px}
-details.sub{margin-top:6px}details.sub>summary{cursor:pointer;font-size:13px;color:var(--ink-2);font-weight:600}
-.tier{margin:8px 0 2px;font-size:13.5px}
-table.case{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0}
-table.case th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
-table.case td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
+.ws .step{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--panel)}
+.ws .step>h3{font-size:14px;display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.ws .step>h3 .foot{font-weight:400}
+.ev{display:grid;gap:6px}
+.ev .e{display:grid;grid-template-columns:minmax(120px,auto) minmax(0,1fr);gap:2px 10px;font-size:13px;padding:6px 0;border-top:1px solid var(--line)}
+.ev .e:first-child{border-top:0}
+.ev .e b{font-family:var(--display)}
+.ev .e.gap b{color:var(--warn)}
+.part{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;margin:6px 0;background:var(--panel-2)}
+.part>summary{cursor:pointer;font-weight:700;font-family:var(--display);font-size:13px}
+details.sub{margin-top:6px}details.sub>summary{cursor:pointer;font-size:12.5px;color:var(--ink-2);font-weight:600}
+.tier{margin:6px 0 2px;font-size:13px}
 ul.check{list-style:none;margin:0;padding:0}ul.check li{margin:3px 0}ul.check li.done{color:var(--good)}
-.ans,.contact,.cvrow,.opt,.fu,.applied,.cvpick{border-top:1px solid var(--line);padding:8px 0;display:grid;gap:6px}
+.ans,.contact,.cvrow,.opt,.fu,.applied,.cvpick{border-top:1px solid var(--line);padding:7px 0;display:grid;gap:6px}
 .ans:first-child,.contact:first-child,.cvrow:first-child,.opt:first-child,.cvpick:first-child{border-top:0}
 .ans .q,.contact .q,.cvrow .q{font-weight:600}
-.sug{background:var(--panel-2);border-radius:var(--r-sm);padding:8px;font-size:14px}
+.sug{background:var(--panel-2);border-radius:var(--r-sm);padding:8px;font-size:13.5px}
 .cvrow.off{opacity:.65}
 /* ---- applications / profile ---- */
-.approw{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;text-align:left;width:100%;cursor:pointer;color:var(--ink)}
+.approw{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:9px 11px;text-align:left;width:100%;cursor:pointer;color:var(--ink)}
 .approw:hover{border-color:var(--line-2)}
-.approw .t{font-weight:700;font-family:var(--display);font-size:14.5px}
+.approw .t{font-weight:700;font-family:var(--display);font-size:14px}
 .approw .s{color:var(--muted);font-size:12.5px}
 .approw .next{font-size:12.5px;color:var(--ink-2);text-align:right;white-space:nowrap}
-.prof{display:grid;gap:12px}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;color:var(--ink-2);background:var(--panel-2)}
+.prof{display:grid;gap:10px}
+.chipset{display:flex;flex-wrap:wrap;gap:5px}
+.chipset span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;color:var(--ink-2);background:var(--panel-2)}
 /* ---- responsive ---- */
-@media (max-width:1100px){main{grid-template-columns:minmax(300px,42%) minmax(0,1fr)}.help{grid-template-columns:1fr}}
+@media (max-width:1100px){main{grid-template-columns:minmax(300px,42%) minmax(0,1fr)}}
 @media (max-width:900px){
   .app{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}
-  .side{flex-direction:row;align-items:center;order:2;padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));border-right:0;border-top:1px solid rgba(255,255,255,.08);gap:2px}
+  .side{flex-direction:row;align-items:center;order:2;padding:5px 8px calc(5px + env(safe-area-inset-bottom,0px));border-right:0;border-top:1px solid rgba(255,255,255,.08);gap:2px}
   .brand-head{display:none}
-  .nav{flex:1;padding:6px 2px}.nav.settings{margin-top:0;flex:0 0 64px}
+  .nav{flex:1;padding:6px 2px}.nav.settings{margin-top:0;flex:0 0 60px}
   .nav[aria-current="page"]{box-shadow:inset 0 -3px 0 var(--accent)}
   main{grid-template-columns:1fr;order:1;min-height:0}
-  .list-col{border-right:0;padding:14px 14px 28px}
+  .list-col{border-right:0;padding:12px 12px 28px}
   .detail-col{display:none}
   .app.has-sel .detail-col{display:block;position:fixed;inset:0;z-index:40;padding:0;background:var(--panel)}
   .app.has-sel .detail{border:0;border-radius:0;min-height:100%}
-  .dhead{position:sticky;top:0;background:var(--panel);z-index:2;padding-top:calc(12px + env(safe-area-inset-top,0px))}
-  .dhead .hacts{margin-left:0;flex-basis:100%;justify-content:flex-start}
-  .dhead h2{font-size:18px}
+  .dhead{position:sticky;top:0;background:var(--panel);z-index:2;padding-top:calc(10px + env(safe-area-inset-top,0px))}
+  .dhead .mrow{display:flex;gap:6px;align-items:center}
+  .dhead .mrow .btn:first-child{margin-right:auto}
+  .dhead .hacts{display:none}
+  .dhead h2{font-size:17px}
   .two{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:no-preference){.row,.btn,.nav,.approw{transition:background .12s,border-color .12s,box-shadow .12s}}
+@media (min-width:901px){.dhead .mrow{display:none}}
+@media (prefers-reduced-motion:no-preference){.row,.btn,.nav,.approw,.chip{transition:background .12s,border-color .12s,box-shadow .12s}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
 </style>
 </head>
 <body>
@@ -333,24 +342,14 @@ const Core = (() => {
     for (const k of keys) { const e = ((jobs.get(k) || {}).employer || "").toLowerCase(); if (!seen.has(e)) { seen.add(e); first.push(k); } else rest.push(k); }
     const rank = (k) => ({ good: 0, worth_a_shot: 1, backup: 2 }[(jobs.get(k) || {}).group] ?? 3);
     const out = first.concat(rest);
-    // A weaker job never jumps ahead of a stronger one from a repeated employer.
     out.sort((a, b) => rank(a) - rank(b) || (first.includes(a) ? 0 : 1) - (first.includes(b) ? 0 : 1) || keys.indexOf(a) - keys.indexOf(b));
     return out.slice(0, n);
-  }
-  function pendingCount(jobs, actions, profile) {
-    let n = 0;
-    for (const [k, a] of actions) {
-      if (k === "_prefs") { if (Number(a.rev) > Number((profile && profile.prefs_synced_rev) || 0)) n++; continue; }
-      if (k === "_cvs") { if (Number(a.rev) > Number((profile && profile.cvs_synced_rev) || 0)) n++; continue; }
-      const s = ((jobs.get(k) || {}).state) || {}; if (Number(a.rev) > Number(s.synced_rev || 0)) n++;
-    }
-    return n;
   }
   function matches(job, q) {
     if (!q) return true; const s = q.toLowerCase();
     return [job.title, job.employer, job.location].some((x) => (x || "").toLowerCase().includes(s));
   }
-  /* ----- workspace: requests, CV choice, answers, texts, follow-ups (pure) ----- */
+  /* ----- Hunter tasks: requests, CV choice, answers, texts, follow-ups (pure) ----- */
   const REQUEST_KINDS = ["prepare", "research", "contact", "message", "intro", "letter", "followup_draft", "handoff", "cv_file"];
   const randomId = (n) => { const a = new Uint8Array(n); (self.crypto || window.crypto).getRandomValues(a); return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join(""); };
   const requestId = (kind) => kind + ":" + new Date().toISOString().replace(/[^0-9TZ]/g, "").slice(0, 15) + ":" + randomId(6);
@@ -376,7 +375,7 @@ const Core = (() => {
   };
   const setCv = (key, fields) => (cur) => { const d = Object.assign({ job_key: "_cvs", variants: {} }, cur); d.variants = Object.assign({}, d.variants || {}, { [key]: Object.assign({}, (d.variants || {})[key] || {}, fields) }); return { doc: d }; };
   const setCvRequest = (key, id) => (cur) => { const d = Object.assign({ job_key: "_cvs", variants: {} }, cur); d.requests = Object.assign({}, d.requests || {}, { cv_file: { id, at: new Date().toISOString(), params: { cv: key } } }); return { doc: d }; };
-  // The state of one request as the page should show it: the page's own latest request wins until Hunter has
+  // The state of one task as the page should show it: the page's own latest request wins until Hunter has
   // recorded that very id; then Hunter's state (running, ready, needs_input, failed) is the truth.
   function requestState(work, action, kind) {
     const mine = action && action.requests && action.requests[kind];
@@ -385,35 +384,50 @@ const Core = (() => {
     if (theirs) return { state: theirs.state, id: theirs.id, at: theirs.at, message: theirs.message, result: theirs.result || null, mine: false };
     return null;
   }
-  // One main action per job: Prepare my application -> Continue application -> View application.
+  // Words for a task's state: what Hunter is doing, then what the person can look at.
+  const TASK_WORDS = {
+    prepare: { idle: "Get application help", busy: "Preparing…", done: "Review application" },
+    research: { idle: "Research company", busy: "Researching…", done: "View research" },
+    letter: { idle: "Write cover letter", busy: "Drafting…", done: "Review cover letter" },
+    intro: { idle: "Write short introduction", busy: "Drafting…", done: "Review introduction" },
+    contact: { idle: "Find contacts", busy: "Finding contacts…", done: "View contacts" },
+    message: { idle: "Draft a short message", busy: "Drafting…", done: "Review message" },
+    followup_draft: { idle: "Draft follow-up", busy: "Drafting…", done: "Review follow-up" },
+    handoff: { idle: "Prepare for interview", busy: "Writing hand-off…", done: "Hand-off ready" },
+    cv_file: { idle: "Preview / download", busy: "Getting the file…", done: "File ready in Claude" },
+  };
+  function taskWords(kind) { return TASK_WORDS[kind] || { idle: kind, busy: "Working…", done: "Done" }; }
+  // One main action per job, named by state. Never a generic "continue".
   function mainAction(work, action) {
     const applied = !!(action && Number(action.rev) > 0 ? action.applied_at : (work && work.state === "applied"));
-    const prep = requestState(work, action, "prepare");
     if (applied) return { kind: "view", label: "View application" };
-    if (work && work.package) return { kind: "continue", label: "Continue application" };
-    if (prep && prep.state === "requested") return { kind: "continue", label: "Continue application" };
-    if (prep && (prep.state === "running")) return { kind: "continue", label: "Continue application" };
-    return { kind: "prepare", label: "Prepare my application" };
+    const prep = requestState(work, action, "prepare");
+    const pkg = work && work.package;
+    if (prep && (prep.state === "requested" || prep.state === "running")) return { kind: "progress", label: "Working…", busy: true };
+    if (prep && prep.state === "needs_input") return { kind: "answer", label: "Answer question" };
+    if (pkg && pkg.needs_review && pkg.needs_review.length) return { kind: "review", label: "Review changes" };
+    if (pkg) return { kind: "review", label: "Review application" };
+    if (prep && prep.state === "failed") return { kind: "prepare", label: "Get application help", failed: true };
+    return { kind: "prepare", label: "Get application help" };
   }
-  // The application's state in plain words: not started, preparing, needs your answer, ready for review, applied, needs review.
+  // The application's state in plain words.
   function appStatus(work, action) {
     const applied = !!(action && Number(action.rev) > 0 ? action.applied_at : (work && work.state === "applied"));
     if (applied) return { id: "applied", label: "Applied" };
     const prep = requestState(work, action, "prepare");
     const pkg = work && work.package;
-    if (pkg && pkg.needs_review && pkg.needs_review.length) return { id: "needs_review", label: "Needs review: the vacancy changed" };
+    if (pkg && pkg.needs_review && pkg.needs_review.length) return { id: "needs_review", label: "The vacancy changed" };
     if (prep && prep.state === "needs_input") return { id: "needs_answer", label: "Needs your answer" };
     if (prep && (prep.state === "requested" || prep.state === "running")) return { id: "preparing", label: "Preparing" };
-    if (prep && prep.state === "failed") return { id: "failed", label: "Hunter could not prepare this" };
+    if (prep && prep.state === "failed") return { id: "failed", label: "Couldn’t complete this" };
     if (pkg) {
       const rd = pkg.readiness || {};
       if (rd.state === "ready_to_submit") return { id: "ready", label: "Ready to submit" };
       if ((rd.form_questions || 0) > (rd.answered || 0)) return { id: "needs_answer", label: "Needs your answer" };
       return { id: "ready", label: "Ready for review" };
     }
-    return { id: "none", label: "Not started" };
+    return { id: "none", label: "Not applied" };
   }
-  // The pipeline column of the Applications page.
   function pipelineStage(work, action) {
     const stage = work && work.application && work.application.stage;
     if (["rejected", "withdrawn"].includes(stage)) return "closed";
@@ -434,8 +448,8 @@ const Core = (() => {
     }
     return out;
   }
-  return { commit, effective, setFlag, saveNote, setPrefs, tabsFor, topPicks, pendingCount, matches, blankAction, clone, sleep,
-    REQUEST_KINDS, requestId, setFields, setRequest, saveAnswer, saveText, setCv, setCvRequest, requestState, mainAction, appStatus, pipelineStage, parseQuestions };
+  return { commit, effective, setFlag, saveNote, setPrefs, tabsFor, topPicks, matches, blankAction, clone, sleep,
+    REQUEST_KINDS, requestId, setFields, setRequest, saveAnswer, saveText, setCv, setCvRequest, requestState, taskWords, mainAction, appStatus, pipelineStage, parseQuestions };
 })();
 /* ===CORE-END=== */
 
@@ -446,13 +460,12 @@ const Core = (() => {
   const VIEWS = ["today", "jobs", "applications", "profile"];
   const FILTERS = [["recommended", "All recommended"], ["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"], ["uncertain", "Needs checking"], ["old", "Older"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Not interested"], ["all", "Everything"]];
   const GROUPS = [["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"]];
-  const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null, today: null, work: new Map(), mcp: null,
-    view: "today", tab: "recommended", q: "", sel: null, ws: false, descOpen: false, lastRow: null,
+  const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null, today: null, work: new Map(), logos: {}, mcp: null, mcpTried: false,
+    view: "today", tab: "recommended", q: "", sel: null, ws: false, descOpen: false, fitMore: false, briefOpen: false, lastRow: null, online: null, failedSaves: {},
     saving: {}, noteBase: {}, drafts: {}, prefsDraft: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false, work: false }, dbError: null, prefsStatus: null,
-    askApplied: null, addContact: null, cvsArchived: false, reqStatus: {}, answerDrafts: {}, answerStatus: {}, textDrafts: {}, textStatus: {}, logoFail: new Set() };
+    askApplied: null, addContact: null, askQuestions: null, cvsArchived: false, reqStatus: {}, answerDrafts: {}, answerStatus: {}, textDrafts: {}, textStatus: {} };
   try { const v = localStorage.getItem("hunter.view"); if (VIEWS.includes(v)) st.view = v; } catch {}
   try { const t = localStorage.getItem("hunter.tab"); if (t && FILTERS.some((x) => x[0] === t)) st.tab = t; } catch {}
-  try { for (const d of JSON.parse(localStorage.getItem("hunter.logofail") || "[]")) st.logoFail.add(d); } catch {}
 
   const el = (tag, attrs = {}, ...kids) => {
     const n = document.createElement(tag);
@@ -478,23 +491,25 @@ const Core = (() => {
   const can = () => !!st.db && st.owner !== false;
   const work = (k) => st.work.get(k) || null;
   const act = (k) => st.actions.get(k) || null;
-  const remoteWords = (j) => { const r = (j.remote_restriction || "").replace(/\s*\(the posting says:.*?\)/, "").trim(); const l = j.remote_label || ""; return r ? (l && !r.toLowerCase().startsWith(l.toLowerCase()) ? l + ", " + r : r) : l; };
+  const remoteWords = (j) => { const r = (j.remote_restriction || "").replace(/\s*\(the posting says:.*?\)/, "").replace(/\.\s*Check (before you apply|the posting)\.?$/, "").trim(); const l = j.remote_label || ""; return r ? (l && !r.toLowerCase().startsWith(l.toLowerCase()) ? l + " — " + r : r) : l; };
   const where = (j) => [j.location, remoteWords(j)].filter(Boolean).join(" · ");
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const fmtDay = (iso) => { if (!iso) return ""; const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + "T12:00:00") : new Date(iso); return isFinite(d) ? d.getDate() + " " + MONTHS[d.getMonth()] + " " + d.getFullYear() : String(iso).slice(0, 10); };
+  const fmtShort = (iso) => { if (!iso) return ""; const d = new Date(iso); return isFinite(d) ? d.getDate() + " " + MONTHS[d.getMonth()] : String(iso).slice(0, 10); };
   const todayIso = () => new Date().toISOString().slice(0, 10);
   const plusDays = (iso, n) => { const d = new Date(iso || Date.now()); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
   const ageWords = (j) => { const f = j.freshness_label || ""; const m = /(\d+)\s*days?/i.exec(f); if (m) return m[1] + " days ago"; if (/today/i.test(f)) return "today"; if (/yesterday/i.test(f)) return "yesterday"; return f.replace(/^Posted /i, "").split(" (")[0] || ""; };
   const isNew = (j) => /last 2 days|today|yesterday/i.test(j.freshness_label || "");
+  const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
-  /* ---------- the role icon library: twenty families, one visual language ---------- */
+  /* ---------- the role icon library: twenty families, one visual language (decoration with a label, never matching input) ---------- */
   const ROLE_ICONS = {
     devops: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
-    sre: '<path d="M3 12h4l2-5 3 10 2-7 1.5 2H21"/><circle cx="18" cy="6" r="2.5"/>',
+    sre: '<circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><path d="M8 12h2l1-2.5 2 5 1-2.5h2"/>',
     platform: '<rect x="4" y="14" width="16" height="5" rx="1"/><rect x="6" y="9" width="12" height="5" rx="1"/><rect x="8" y="4" width="8" height="5" rx="1"/>',
-    infrastructure: '<rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><circle cx="8" cy="7" r=".8" fill="currentColor"/><circle cx="8" cy="17" r=".8" fill="currentColor"/>',
+    infrastructure: '<rect x="4" y="3" width="16" height="5" rx="1.5"/><rect x="4" y="9.5" width="16" height="5" rx="1.5"/><rect x="4" y="16" width="16" height="5" rx="1.5"/><circle cx="8" cy="5.5" r=".9" fill="currentColor"/><circle cx="8" cy="12" r=".9" fill="currentColor"/><circle cx="8" cy="18.5" r=".9" fill="currentColor"/>',
     cloud: '<path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 11.5 3.5 3.5 0 0 0 7 18z"/>',
-    kubernetes: '<path d="M12 3l7.5 4.5v9L12 21l-7.5-4.5v-9z"/><circle cx="12" cy="12" r="2"/><path d="M12 10V7.5M13.7 13l2.2 1.3M10.3 13l-2.2 1.3"/>',
+    kubernetes: '<path d="M12 3l7.5 4.5v9L12 21l-7.5-4.5v-9z"/><circle cx="12" cy="12" r="2.2"/><path d="M12 9.8V6M13.9 13.1l3.2 1.9M10.1 13.1l-3.2 1.9M13.9 10.9l3.2-1.9M10.1 10.9 6.9 9M12 14.2V18"/>',
     systems: '<path d="M14.5 6.5a4 4 0 0 1 4.8 4.8L13 17.6a2 2 0 0 1-2.8 0l-3.6-3.6a2 2 0 0 1 0-2.8l6.3-6.3"/><path d="M3 21l5-5"/>',
     network: '<circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5v4M12 11.5 6.5 17M12 11.5l5.5 5.5"/>',
     security: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
@@ -512,53 +527,55 @@ const Core = (() => {
     engineering: '<path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><path d="M9 12h6M12 9v6"/>',
   };
   const ROLE_LABELS = { devops: "DevOps Engineer", sre: "Site Reliability Engineer", platform: "Platform Engineer", infrastructure: "Infrastructure Engineer", cloud: "Cloud Engineer", kubernetes: "Kubernetes Engineer", systems: "Systems Engineer", network: "Network Engineer", security: "Security Engineer", devsecops: "DevSecOps Engineer", software: "Software Engineer", backend: "Backend Engineer", frontend: "Frontend Engineer", data: "Data Engineer", datascience: "Data Scientist", ml: "Machine Learning Engineer", architect: "Solutions Architect", manager: "Engineering Manager", consultant: "Technical Consultant", cloud_architect: "Cloud/Platform Architect", engineering: "Engineering" };
-  // RoleIcon(role): the icon, its accessible label, and the family id. Unknown -> Engineering. Never an input to matching.
-  function RoleIcon(role, large) {
+  function RoleIcon(role, size) {
     const id = role && ROLE_ICONS[role.id] ? role.id : "engineering";
     const label = (role && role.label) || ROLE_LABELS[id];
-    return el("span", { class: "ricon" + (large ? " lg" : ""), role: "img", "aria-label": label + " role", title: label }, svg(ROLE_ICONS[id]));
+    return el("span", { class: "ricon" + (size ? " " + size : ""), role: "img", "aria-label": label + " role", title: label }, svg(ROLE_ICONS[id]));
   }
-  // CompanyLogo(job): the employer's own favicon from its verified domain (cached by the browser, failures remembered),
-  // otherwise the initials. Never a guessed image, never another company's mark, never a blocker.
+  // CompanyLogo: the mark Hunter fetched once from the employer's verified domain (meta/logos), else the initials.
+  // The browser never asks an employer site for anything.
   function CompanyLogo(j, small) {
     const logo = j.logo || {}; const name = j.employer || "Unknown employer";
     const box = el("span", { class: "logo" + (small ? " sm" : ""), title: name });
-    if (logo.domain && !st.logoFail.has(logo.domain)) {
-      const img = el("img", { src: "https://" + logo.domain + "/favicon.ico", alt: name + " logo", loading: "lazy", width: small ? "16" : "28", height: small ? "16" : "28" });
-      img.addEventListener("error", () => { st.logoFail.add(logo.domain); try { localStorage.setItem("hunter.logofail", JSON.stringify([...st.logoFail].slice(-200))); } catch {} box.replaceChildren(initialsNode()); });
-      box.append(img);
-    } else box.append(initialsNode());
-    function initialsNode() { return el("span", { role: "img", "aria-label": name }, logo.initials || (name.slice(0, 2).toUpperCase())); }
+    const data = logo.domain && st.logos[logo.domain];
+    if (data && /^data:image\//.test(data)) box.append(el("img", { src: data, alt: name + " logo", width: small ? "16" : "26", height: small ? "16" : "26" }));
+    else box.append(el("span", { role: "img", "aria-label": name }, logo.initials || name.slice(0, 2).toUpperCase()));
     return box;
   }
   const NAV_ICONS = { today: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>', jobs: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/>', applications: '<path d="M9 3h6l4 4v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 12l2 2 4-4"/>', profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>', settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>' };
-  const I = { pin: '<path d="M12 21s7-6.5 7-11a7 7 0 1 0-14 0c0 4.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>', brief: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>', cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', check: '<path d="M20 6 9 17l-5-5"/>', coins: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>', bulb: '<path d="M9 18h6M10 21h4M8.5 14.5A6 6 0 1 1 15.5 14.5c-.6.6-1 1.5-1 2.5h-5c0-1-.4-1.9-1-2.5z"/>', doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>', star: '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>', bookmark: '<path d="M6 3h12v18l-6-4-6 4z"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>', back: '<path d="M15 6l-6 6 6 6"/>', ext: '<path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>', sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>', dot: '<circle cx="12" cy="12" r="4"/>', warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 18h.01"/>', people: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15.5 15c2.5.3 4.5 2.4 4.5 5"/>' };
+  const I = { brief: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>', check: '<path d="M20 6 9 17l-5-5"/>', bulb: '<path d="M9 18h6M10 21h4M8.5 14.5A6 6 0 1 1 15.5 14.5c-.6.6-1 1.5-1 2.5h-5c0-1-.4-1.9-1-2.5z"/>', doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>', star: '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>', bookmark: '<path d="M6 3h12v18l-6-4-6 4z"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>', back: '<path d="M15 6l-6 6 6 6"/>', ext: '<path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>', sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>' };
   const ico = (name) => svg(I[name]);
 
-  /* ---------- navigation ---------- */
+  /* ---------- Hunter: online when this page can reach the running session ---------- */
+  const channel = () => (st.run && st.run.hunter && st.run.hunter.channel) || null;
+  const hunterOnline = () => st.online === true || (st.online === null && !!st.mcp && !!(channel() && channel().id));
   function setView(v, scroll) { st.view = v; st.ws = false; try { localStorage.setItem("hunter.view", v); } catch {} if (scroll) $("listCol").scrollTop = 0; render(); }
   function renderNav() {
-    const t = Core.tabsFor(st.jobs, st.actions, st.run);
     const attention = st.today ? (st.today.total || 0) : 0;
     const items = [["today", "Today", attention], ["jobs", "Jobs", null], ["applications", "Applications", null], ["profile", "Profile", null]];
     const out = items.map(([id, label, n]) => el("button", { class: "nav", "aria-current": st.view === id ? "page" : "false", "aria-label": label + (n ? " (" + n + " to look at)" : ""), onclick: () => setView(id, true) }, svg(NAV_ICONS[id]), label, n ? el("span", { class: "n", "aria-hidden": "true" }, n) : null));
     out.push(el("button", { class: "nav settings", "aria-current": "false", onclick: () => { setView("profile", true); const s = $("sec-settings"); if (s) s.scrollIntoView({ block: "start" }); } }, svg(NAV_ICONS.settings), "Settings"));
     $("navList").replaceChildren(...out);
-    void t;
   }
-  /* ---------- status line (only facts the data supports) ---------- */
   function statusChips() {
-    const h = st.run && st.run.hunter; const pending = Core.pendingCount(st.jobs, st.actions, st.profile); const items = [];
+    const h = (st.run && st.run.hunter) || {}; const items = [];
     if (st.dbError) items.push(el("span", { class: "stat" }, el("span", { class: "dot bad" }), "Can’t reach your data"));
     else if (!st.db) items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), "Sign in to see your jobs"));
     else if (st.owner === false) items.push(el("span", { class: "stat" }, el("span", { class: "dot bad" }), "Not your dashboard"));
     else if (st.loaded.run && st.run) {
+      items.push(el("span", { class: "stat", title: hunterOnline() ? "Hunter is running in your Claude Code session" : "Reopen /jobhunter in Claude Code to reconnect" }, el("span", { class: "dot " + (hunterOnline() ? "ok" : "warn") }), hunterOnline() ? "Hunter online" : "Hunter is offline"));
       const ip = st.run.hunt_in_progress;
-      if (ip && ip.running) items.push(el("span", { class: "stat", title: "A search is running now; this page shows what it has found so far" }, el("span", { class: "dot warn" }), "Searching now: " + (ip.jobs_relevant_new || 0) + " new match" + (ip.jobs_relevant_new === 1 ? "" : "es") + " so far"));
-      items.push(el("span", { class: "stat", title: "When Hunter last updated this page" }, el("span", { class: "dot " + (pending ? "warn" : "ok") }), "Synced " + rel(st.run.at) + (pending ? " · " + pending + " change" + (pending === 1 ? "" : "s") + " waiting" : "")));
-      if (h && h.automatic_hunting === "running" && h.next_hunt_at) items.push(el("span", { class: "stat" }, el("span", { class: "dot ok" }), "Next search " + rel(h.next_hunt_at)));
+      if (ip && ip.running) items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), "Searching now: " + (ip.jobs_relevant_new || 0) + " new match" + (ip.jobs_relevant_new === 1 ? "" : "es") + " so far"));
+      else items.push(el("span", { class: "stat" }, "Last job search " + rel(h.last_successful_hunt_at)));
+      if ((h.routine && h.routine.verified) || h.automatic_hunting === "running") items.push(el("span", { class: "stat" }, el("span", { class: "dot ok" }), "Nightly on"));
+      const failed = Object.keys(st.failedSaves).length;
+      if (failed) items.push(el("button", { class: "stat bad", onclick: retryFailedSaves }, failed + " change" + (failed === 1 ? "" : "s") + " failed to save — Retry"));
     } else items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), st.loaded.run ? "Hunter hasn’t synced yet" : "Loading…"));
     return items;
+  }
+  function offlineBanner() {
+    if (!st.loaded.run || !st.run || hunterOnline()) return null;
+    return el("div", { class: "banner", role: "status" }, el("span", {}, "Hunter is offline. Reopen /jobhunter in Claude Code to reconnect."), el("button", { class: "btn sm", onclick: reconnect }, "Reconnect Hunter"));
   }
   function noticeBlock() {
     let msg = null;
@@ -570,48 +587,44 @@ const Core = (() => {
 
   /* ---------- job rows ---------- */
   function rowFor(k) {
-    const j = st.jobs.get(k) || {}; const e = eff(k);
+    const j = st.jobs.get(k) || {}; const e = eff(k); const s = Core.appStatus(work(k), act(k));
     const marks = el("div", { class: "marks" });
     if (e.favorite) marks.append(el("span", { class: "star", title: "Favorite", "aria-label": "Favorite" }, "★"));
-    if (e.saved) marks.append(el("span", { title: "Saved", "aria-label": "Saved", style: "color:var(--muted)" }, "🔖"));
+    if (e.saved && !e.applied_at) marks.append(el("span", { class: "pill g-backup" }, "Saved"));
     if (e.applied_at) marks.append(el("span", { class: "pill p-applied" }, "Applied"));
-    else if (Core.mainAction(work(k), act(k)).kind === "continue") marks.append(el("span", { class: "pill p-fresh" }, "In progress"));
+    else if (s.id === "ready") marks.append(el("span", { class: "pill p-fresh" }, "Ready"));
+    else if (s.id === "needs_answer") marks.append(el("span", { class: "pill p-pending" }, "Needs answer"));
     if (e.dismissed && st.tab !== "dismissed") marks.append(el("span", { class: "pill p-dismissed" }, "Not interested"));
     const tags = (j.tags || []).slice(0, 4).map((t, i) => el("span", { class: "tag" + (i === 0 ? " role" : "") }, t));
-    return el("button", { class: "row", role: "listitem", "data-key": k, "aria-current": String(st.sel === k), onclick: () => select(k) },
+    return el("button", { class: "row", role: "listitem", "data-key": k, "aria-current": String(st.sel === k || (!st.sel && st.lastRow === k)), onclick: () => select(k) },
       CompanyLogo(j),
       el("div", { style: "min-width:0" }, el("div", { class: "t" }, j.title || "Untitled job"),
         el("div", { class: "s" }, [j.employer, j.location_short || where(j)].filter(Boolean).join(" · ")),
-        tags.length ? el("div", { class: "tags" }, tags) : null),
+        el("div", { class: "tags" }, RoleIcon(j.role, "xs"), ...tags)),
       el("div", { class: "rside" }, el("span", {}, ageWords(j) || (isNew(j) ? "New" : ""), " ", el("span", { class: "chev", "aria-hidden": "true" }, "›")), el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"), marks.childNodes.length ? marks : null));
   }
   /* ---------- Today ---------- */
   function renderTodayView() {
     const out = [];
     out.push(el("div", { class: "colhead" }, el("div", {}, el("h1", {}, "Today"), el("div", { class: "sub" }, st.profile && st.profile.headline ? st.profile.headline + " · " + (st.profile.years_text || "") : "Your job hunt")), el("div", { class: "right" }, ...statusChips())));
+    const b = offlineBanner(); if (b) out.push(b);
     const n = noticeBlock(); if (n) out.push(n);
     if (!st.loaded.board || !st.run) { out.push(el("div", { class: "empty" }, st.loaded.run ? "Hunter fills this page after your first search." : "Loading your jobs…")); return out; }
     const t = Core.tabsFor(st.jobs, st.actions, st.run);
     const picks = Core.topPicks(t.recommended, st.jobs, 5);
     out.push(el("section", { class: "block", "aria-label": "Top picks" },
-      el("div", { class: "pickhead" }, el("h2", { style: "font-size:16px;text-transform:none;letter-spacing:0;color:var(--ink);font-family:var(--display);font-weight:800;margin:0" }, "Top picks for you"), el("span", { class: "foot" }, picks.length ? "Best matches on your profile and preferences" : "")),
+      el("div", { class: "pickhead" }, el("h2", { style: "font-size:15.5px;text-transform:none;letter-spacing:0;color:var(--ink);font-family:var(--display);font-weight:800;margin:0" }, "Top picks for you"), el("span", { class: "foot" }, picks.length ? "Best matches on your profile and preferences" : "")),
       picks.length ? el("div", { class: "list", role: "list" }, picks.map(rowFor)) : el("div", { class: "empty" }, "Nothing to recommend right now. Hunter adds jobs after each search."),
       el("div", { class: "viewall" }, el("button", { class: "btn sm", onclick: () => { st.tab = "recommended"; setView("jobs", true); } }, "View all jobs (" + t.recommended.length + ")"))));
-    // Needs your attention: only real, actionable items from Hunter's Today document, plus edits that wait for Hunter.
     const items = [];
-    const pending = Core.pendingCount(st.jobs, st.actions, st.profile);
-    for (const g of ((st.today && st.today.groups) || [])) for (const it of (g.items || [])) items.push({ g: g.id, it });
-    if (items.length || pending) out.push(el("section", { class: "block" }, el("h2", {}, "Needs your attention"), el("div", { class: "items" },
+    for (const g of ((st.today && st.today.groups) || [])) for (const it of (g.items || [])) items.push({ g, it });
+    if (items.length) out.push(el("section", { class: "block" }, el("h2", {}, "Needs your attention"), el("div", { class: "items" },
       items.slice(0, 8).map(({ g, it }) => {
         const key = it.action && it.action.key && st.jobs.has(it.action.key) ? it.action.key : null;
-        const cmd = it.action && it.action.command;
-        const cls = g === "attention" ? "warn" : (g === "ready" ? "good" : "");
-        const btn = key ? el("button", { class: "btn sm primary", onclick: () => { select(key, g === "ready" || g === "needs_answer"); } }, it.action.label || "Open")
-          : (cmd ? el("button", { class: "btn sm", title: "In Claude: " + cmd, onclick: (ev) => { copyText("/jobhunter " + cmd.replace(/^jobhunter /, "")); ev.target.textContent = "Copied for Claude"; setTimeout(() => { ev.target.textContent = it.action.label || "Open"; }, 1500); } }, it.action.label || "Open") : null);
+        const cls = g.id === "attention" ? "warn" : (g.id === "ready" ? "good" : "");
+        const btn = key ? el("button", { class: "btn sm primary", onclick: () => select(key, g.id === "ready" || g.id === "needs_answer") }, it.action.label || "Open") : null;
         return el("div", { class: "item " + cls }, el("span", {}, it.text), btn);
-      }),
-      pending ? el("div", { class: "item" }, el("span", {}, pending + " change" + (pending === 1 ? "" : "s") + " you made here " + (pending === 1 ? "waits" : "wait") + " for Hunter’s next run.")) : null)));
-    // Recent activity: small facts.
+      }))));
     const fresh = t.recommended.filter((k) => isNew(st.jobs.get(k) || {})).length;
     const since = Date.now() - 7 * 86400000;
     const appliedWeek = t.applied.filter((k) => Date.parse(eff(k).applied_at || "") > since).length;
@@ -630,6 +643,7 @@ const Core = (() => {
   function renderJobsView() {
     const out = []; const t = Core.tabsFor(st.jobs, st.actions, st.run);
     out.push(el("div", { class: "colhead" }, el("div", {}, el("h1", {}, "Jobs"), el("div", { class: "sub" }, st.run ? t.recommended.length + " recommended" + (st.run.counts && st.run.counts.recommended_total > t.recommended.length ? " (showing " + t.recommended.length + " of " + st.run.counts.recommended_total + ")" : "") : "")), el("div", { class: "right" }, ...statusChips())));
+    const b = offlineBanner(); if (b) out.push(b);
     const n = noticeBlock(); if (n) out.push(n);
     const sel = el("select", { class: "fsel", "aria-label": "Which jobs", onchange: (ev) => { st.tab = ev.target.value; try { localStorage.setItem("hunter.tab", st.tab); } catch {} render(); } });
     for (const [k, label] of FILTERS) sel.append(el("option", { value: k, selected: st.tab === k }, label + " (" + (t[k] || []).length + ")"));
@@ -658,7 +672,7 @@ const Core = (() => {
     }
     box.replaceChildren(...keys.map(rowFor));
   }
-  /* ---------- Applications: a simple pipeline ---------- */
+  /* ---------- Applications ---------- */
   function renderApplicationsView() {
     const out = []; const STAGES = [["preparing", "Preparing"], ["ready", "Ready"], ["applied", "Applied"], ["interview", "Interview"], ["closed", "Closed"]];
     const keys = new Set();
@@ -666,7 +680,8 @@ const Core = (() => {
     for (const [k, a] of st.actions) if (st.jobs.has(k) && (a.applied_at || (a.requests && a.requests.prepare))) keys.add(k);
     const rows = [...keys].map((k) => ({ k, stage: Core.pipelineStage(work(k), act(k)) }));
     out.push(el("div", { class: "colhead" }, el("div", {}, el("h1", {}, "Applications"), el("div", { class: "sub" }, rows.length ? rows.length + " in your pipeline" : "Nothing in your pipeline yet")), el("div", { class: "right" }, ...statusChips())));
-    if (!rows.length) { out.push(el("div", { class: "empty" }, "Open a job and press “Prepare my application”. Applications you confirmed with “I applied” are tracked here too.")); return out; }
+    const b = offlineBanner(); if (b) out.push(b);
+    if (!rows.length) { out.push(el("div", { class: "empty" }, "Open a job and press “Get application help”. Applications you confirmed with “I applied” are tracked here too.")); return out; }
     for (const [id, label] of STAGES) {
       const rs = rows.filter((r) => r.stage === id); if (!rs.length) continue;
       out.push(el("section", { class: "block" }, el("h2", {}, label, el("small", {}, rs.length)), el("div", { class: "list", role: "list" }, rs.map(({ k }) => {
@@ -674,7 +689,7 @@ const Core = (() => {
         const cv = app && app.submitted_cv && app.submitted_cv.label ? app.submitted_cv.label + " v" + app.submitted_cv.version : (w && w.cv && w.cv.selected ? w.cv.selected.label + " v" + w.cv.selected.version : null);
         const when = e.applied_at ? "Applied " + fmtDay(e.applied_at) : (w && w.package && w.package.created_at ? "Prepared " + fmtDay(w.package.created_at) : "Requested");
         const fu = w && w.followup && w.followup.due ? "Follow-up " + fmtDay(w.followup.due) : null;
-        const next = { none: "Prepare", preparing: "Hunter is preparing", needs_answer: "Answer a question", needs_review: "Prepare again", failed: "Try again", ready: e.applied_at ? "" : "Review and apply", applied: fu ? "Follow up" : "Set a follow-up" }[s.id] || "";
+        const next = { none: "Get help", preparing: "Preparing…", needs_answer: "Answer a question", needs_review: "Review changes", failed: "Retry", ready: e.applied_at ? "" : "Review and apply", applied: fu ? "Follow up" : "Set a follow-up" }[s.id] || "";
         return el("button", { class: "approw", role: "listitem", "data-key": k, onclick: () => select(k, s.id !== "none") },
           RoleIcon(j.role), el("div", { style: "min-width:0" }, el("div", { class: "t" }, (j.employer || "Unknown employer") + " · " + (j.title || "")), el("div", { class: "s" }, [when, cv ? "CV: " + cv : null, fu, app && app.stage_label && id === "interview" ? app.stage_label : null].filter(Boolean).join(" · "))),
           el("div", { class: "next" }, next || s.label));
@@ -687,14 +702,13 @@ const Core = (() => {
     const out = []; const p = st.profile;
     out.push(el("div", { class: "colhead" }, el("div", {}, el("h1", {}, "Profile"), el("div", { class: "sub" }, p ? (p.headline || "") + (p.approved_at ? " · approved " + fmtDay(p.approved_at) : "") : "")), el("div", { class: "right" }, ...statusChips())));
     if (!p) { out.push(el("div", { class: "empty" }, "No approved profile on this page yet. In Claude Code: /jobhunter profile.")); return out; }
-    const pr = p.prefs || {};
     out.push(el("section", { class: "block prof" }, el("h2", {}, "Approved candidate profile"), el("div", { class: "card" },
       p.summary ? el("p", { style: "margin:0 0 8px" }, p.summary) : null,
       el("div", { class: "kv" }, el("span", {}, "Direction"), el("span", {}, p.headline || ""), el("span", {}, "Experience"), el("span", {}, p.years_text || ""),
         (p.roles || []).length ? [el("span", {}, "Paid work"), el("span", {}, p.roles.join(" · "))] : null,
         (p.projects || []).length ? [el("span", {}, "Projects"), el("span", {}, p.projects.join(" · ") + " (not paid work)")] : null,
         (p.certifications || []).length ? [el("span", {}, "Courses"), el("span", {}, p.certifications.join(" · "))] : null),
-      (p.skills || []).length ? el("div", { class: "chips", style: "margin-top:8px" }, p.skills.map((s) => el("span", { class: "chip" }, s))) : null,
+      (p.skills || []).length ? el("div", { class: "chipset", style: "margin-top:8px" }, p.skills.map((s) => el("span", {}, s))) : null,
       el("p", { class: "foot", style: "margin:8px 0 0" }, "Every fact comes from your CV, your LinkedIn PDF or your own words. To correct one, tell Hunter in Claude Code: /jobhunter profile."))));
     out.push(el("section", { class: "block", id: "sec-prefs" }, el("h2", {}, "Preferences"), el("div", { class: "card" }, renderPrefsForm())));
     out.push(el("section", { class: "block", id: "sec-cvs" }, el("h2", {}, "My CVs"), el("div", { class: "card" }, ...renderCvsBody())));
@@ -702,152 +716,205 @@ const Core = (() => {
     const em = h.email || {};
     out.push(el("section", { class: "block", id: "sec-settings" }, el("h2", {}, "Connected services and Hunter settings"), el("div", { class: "card" },
       el("div", { class: "kv" },
+        el("span", {}, "Hunter"), el("span", {}, hunterOnline() ? "Online in your Claude Code session" : "Offline. Reopen /jobhunter in Claude Code to reconnect."),
         el("span", {}, "Job emails"), el("span", {}, em.configured ? ("To " + (em.address_hint || "your address") + (em.last_sent_at ? " · last sent " + rel(em.last_sent_at) : " · none sent yet")) : "Off. Set it up in Claude Code: /jobhunter email."),
         el("span", {}, "Automation"), el("span", {}, (a.mode_label || "On request") + (a.mode === "prepare_best" ? " · at most " + ((a.limits || {}).preparations_per_day || 3) + " a day, " + ((a.limits || {}).unopened_ready || 5) + " waiting" : "")),
-        el("span", {}, "Nightly runs"), el("span", {}, h.routine && h.routine.verified ? "Last run " + rel(h.routine.last_run_at) + " (" + h.routine.last_status + ")" : (h.automatic_hunting === "running" ? "Running on your computer" : "Not set up. In Claude Code: /jobhunter nightly.")),
-        el("span", {}, "Direct line"), el("span", {}, h.channel && h.channel.id ? "On (" + (h.channel.label || h.channel.kind) + ")" : "Not set: Hunter picks up your requests on its next run."),
+        el("span", {}, "Nightly runs"), el("span", {}, h.routine && h.routine.verified ? "On · last run " + rel(h.routine.last_run_at) : (h.automatic_hunting === "running" ? "Running on your computer" : "Off. In Claude Code: /jobhunter nightly.")),
         el("span", {}, "Last search"), el("span", {}, h.last_successful_hunt_at ? rel(h.last_successful_hunt_at) : "none yet")),
       el("p", { class: "foot", style: "margin:8px 0 0" }, "These are changed in Claude Code (/jobhunter automation, /jobhunter email, /jobhunter nightly); this page shows what is really set."))));
     return out;
   }
   /* ---------- the job detail ---------- */
   function saveLine(k, echo) {
-    // One live status line per job (role=status); the notes block repeats its text without the role.
-    const s = st.saving[k]; const e = eff(k); const attrs = echo ? {} : { role: "status" };
+    // One live status line per job (role=status); "Saved" and nothing more once a save lands.
+    const s = st.saving[k]; const attrs = echo ? {} : { role: "status" };
     if (!s) return echo ? null : el("div", Object.assign({ class: "save" }, attrs));
-    if (s.status === "saved" && !e.pending) return el("div", Object.assign({ class: "save ok" }, attrs), st.actions.has(k) ? "Synced with Hunter." : "");
     const cls = { saving: "", saved: "ok", conflict: "warn", busy: "warn", error: "err" }[s.status] || "";
-    const txt = { saving: "Saving…", saved: "Saved to your dashboard. Waiting for Hunter’s next run to apply it.", conflict: "Changed in another tab or device. Nothing was overwritten.", busy: "Another tab is saving. Nothing was lost.", error: "Couldn't save (" + (s.code || "error") + "). Your change is still on screen." }[s.status];
+    const txt = { saving: "Saving…", saved: "Saved", conflict: "Changed in another tab or device. Nothing was overwritten.", busy: "Another tab is saving. Nothing was lost.", error: "Couldn’t save. Your change is still on screen." }[s.status];
     const retry = !echo && (s.status === "error" || s.status === "busy") && s.retry ? el("button", { class: "btn sm", style: "margin-left:8px", onclick: () => s.retry() }, "Retry") : null;
     return el("div", Object.assign({ class: "save " + cls }, attrs), txt, retry);
   }
   function copyBtn(text, label) { return el("button", { class: "btn sm", type: "button", onclick: (ev) => { copyText(text); ev.target.textContent = "Copied"; setTimeout(() => { ev.target.textContent = label || "Copy"; }, 1500); } }, label || "Copy"); }
-  /* The request chain: a request is written to the page's database first (never lost), then Hunter is reached directly
-     when this page has a line to it; otherwise the person continues in Claude. Shown only once a task was started. */
-  function requestLine(k, kind, labels) {
-    const r = Core.requestState(work(k), act(k), kind); const local = (st.reqStatus[k] || {})[kind];
-    if (!r) return null;
-    const parts = [];
+  // What a task shows: working, a result to look at, a question, a failure with Retry, or Hunter offline with Retry.
+  function taskView(k, kind) {
+    const r = Core.requestState(work(k), act(k), kind); const local = (st.reqStatus[k] || {})[kind]; const words = Core.taskWords(kind);
+    if (!r) return { state: "idle", label: words.idle };
     if (r.state === "requested") {
-      if (local && local.status === "sent") parts.push(el("div", { class: "save ok", role: "status" }, "Sent to Hunter in your Claude account (" + local.text + "). This page updates when it is done."));
-      else if (local && local.status === "sending") parts.push(el("div", { class: "save", role: "status" }, "Reaching Hunter…"));
-      else parts.push(el("div", { class: "save warn", role: "status" }, "Saved. Hunter picks this up on its next run." + (local && local.code ? " Direct line: " + local.code + "." : "")),
-        el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", type: "button", onclick: () => continueInClaude(r.id) }, "Continue this request in Claude")));
-    } else if (r.state === "running") parts.push(el("div", { class: "save", role: "status" }, "Hunter is working on this…"));
-    else if (r.state === "needs_input") parts.push(el("div", { class: "save warn", role: "status" }, "Hunter needs something from you: " + (r.message || "")), el("button", { class: "btn sm", type: "button", style: "margin-top:6px", onclick: () => doRequest(k, kind) }, "Ask again"));
-    else if (r.state === "failed") parts.push(el("div", { class: "save err", role: "status" }, "Hunter could not do this: " + (r.message || "unknown error")), el("button", { class: "btn sm", type: "button", style: "margin-top:6px", onclick: () => doRequest(k, kind) }, "Try again"));
-    else if (r.state === "ready" && labels && labels.ready) parts.push(el("div", { class: "save ok", role: "status" }, labels.ready));
-    return parts.length ? el("div", {}, ...parts) : null;
+      if (local && local.status === "offline") return { state: "offline", label: "Hunter is offline", id: r.id };
+      if (local && local.status === "error") return { state: "failed", label: "Couldn’t save this", id: r.id };
+      return { state: "busy", label: words.busy, id: r.id };
+    }
+    if (r.state === "running") return { state: "busy", label: words.busy, id: r.id };
+    if (r.state === "needs_input") return { state: "needs_input", label: "Needs your answer", message: r.message, id: r.id };
+    if (r.state === "failed") return { state: "failed", label: "Couldn’t complete this", message: r.message, id: r.id };
+    return { state: "done", label: words.done, id: r.id, result: r.result };
+  }
+  const hasResult = (k, kind) => { const w = work(k); if (!w) return false; if (kind === "research") return !!(w.brief || w.package); if (kind === "contact") return (w.contacts || []).length > 0; return true; };
+  function taskChip(k, kind, onDone) {
+    const v = taskView(k, kind);
+    const idleClick = () => startTask(k, kind);
+    if (v.state === "busy") return el("button", { class: "chip busy", disabled: true, "aria-live": "polite" }, el("span", { class: "spin", "aria-hidden": "true" }), v.label);
+    if (v.state === "offline") return el("button", { class: "chip bad", onclick: () => redispatch(k, kind, v.id) }, "Hunter is offline — Retry");
+    if (v.state === "failed") return el("button", { class: "chip bad", title: v.message || "", onclick: idleClick }, "Couldn’t complete this. Retry");
+    if (v.state === "needs_input") return el("button", { class: "chip", title: v.message || "", onclick: () => { st.ws = true; renderDetail(); } }, "Needs your answer");
+    if (v.state === "done" && hasResult(k, kind)) return el("button", { class: "chip done", onclick: onDone || (() => { st.ws = true; renderDetail(); }) }, ico("check"), v.label);
+    return el("button", { class: "chip", disabled: !can(), onclick: idleClick }, v.label);
+  }
+  function taskLine(k, kind) {
+    const v = taskView(k, kind);
+    if (v.state === "idle") return null;
+    if (v.state === "busy") return el("div", { class: "save", role: "status" }, v.label);
+    if (v.state === "offline") return el("div", { class: "save warn", role: "status" }, "Hunter is offline. ", el("button", { class: "btn sm", type: "button", onclick: () => redispatch(k, kind, v.id) }, "Retry"));
+    if (v.state === "needs_input") return el("div", { class: "save warn", role: "status" }, "Hunter needs your answer: " + (v.message || ""), " ", el("button", { class: "btn sm", type: "button", onclick: () => startTask(k, kind) }, "Ask again"));
+    if (v.state === "failed") return el("div", { class: "save err", role: "status" }, "Couldn’t complete this" + (v.message ? ": " + v.message : "") + " ", el("button", { class: "btn sm", type: "button", onclick: () => startTask(k, kind) }, "Retry"));
+    return null;
   }
   function mainActionButton(k, cls) {
     const w = work(k); const a = act(k); const m = Core.mainAction(w, a);
-    const busy = st.saving[k] && st.saving[k].status === "saving";
-    return el("button", { class: cls || "btn primary lg", disabled: busy || !can(), onclick: () => { if (m.kind === "prepare") doRequest(k, "prepare"); else { st.ws = true; renderDetail(); } } }, m.kind === "prepare" ? ico("sparkle") : null, m.label);
+    const busy = (st.saving[k] && st.saving[k].status === "saving") || m.busy;
+    const go = () => { if (m.kind === "prepare") startTask(k, "prepare"); else { st.ws = true; renderDetail(); } };
+    if (m.busy) return el("button", { class: (cls || "btn primary lg"), disabled: true }, el("span", { class: "spin", "aria-hidden": "true" }), m.label);
+    return el("button", { class: cls || "btn primary lg", disabled: busy || !can(), onclick: go }, m.kind === "prepare" ? ico("sparkle") : null, m.label);
   }
   const GENERIC_FIT = /kind of (work|job) you are looking for|is infrastructure work/i;
   function fitLists(j) {
-    const reasons = (j.reasons || []).filter(Boolean).flatMap((r) => r.split(/;\s+(?=[A-Z])/)).map((r) => r.trim().replace(/^([a-z])/, (m) => m.toUpperCase())).map((r) => /[.!?]$/.test(r) ? r : r + ".");
+    const reasons = (j.reasons || []).filter(Boolean).flatMap((r) => r.split(/;\s+(?=[A-Z])/)).map((r) => r.trim().replace(/\s*\(\d+ of \d+\)/g, "").replace(/^([a-z])/, (m) => m.toUpperCase()).replace(/[.]$/, ""));
     const specific = reasons.filter((r) => !GENERIC_FIT.test(r));
-    const why = (specific.length ? specific : reasons).slice(0, 3);
-    const check = (j.gaps || []).filter((g) => !/almost no text/i.test(g)).slice(0, 3);
+    const why = specific.length ? specific : reasons;
+    const check = (j.gaps || []).filter((g) => !/almost no text/i.test(g)).map((g) => g.replace(/[.]$/, ""));
     return { why, check };
   }
   function renderJob(k, j) {
     const e = eff(k); const w = work(k); const busy = st.saving[k] && st.saving[k].status === "saving";
     const links = j.links || {}; const direct = safeUrl(links.direct) || safeUrl(links.apply) || safeUrl(links.discovery);
-    const openBtn = (cls) => direct ? el("a", { class: cls, href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application", ico("ext")) : el("span", { class: cls + " btn", "aria-disabled": "true", style: "opacity:.6" }, "No link available");
-    const flag = (field, on, labelOn, labelOff, icon) => el("button", { class: "btn sm" + (on ? " on" : ""), disabled: busy || !can(), "aria-pressed": String(on), onclick: () => doFlag(k, field, !on) }, ico(icon), on ? labelOn : labelOff);
+    const openBtn = (cls) => direct ? el("a", { class: cls, href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application", ico("ext")) : el("span", { class: cls + " btn", "aria-disabled": "true" }, "No link available");
+    const flag = (field, on, labelOn, labelOff, icon) => el("button", { class: "btn sm" + (on ? " on" : ""), disabled: busy || !can(), "aria-pressed": String(on), onclick: () => doFlag(k, field, !on) }, icon ? ico(icon) : null, on ? labelOn : labelOff);
     const employerLink = safeUrl(links.direct);
     const status = Core.appStatus(w, act(k));
     const { why, check } = fitLists(j);
     const places = j.locations || [];
+    const phone = isPhone();
     const head = el("div", { class: "dhead" },
-      el("div", { class: "top" }, RoleIcon(j.role, true),
+      phone ? el("div", { class: "mrow" }, el("button", { class: "btn sm", "aria-label": "Back", onclick: closeDetail }, ico("back"), "Back"), flag("favorite", e.favorite, "★ Favorite", "☆ Favorite", null), flag("saved", e.saved, "Saved", "Save", "bookmark")) : null,
+      el("div", { class: "top" }, RoleIcon(j.role, "lg"),
         el("div", { class: "ttl" }, el("h2", {}, j.title || "Untitled job"),
-          el("div", { class: "co" }, CompanyLogo(j, true), employerLink ? el("a", { href: employerLink, target: "_blank", rel: "noopener noreferrer", title: "Employer’s own listing" }, j.employer || "Unknown employer") : el("b", {}, j.employer || "Unknown employer"), el("span", {}, j.location_short || where(j) || "Location not stated"), el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"), e.applied_at ? el("span", { class: "pill p-applied" }, "Applied " + fmtDay(e.applied_at)) : null)),
-        el("div", { class: "hacts" }, flag("favorite", e.favorite, "★ Favorite", "☆ Favorite", "star"), flag("saved", e.saved, "Saved", "Save for later", "bookmark"), el("button", { class: "btn sm", "aria-label": "Close", onclick: closeDetail }, ico("x"), "Close"))),
-      el("div", { class: "facts" }, j.employment_type ? el("span", {}, ico("brief"), j.employment_type) : null, el("span", {}, ico("cal"), j.freshness_label || "Posting date unknown"), j.verification ? el("span", {}, svg(I.dot, { style: "stroke:var(--good)" }), j.verification) : null, el("span", {}, ico("coins"), j.salary || "Pay not listed")),
+          el("div", { class: "co" }, CompanyLogo(j, true), employerLink ? el("a", { href: employerLink, target: "_blank", rel: "noopener noreferrer", title: "Employer’s own listing" }, j.employer || "Unknown employer") : el("b", {}, j.employer || "Unknown employer"), el("span", {}, j.location_short || where(j) || "Location not stated"), el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"))),
+        phone ? null : el("div", { class: "hacts" }, flag("favorite", e.favorite, "★ Favorite", "☆ Favorite", null), flag("saved", e.saved, "Saved", "Save", "bookmark"), el("button", { class: "btn sm", "aria-label": "Close", onclick: closeDetail }, ico("x"), "Close"))),
+      el("div", { class: "facts" }, el("span", {}, j.employment_type || "Type not stated"), el("span", {}, j.freshness_label ? j.freshness_label.replace(/^Posted /, "") : "Posting date unknown"), j.verification ? el("span", {}, j.verification) : null, el("span", {}, j.salary || "Pay not listed")),
       saveLine(k));
-    const help = el("div", { class: "help" },
-      el("div", {}, el("h3", {}, "Get help with this application"), el("p", {}, "Hunter can research the company, prepare your application and help you apply."),
-        el("ul", {}, el("li", {}, "Research the company and role"), el("li", {}, "Suggest the best existing CV and proof"), el("li", {}, "Draft application answers"), el("li", {}, "Optional introduction or cover letter"))),
-      el("div", { class: "cta" }, mainActionButton(k), openBtn("btn lg"), requestLine(k, "prepare")));
+    // Application help: one primary action, Open application always, four direct tasks, one status row.
+    const sub = w && w.application && w.application.submitted_cv;
+    const cvWords = sub && sub.label ? sub.label + " (version " + sub.version + ")" : (w && w.cv && w.cv.selected ? w.cv.selected.label + " (version " + w.cv.selected.version + ")" : null);
+    const statusRow = el("div", { class: "statusrow" }, el("span", {}, "Application status: ", el("b", {}, status.label + (e.applied_at ? " " + fmtDay(e.applied_at) : "")), cvWords && status.id !== "none" ? " · " + (e.applied_at ? "CV sent: " : "CV: ") + cvWords : ""),
+      e.applied_at ? [w && w.package ? el("button", { class: "btn sm", onclick: () => { st.ws = true; renderDetail(); } }, "View submitted materials") : null, el("button", { class: "btn sm ghost", disabled: !can(), onclick: () => doFlag(k, "applied", false) }, "Undo")] : (st.askApplied === k ? null : el("button", { class: "btn sm", disabled: !can(), onclick: () => { st.askApplied = k; renderDetail(); const n = $("applied-when"); if (n) n.focus(); } }, ico("check"), "I applied")));
+    const help = el("div", { class: "help", "aria-label": "Application help" },
+      el("div", { class: "hrow" }, el("div", { style: "flex:1 1 220px;min-width:0" }, el("h3", {}, "Application help"), el("p", {}, "Hunter can research this role and help you prepare a strong application.")),
+        el("div", { class: "cta" }, mainActionButton(k), openBtn("btn lg"))),
+      taskLine(k, "prepare"),
+      el("div", { class: "chips" }, taskChip(k, "research", () => { st.ws = true; st.briefOpen = true; renderDetail(); scrollTo("ws-research"); }), taskChip(k, "letter", () => { st.ws = true; renderDetail(); scrollTo("ws-optional"); }), draftAnswersChip(k), taskChip(k, "contact", () => { st.ws = true; renderDetail(); scrollTo("ws-people"); })),
+      taskLine(k, "research"), taskLine(k, "letter"), taskLine(k, "contact"),
+      st.askQuestions === k ? questionsBox(k) : null,
+      statusRow,
+      st.askApplied === k ? renderAppliedForm(k, w) : null,
+      e.applied_at ? renderFollowup(k, w, e) : null);
     const overview = el("div", { class: "card" }, el("h3", {}, ico("brief"), "Job overview"),
       el("div", { class: "kv" }, el("span", {}, "Company"), el("span", {}, j.employer || "Unknown employer"),
-        el("span", {}, "Location"), el("span", {}, places.length > 1 ? [el("span", {}, places[0] + " + " + (places.length - 1) + " more "), el("details", { class: "sub", style: "margin:2px 0 0" }, el("summary", {}, "View all locations"), el("div", { class: "foot" }, places.join(" · ")))] : (j.location || "Not stated")),
+        el("span", {}, "Location"), el("span", {}, places.length > 1 ? [el("span", {}, places[0] + " + " + (places.length - 1) + " locations "), el("details", { class: "sub", id: "d-places", style: "margin:1px 0 0" }, el("summary", {}, "View all"), el("div", { class: "foot" }, places.join(" · ")))] : (j.location || "Not stated")),
         el("span", {}, "Work mode"), el("span", {}, remoteWords(j) || "Not stated"),
         el("span", {}, "Type"), el("span", {}, j.employment_type || "Not stated"),
         el("span", {}, "Pay"), el("span", {}, j.salary || "Not listed"),
-        el("span", {}, "Work authorization"), el("span", {}, j.authorization || "Not stated in the posting"),
-        el("span", {}, "Posted"), el("span", {}, [j.freshness_label, j.verification].filter(Boolean).join(" · ") || "Unknown"),
+        el("span", {}, "Work authorization"), el("span", {}, j.authorization || "Not stated"),
         el("span", {}, "Listing"), el("span", {}, employerLink ? el("a", { href: employerLink, target: "_blank", rel: "noopener noreferrer" }, "Employer’s own listing") : (safeUrl(links.discovery) ? el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it") : "No link"))));
+    const cap = st.fitMore ? 99 : 3;
     const fit = el("div", { class: "card fit" }, el("h3", {}, ico("bulb"), "Why this could be a good fit"),
-      why.length ? el("ul", { class: "fitl" }, why.map((r) => el("li", {}, r))) : el("p", { class: "foot", style: "margin:0" }, j.explanation || "Hunter has no specific evidence for this one yet."),
-      check.length ? [el("h4", {}, ico("warn"), "Things to check"), el("ul", { class: "fitl check" }, check.map((g) => el("li", {}, g)))] : null);
-    const descFull = j.description || ""; const lead = j.description_lead || descFull.slice(0, 360);
+      why.length ? el("ul", { class: "fitl" }, why.slice(0, cap).map((r) => el("li", {}, r))) : el("p", { class: "foot", style: "margin:0" }, j.explanation || "Hunter has no specific evidence for this one yet."),
+      check.length ? [el("h4", {}, "Things to check"), el("ul", { class: "fitl check" }, check.slice(0, cap).map((g) => el("li", {}, g)))] : null,
+      (why.length > 3 || check.length > 3) ? el("button", { class: "btn sm ghost", style: "margin-top:6px", onclick: () => { st.fitMore = !st.fitMore; renderDetail(); } }, st.fitMore ? "Show less" : "Show more") : null);
+    const descFull = j.description || ""; const lead = j.description_lead || descFull.slice(0, 300);
     const desc = el("div", { class: "card" }, el("h3", {}, ico("doc"), "Job description"),
       el("div", { class: "desc" + (st.descOpen ? "" : " lead") }, st.descOpen ? (descFull || "No description. Open the listing.") : (lead || "No description. Open the listing.")),
-      descFull.length > lead.length ? el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn sm", "aria-expanded": String(st.descOpen), onclick: () => { st.descOpen = !st.descOpen; renderDetail(); } }, st.descOpen ? "Show less" : "Show full description")) : null,
+      descFull.length > lead.length || st.descOpen ? el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", "aria-expanded": String(st.descOpen), onclick: () => { st.descOpen = !st.descOpen; renderDetail(); } }, st.descOpen ? "Show less" : "Show full description")) : null,
       el("div", { class: "links" }, safeUrl(links.apply) && links.apply !== links.direct ? el("a", { href: safeUrl(links.apply), target: "_blank", rel: "noopener noreferrer" }, "Apply page") : null, safeUrl(links.discovery) && links.discovery !== links.apply && links.discovery !== links.direct ? el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it") : null));
-    const app = el("div", { class: "card sec" }, el("h3", {}, ico("check"), "Your application"),
-      el("div", { class: "status" }, el("b", {}, status.label), w && w.package && w.package.origin === "auto" && !e.applied_at ? el("span", { class: "foot" }, "Hunter prepared this after a search; nothing was sent.") : null),
-      status.id === "needs_review" ? el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "prepare") }, "Prepare again (keeps your wording)")) : null,
-      status.id !== "applied" && status.id !== "none" ? el("div", { class: "actions", style: "margin-top:8px" }, mainActionButton(k, "btn sm primary")) : null,
-      renderApplied(k, w, e));
     const notes = el("div", { class: "card sec" }, renderNotes(k, e));
-    return [head, el("div", { class: "dbody", id: "dbody" }, help, el("div", { class: "two" }, overview, fit), desc, app, notes)];
+    return [head, el("div", { class: "dbody", id: "dbody" }, help, el("div", { class: "two" }, overview, fit), desc, notes)];
   }
-  /* ---------- the application workspace: a focused, stepped view ---------- */
+  function scrollTo(id) { const s = $(id); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  // Draft answers: with the form's questions known, Hunter drafts at once; without them, ask for the questions first.
+  function draftAnswersChip(k) {
+    const w = work(k); const custom = (((w && w.package) || {}).answers || []).filter((a) => a.custom);
+    const v = taskView(k, "prepare");
+    if (v.state === "busy") return el("button", { class: "chip", disabled: true }, "Draft answers");
+    if (custom.length && w && w.package) return el("button", { class: "chip done", onclick: () => { st.ws = true; renderDetail(); scrollTo("ws-questions"); } }, ico("check"), "Review answers");
+    return el("button", { class: "chip", disabled: !can(), "aria-expanded": String(st.askQuestions === k), onclick: () => { st.askQuestions = st.askQuestions === k ? null : k; renderDetail(); const n = $("newq"); if (n) n.focus(); } }, "Draft answers");
+  }
+  function questionsBox(k) {
+    const qbox = el("textarea", { id: "newq", "data-keep": true, placeholder: "Paste the questions from the application form, one per line. Add a limit like “(500)” at the end of a line.", "aria-label": "Questions from the form" });
+    return el("div", { class: "sug" }, el("div", { class: "tier" }, el("b", {}, "Add the questions from the application form.")), qbox,
+      el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => { const qs = Core.parseQuestions(qbox.value); if (qs.length) { st.askQuestions = null; startTask(k, "prepare", { questions: qs }); } } }, "Draft these answers"), el("button", { class: "btn sm ghost", type: "button", onclick: () => { st.askQuestions = null; renderDetail(); } }, "Cancel"), el("span", { class: "foot" }, "Pay, visa and personal questions stay yours to answer.")));
+  }
+  function renderBrief(k, b) {
+    const tier = (title, lines) => lines && lines.length ? [el("div", { class: "tier" }, el("b", {}, title)), el("ul", { class: "r" }, lines.map((x) => el("li", {}, x)))] : null;
+    return el("details", { class: "part", id: "d-brief", open: st.briefOpen || (taskView(k, "research").state === "done" && b.created_by === "claude") }, el("summary", {}, "Company and role brief" + (b.created_by === "claude" ? " · researched" : " · from the posting")),
+      b.confidential ? el("p", { class: "foot" }, "The employer is not named in the posting, so Hunter says nothing about the company.") : null,
+      tier("The vacancy says", b.vacancy_says), tier("The company describes itself", b.company_describes), tier("Hunter’s reading", b.interpretation),
+      el("details", { class: "sub", id: "d-brief-sources" }, el("summary", {}, "Sources"), el("ul", { class: "r" }, (b.sources || []).map((s) => el("li", {}, safeUrl(s.url) ? el("a", { href: safeUrl(s.url), target: "_blank", rel: "noopener noreferrer" }, s.label || s.url) : (s.label || "source"), " · checked " + fmtDay(s.checked_at) + (s.certainty ? " · " + s.certainty : "")))), b.uncertainty ? el("p", { class: "foot" }, b.uncertainty) : null),
+      el("div", { class: "actions", style: "margin-top:6px" }, taskChip(k, "research", () => {})), taskLine(k, "research"));
+  }
+  /* ---------- the application workspace: a focused mode ---------- */
   function renderWorkspace(k, j) {
     const w = work(k); const e = eff(k); const pkg = w && w.package; const links = j.links || {}; const direct = safeUrl((pkg && pkg.route && pkg.route.apply_url) || links.direct || links.apply || links.discovery);
     const head = el("div", { class: "dhead" }, el("div", { class: "top" },
       el("button", { class: "btn sm", onclick: () => { st.ws = false; renderDetail(); } }, ico("back"), "Back to job"),
-      el("div", { class: "ttl" }, el("h2", { style: "font-size:18px" }, "Your application"), el("div", { class: "co" }, el("span", {}, (j.title || "") + " · " + (j.employer || "")))),
+      el("div", { class: "ttl" }, el("h2", { style: "font-size:17px" }, "Application — " + (j.title || "")), el("div", { class: "co" }, CompanyLogo(j, true), el("span", {}, j.employer || ""))),
       el("div", { class: "hacts" }, el("button", { class: "btn sm", "aria-label": "Close", onclick: closeDetail }, ico("x"), "Close"))));
     const body = el("div", { class: "dbody ws", id: "dbody" });
+    const status = Core.appStatus(w, act(k));
     if (!pkg) {
-      body.append(el("div", { class: "card" }, el("div", { class: "status" }, el("b", {}, Core.appStatus(w, act(k)).label)), el("p", { class: "foot" }, "Hunter is preparing: a brief of the company and role with sources, where to apply, your strongest case from your own facts, and draft answers you edit in your words."), requestLine(k, "prepare"), el("div", { class: "actions", style: "margin-top:8px" }, mainActionButton(k, "btn sm primary"))));
-      body.append(el("div", { class: "step" }, el("h3", {}, el("span", { class: "num" }, "1"), "Your CV"), renderCvChoice(k, w)));
-      body.append(el("div", { class: "step" }, el("h3", {}, el("span", { class: "num" }, "4"), "Optional extras"), el("div", { class: "opt" }, el("div", { class: "tier" }, el("b", {}, "People"), el("span", { class: "foot" }, " · only real contacts, never a guessed address")), renderPeople(k, j, w))));
-      body.append(el("div", { class: "step" }, el("h3", {}, el("span", { class: "num" }, "5"), "Applied already?"), renderApplied(k, w, e)));
+      body.append(el("div", { class: "card" }, el("div", { class: "statusrow", style: "border:0;padding:0" }, el("b", {}, status.label)), taskLine(k, "prepare") || el("p", { class: "foot", style: "margin:6px 0 0" }, "Hunter prepares: a brief of the company and role with sources, where to apply, your strongest case from your own facts, and draft answers you edit in your words."), el("div", { class: "actions", style: "margin-top:8px" }, mainActionButton(k, "btn sm primary"))));
+      if (w && w.brief) body.append(el("div", { class: "step", id: "ws-research" }, el("h3", {}, "Company and role"), renderBrief(k, w.brief)));
+      body.append(el("div", { class: "step" }, el("h3", {}, "Your CV"), renderCvChoice(k, w)));
+      body.append(el("div", { class: "step", id: "ws-people" }, el("h3", {}, "People", el("span", { class: "foot" }, "only real contacts, never a guessed address")), renderPeople(k, j, w)));
+      body.append(el("div", { class: "step" }, el("h3", {}, "Ready to apply?"), el("div", { class: "actions" }, direct ? el("a", { class: "btn primary", href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application", ico("ext")) : null, st.askApplied === k ? null : el("button", { class: "btn", disabled: !can() || !!e.applied_at, onclick: () => { st.askApplied = k; renderDetail(); } }, ico("check"), "I applied")), st.askApplied === k ? renderAppliedForm(k, w) : null));
       return [head, body];
     }
     markOpened(k);
     const rd = pkg.readiness || {}; const cvSel = w.cv && w.cv.selected;
-    body.append(el("div", { class: "status", style: "padding:2px 2px 0" }, el("b", {}, rd.label || "Ready for review"), el("span", { class: "foot" }, "Prepared " + rel(pkg.created_at) + " (version " + pkg.version + ")" + (pkg.origin === "auto" ? " by Hunter after a search" : "")), requestLine(k, "prepare", { ready: "" })));
-    if (pkg.needs_review && pkg.needs_review.length) body.append(el("div", { class: "conflict", role: "status" }, el("b", {}, "Needs review. "), pkg.needs_review.join(" "), el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "prepare") }, "Prepare again (keeps your wording)"))));
-    // 1. CV
-    body.append(el("div", { class: "step" + (cvSel ? " done" : "") }, el("h3", {}, el("span", { class: "num" }, "1"), "Your CV"),
-      cvSel ? el("div", { class: "status" }, el("b", {}, cvSel.label + " v" + cvSel.version), el("span", { class: "foot" }, cvSel.choice === "suggested" ? "Suggested for this role." : cvSel.choice === "student" ? "Your choice for this job." : "Your default CV."), cvSel.file_available === false ? el("span", { class: "pill p-pending" }, "file not on Hunter’s computer: add it again before you apply") : null) : null,
+    body.append(el("div", { class: "statusrow", style: "border:0;padding:0 2px" }, el("b", {}, rd.label || "Ready for review"), el("span", { class: "foot" }, "Prepared " + rel(pkg.created_at) + (pkg.origin === "auto" ? " by Hunter after a search" : "")), taskLine(k, "prepare")));
+    if (pkg.needs_review && pkg.needs_review.length) body.append(el("div", { class: "conflict", role: "status" }, el("b", {}, "The vacancy changed. "), pkg.needs_review.join(" "), el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm primary", onclick: () => startTask(k, "prepare") }, "Update the preparation (keeps your wording)"))));
+    // Your CV
+    body.append(el("div", { class: "step" }, el("h3", {}, "Your CV"),
+      cvSel ? el("div", { class: "statusrow", style: "border:0;padding:0" }, el("b", {}, cvSel.label + " v" + cvSel.version), el("span", { class: "foot" }, cvSel.choice === "suggested" ? "Suggested for this role." : cvSel.choice === "student" ? "Your choice for this job." : "Your default CV."), cvSel.file_available === false ? el("span", { class: "pill p-pending" }, "file not on Hunter’s computer: add it again before you apply") : null) : null,
       renderCvChoice(k, w)));
-    // 2. Strongest case (+ brief)
-    const c = pkg.case || {}; const b = pkg.brief || {};
-    const tier = (title, lines) => lines && lines.length ? [el("div", { class: "tier" }, el("b", {}, title)), el("ul", { class: "r" }, lines.map((x) => el("li", {}, x)))] : null;
-    body.append(el("div", { class: "step done" }, el("h3", {}, el("span", { class: "num" }, "2"), "Your strongest case"),
-      (c.items || []).length ? el("table", { class: "case" }, el("thead", {}, el("tr", {}, el("th", {}, "They ask for"), el("th", {}, "Your profile"), el("th", {}, "Your CV says it"))),
-        el("tbody", {}, c.items.map((i) => el("tr", {}, el("td", {}, i.requirement), el("td", {}, i.profile_supports ? el("span", {}, el("b", {}, "Yes, " + (i.evidence_type || "")), i.evidence ? el("div", { class: "foot" }, i.evidence) : null) : el("span", {}, "Not in your profile yet")), el("td", {}, i.profile_supports ? (i.cv_communicates ? "Yes" : "Not in so many words") : "–"))))) : el("p", { class: "foot" }, "The posting names no specific tools; your case is your story."),
-      (c.items || []).some((i) => i.gap || i.note) ? el("ul", { class: "r" }, c.items.filter((i) => i.gap || i.note).map((i) => el("li", {}, i.gap || i.note))) : null,
-      (c.examples || []).length ? [el("div", { class: "tier" }, el("b", {}, "Examples you can tell")), el("ul", { class: "r" }, c.examples.map((x) => el("li", {}, x.text, " ", el("span", { class: "foot" }, "(" + x.kind + ")"))))] : null,
-      el("details", { class: "part" }, el("summary", {}, "Company and role brief"),
-        b.confidential ? el("p", { class: "foot" }, "The employer is not named in the posting, so Hunter says nothing about the company.") : null,
-        tier("The vacancy says", b.vacancy_says), tier("The company describes itself", b.company_describes), tier("Hunter’s reading", b.interpretation),
-        el("details", { class: "sub" }, el("summary", {}, "Sources"), el("ul", { class: "r" }, (b.sources || []).map((s) => el("li", {}, safeUrl(s.url) ? el("a", { href: safeUrl(s.url), target: "_blank", rel: "noopener noreferrer" }, s.label || s.url) : (s.label || "source"), " · checked " + fmtDay(s.checked_at) + (s.certainty ? " · " + s.certainty : "")))), b.uncertainty ? el("p", { class: "foot" }, b.uncertainty) : null, el("p", { class: "foot" }, "Brief version " + (b.version || 1) + ", " + (b.created_by === "claude" ? "written by Claude from pages it read" : "from the posting only") + ".")),
-        el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "research") }, "Refresh the brief")), requestLine(k, "research", { ready: "" }))));
-    // 3. Questions
+    // Your strongest case: two or three pieces of evidence, one gap, the brief folded underneath.
+    const c = pkg.case || {}; const b = pkg.brief || w.brief || {};
+    const items = (c.items || []); const strong = items.filter((i) => i.profile_supports).slice(0, 3); const gaps = items.filter((i) => !i.profile_supports && !i.optional).slice(0, 2);
+    body.append(el("div", { class: "step", id: "ws-research" }, el("h3", {}, "Your strongest case"),
+      strong.length || gaps.length ? el("div", { class: "ev" }, strong.map((i) => el("div", { class: "e" }, el("b", {}, i.requirement), el("span", {}, (i.evidence_type ? (/^(a|an|the|your)\s/i.test(i.evidence_type) ? "From " : "Your ") + i.evidence_type + ": " : "") + (i.evidence || "in your profile") + (i.profile_supports && !i.cv_communicates ? " (not in so many words in this CV)" : "")))), gaps.map((i) => el("div", { class: "e gap" }, el("b", {}, "Gap"), el("span", {}, i.requirement + " is not established in your profile.")))) : el("p", { class: "foot" }, "The posting names no specific tools; your case is your story."),
+      (c.examples || []).length ? el("details", { class: "sub", id: "d-examples" }, el("summary", {}, "Examples you can tell"), el("ul", { class: "r" }, c.examples.map((x) => el("li", {}, x.text, " ", el("span", { class: "foot" }, "(" + x.kind + ")"))))) : null,
+      renderBrief(k, b)));
+    // Application questions: only real ones; Hunter's examples folded away.
+    const answers = pkg.answers || []; const form = answers.filter((a) => a.custom); const examples = answers.filter((a) => !a.custom);
     const answered = rd.answered || 0, total = rd.form_questions || 0;
-    body.append(el("div", { class: "step" + (total && answered >= total ? " done" : "") }, el("h3", {}, el("span", { class: "num" }, "3"), "Application questions", el("span", { class: "foot", style: "font-weight:400" }, total ? answered + " of " + total + " in your words" : "paste the form’s questions; Hunter’s examples are optional")), ...renderAnswers(k, w)));
-    // 4. Optional extras
-    body.append(el("div", { class: "step" }, el("h3", {}, el("span", { class: "num" }, "4"), "Optional extras"),
-      renderOptional(k, w, "intro", "short introduction", "about 60 to 100 words"), renderOptional(k, w, "letter", "cover letter", "about 180 to 250 words"),
-      el("div", { class: "opt" }, el("div", { class: "tier" }, el("b", {}, "People"), el("span", { class: "foot" }, " · only real contacts, never a guessed address")), renderPeople(k, j, w))));
-    // 5. Ready?
+    body.append(el("div", { class: "step", id: "ws-questions" }, el("h3", {}, "Application questions", el("span", { class: "foot" }, total ? answered + " of " + total + " in your words" : "")),
+      form.length ? renderAnswers(k, w, form) : el("p", { class: "foot", style: "margin:0 0 6px" }, "Add the questions from the application form; Hunter drafts answers from your approved facts."),
+      st.askQuestions === k ? questionsBox(k) : el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => { st.askQuestions = k; renderDetail(); const n = $("newq"); if (n) n.focus(); } }, form.length ? "Add more questions" : "Add the questions")),
+      examples.length ? el("details", { class: "sub", id: "d-example-answers" }, el("summary", {}, "Example answers from Hunter (optional, " + examples.length + ")"), ...renderAnswers(k, w, examples)) : null));
+    // Optional
+    const letterDone = taskView(k, "letter").state === "done" || !!(((pkg.optional || {}).letter || {}).latest) || !!((((pkg.optional || {}).letter || {}).user_text || {}).text);
+    const introDone = taskView(k, "intro").state === "done" || !!(((pkg.optional || {}).intro || {}).latest);
+    body.append(el("div", { class: "step", id: "ws-optional" }, el("h3", {}, "Optional"),
+      el("div", { class: "chips" }, letterDone ? null : taskChip(k, "letter"), introDone ? null : taskChip(k, "intro"), taskChip(k, "contact", () => scrollTo("ws-people"))),
+      taskLine(k, "letter"), taskLine(k, "intro"),
+      letterDone ? renderOptional(k, w, "letter", "cover letter", "about 180 to 250 words") : null,
+      introDone ? renderOptional(k, w, "intro", "short introduction", "about 60 to 100 words") : null,
+      el("div", { class: "opt", id: "ws-people" }, el("div", { class: "tier" }, el("b", {}, "People"), el("span", { class: "foot" }, " · only real contacts, never a guessed address")), renderPeople(k, j, w))));
+    // Ready to apply?
     const cap = pkg.route && pkg.route.capability;
-    body.append(el("div", { class: "step" + (rd.state === "ready_to_submit" ? " done" : "") }, el("h3", {}, el("span", { class: "num" }, "5"), "Ready?"),
-      el("ul", { class: "check" }, (pkg.checklist || []).map((i) => el("li", { class: i.done ? "done" : "" }, (i.done ? "✓ " : "○ ") + i.text))),
-      (rd.missing || []).length ? el("ul", { class: "r", style: "margin-top:6px;color:var(--ink-2)" }, rd.missing.map((m) => el("li", {}, m))) : null,
-      el("div", { class: "kv", style: "margin-top:8px" }, el("span", {}, "Destination"), el("span", {}, direct ? el("a", { href: direct, target: "_blank", rel: "noopener noreferrer" }, direct.replace(/^https?:\/\//, "").slice(0, 70)) : "No link known"), cap ? [el("span", {}, "How you apply"), el("span", {}, cap.label.split(":")[0] + ". " + cap.note + (cap.id === "assisted_fill" || cap.id === "reviewed_submit" ? " On your computer: “/jobhunter assisted " + k + "”." : ""))] : null),
-      el("div", { class: "actions", style: "margin-top:10px" }, direct ? el("a", { class: "btn primary lg", href: direct, target: "_blank", rel: "noopener noreferrer" }, cap && cap.id === "reviewed_submit" ? "Review application" : "Open application", ico("ext")) : el("span", { class: "btn", "aria-disabled": "true" }, "No link available")),
-      renderApplied(k, w, e)));
+    body.append(el("div", { class: "step" }, el("h3", {}, "Ready to apply?"),
+      el("ul", { class: "check" }, (pkg.checklist || []).filter((i) => i.id !== "open" && i.id !== "applied").map((i) => el("li", { class: i.done ? "done" : "" }, (i.done ? "✓ " : "○ ") + i.text)), (rd.missing || []).filter((m) => !/form question/.test(m)).map((m) => el("li", {}, "○ " + m))),
+      el("div", { class: "actions", style: "margin-top:8px" }, direct ? el("a", { class: "btn primary", href: direct, target: "_blank", rel: "noopener noreferrer" }, cap && cap.id === "reviewed_submit" ? "Review filled application" : "Open application", ico("ext")) : el("span", { class: "btn", "aria-disabled": "true" }, "No link available"), e.applied_at ? el("span", { class: "pill p-applied" }, "Applied " + fmtDay(e.applied_at)) : (st.askApplied === k ? null : el("button", { class: "btn", disabled: !can(), onclick: () => { st.askApplied = k; renderDetail(); } }, ico("check"), "I applied"))),
+      st.askApplied === k ? renderAppliedForm(k, w) : null,
+      e.applied_at ? renderFollowup(k, w, e) : null));
     return [head, body];
   }
   function renderCvChoice(k, w) {
@@ -858,7 +925,7 @@ const Core = (() => {
     const sel = el("select", { id: "cv-select", "aria-label": "CV for this application", disabled: !can(), onchange: (ev) => doField(k, "cv_variant", ev.target.value, { cv_choice: cv && cv.suggestion && cv.suggestion.key === ev.target.value ? "suggested" : "student" }) });
     for (const o of options) sel.append(el("option", { value: o.key, selected: o.key === selectedKey }, o.label + " (version " + o.version + ")" + (o.default ? " · default" : "")));
     const sug = cv && cv.suggestion && cv.suggestion.key !== selectedKey ? el("p", { class: "foot", style: "margin:4px 0 0" }, "Hunter suggests “" + cv.suggestion.label + "”: " + cv.suggestion.reason + " ", el("button", { class: "btn sm", onclick: () => doField(k, "cv_variant", cv.suggestion.key, { cv_choice: "suggested" }) }, "Use it for this job")) : null;
-    return el("div", { class: "cvpick" }, el("div", { class: "actions", style: "align-items:end" }, el("label", { style: "flex:1 1 220px" }, "Choose another (this job only)", sel), el("button", { class: "btn sm", type: "button", onclick: () => { setView("profile"); const s = $("sec-cvs"); if (s) s.scrollIntoView({ block: "start" }); } }, "Preview")), sug, a.cv_variant && (!cv || !cv.selected || cv.selected.key !== a.cv_variant) ? el("div", { class: "foot" }, "Chosen here; Hunter uses it on its next run.") : null);
+    return el("div", { class: "cvpick" }, el("div", { class: "actions", style: "align-items:end" }, el("label", { style: "flex:1 1 220px" }, "Choose another (this job only)", sel), el("button", { class: "btn sm", type: "button", onclick: () => { setView("profile"); const s = $("sec-cvs"); if (s) s.scrollIntoView({ block: "start" }); } }, "Preview")), sug);
   }
   function answerValue(k, a) {
     const d = (st.answerDrafts[k] || {})[a.id]; if (d !== undefined) return d;
@@ -866,56 +933,41 @@ const Core = (() => {
     if (mine && Number(mine.rev) > Number((theirs && theirs.rev) || 0)) return mine.text || "";
     return (theirs && theirs.text) || "";
   }
-  function renderAnswers(k, w) {
-    const pkg = w.package; const list = pkg.answers || []; const items = [];
+  function renderAnswers(k, w, list) {
+    const items = [];
     for (const a of list) {
       const val = answerValue(k, a); const limit = a.limit; const n = val.length;
-      const saved = ((act(k) || {}).answers || {})[a.id];
       const st_ = (st.answerStatus[k] || {})[a.id];
       items.push(el("div", { class: "ans" },
-        el("div", { class: "q" }, a.question, a.needs_user ? el("span", { class: "pill p-pending", style: "margin-left:6px" }, a.custom ? "your words" : "only you can answer") : (a.example ? el("span", { class: "pill g-backup", style: "margin-left:6px" }, "example") : null)),
-        a.suggested ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (from your facts only):"), el("div", {}, a.suggested), el("div", { class: "actions", style: "margin-top:4px" }, copyBtn(a.suggested, "Copy draft"), el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.suggested; renderDetail(); } }, "Edit as mine"))) : null,
-        a.note ? el("div", { class: "foot" }, a.note) : null,
-        a.library && !val ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Your earlier answer, from " + a.library.from + " (" + fmtDay(a.library.saved_at) + "). Check it still fits before you use it:"), el("div", {}, a.library.text), el("div", { class: "actions", style: "margin-top:4px" }, el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.library.text; renderDetail(); } }, "Use my earlier answer"))) : null,
-        el("textarea", { id: "ans-" + a.id, "aria-label": "Your answer: " + a.question, placeholder: a.needs_user ? "Only you can answer this. Write it here so it is saved with the application." : "Your own wording", oninput: (ev) => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = ev.target.value; const c = $("cnt-" + a.id); if (c) c.textContent = ev.target.value.length + (limit ? " / " + limit : "") + " " + (a.limit_unit === "words" ? "characters (limit in words)" : "characters"); } }, val),
-        el("div", { class: "actions" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doAnswer(k, a.id, $("ans-" + a.id).value) }, "Save my wording"), copyBtn(val, "Copy"), el("span", { class: "foot", id: "cnt-" + a.id, style: limit && n > limit ? "color:var(--bad)" : "" }, n + (limit ? " / " + limit : "") + " characters")),
-        st_ ? el("div", { class: "save " + (st_.ok ? "ok" : "err"), role: "status" }, st_.text) : (saved && saved.rev > Number((a.user && a.user.rev) || 0) ? el("div", { class: "save warn", role: "status" }, "Saved here; Hunter keeps it on its next run.") : null)));
+        el("div", { class: "q" }, a.question, a.needs_user ? el("span", { class: "pill p-pending", style: "margin-left:6px" }, "only you can answer") : null),
+        a.suggested ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (from your facts only):"), el("div", {}, a.suggested), el("div", { class: "actions", style: "margin-top:4px" }, copyBtn(a.suggested, "Copy"), el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.suggested; renderDetail(); } }, "Edit"))) : null,
+        a.note && a.needs_user ? el("div", { class: "foot" }, a.note) : null,
+        a.library && !val ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Your earlier answer, from " + a.library.from + " (" + fmtDay(a.library.saved_at) + "):"), el("div", {}, a.library.text), el("div", { class: "actions", style: "margin-top:4px" }, el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.library.text; renderDetail(); } }, "Use my earlier answer"))) : null,
+        el("textarea", { id: "ans-" + a.id, "aria-label": "Your answer: " + a.question, placeholder: a.needs_user ? "Only you can answer this." : "Your own wording", oninput: (ev) => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = ev.target.value; const c = $("cnt-" + a.id); if (c) c.textContent = ev.target.value.length + (limit ? " / " + limit : "") + " characters"; } }, val),
+        el("div", { class: "actions" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doAnswer(k, a.id, $("ans-" + a.id).value) }, "Save"), copyBtn(val, "Copy"), el("span", { class: "foot", id: "cnt-" + a.id, style: limit && n > limit ? "color:var(--bad)" : "" }, n + (limit ? " / " + limit : "") + " characters")),
+        st_ ? el("div", { class: "save " + (st_.ok ? "ok" : "err"), role: "status" }, st_.text) : null));
     }
-    const qbox = el("textarea", { id: "newq", "data-keep": true, placeholder: "Paste a question from the application form, one per line. Add a limit like “(500)” at the end of a line.", "aria-label": "Questions from the form" });
-    items.push(el("div", { class: "ans" }, el("div", { class: "q" }, "Questions from the application form"), qbox, el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => { const qs = Core.parseQuestions(qbox.value); if (qs.length) doRequest(k, "prepare", { questions: qs }); } }, "Add these questions"), el("span", { class: "foot" }, "Pay, visa and personal questions stay yours to answer."))));
     return items;
   }
   function renderOptional(k, w, kind, name, target) {
     const o = ((w.package || {}).optional || {})[kind]; const a = act(k) || {}; const mine = (a.texts || {})[kind];
     const latest = o && o.latest; const user = o && o.user_text;
     const val = (st.textDrafts[k] || {})[kind] !== undefined ? st.textDrafts[k][kind] : (mine && Number(mine.rev) > Number((user && user.rev) || 0) ? mine.text : (user && user.text) || (latest && latest.text) || "");
-    const parts = [el("div", { class: "tier" }, el("b", {}, name[0].toUpperCase() + name.slice(1)), el("span", { class: "foot" }, " · " + target + ", only if the form asks for one"))];
-    if (!latest) parts.push(el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, kind) }, "Draft a " + name)), requestLine(k, kind));
-    else {
-      parts.push(requestLine(k, kind, { ready: "" }));
-      if (latest.problems && latest.problems.length && !latest.text) parts.push(el("div", { class: "save err", role: "status" }, "Hunter did not write this draft: " + latest.problems.join("; ")));
-      parts.push(el("textarea", { id: "txt-" + kind, "aria-label": "Your " + name, style: "min-height:140px", oninput: (ev) => { (st.textDrafts[k] = st.textDrafts[k] || {})[kind] = ev.target.value; } }, val));
-      parts.push(el("div", { class: "actions" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doText(k, kind, $("txt-" + kind).value) }, "Save my version"), copyBtn(val, "Copy"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, kind) }, "New draft (keeps yours)"), el("span", { class: "foot" }, (o.versions || 1) + " Hunter version" + (o.versions === 1 ? "" : "s") + " · " + val.split(/\s+/).filter(Boolean).length + " words")));
-      parts.push(el("details", { class: "sub" }, el("summary", {}, "Facts used in Hunter’s draft"), (latest.facts_used || []).length ? el("ul", { class: "r" }, latest.facts_used.map((f) => el("li", {}, f.text + " (" + f.kind + ")"))) : el("p", { class: "foot" }, "Hunter’s draft names nothing beyond the role and the employer."), el("p", { class: "foot" }, "Only facts from your approved profile. Dates, pay, legal questions and numbers are never invented; what you type here is yours.")));
-      const s_ = (st.textStatus[k] || {})[kind]; if (s_) parts.push(el("div", { class: "save " + (s_.ok ? "ok" : "err"), role: "status" }, s_.text));
-    }
+    const parts = [el("div", { class: "tier" }, el("b", {}, name[0].toUpperCase() + name.slice(1)), el("span", { class: "foot" }, " · " + target))];
+    if (latest && latest.problems && latest.problems.length && !latest.text) parts.push(el("div", { class: "save err", role: "status" }, "Hunter did not write this draft: " + latest.problems.join("; ")));
+    parts.push(el("textarea", { id: "txt-" + kind, "aria-label": "Your " + name, style: "min-height:130px", oninput: (ev) => { (st.textDrafts[k] = st.textDrafts[k] || {})[kind] = ev.target.value; } }, val));
+    parts.push(el("div", { class: "actions" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doText(k, kind, $("txt-" + kind).value) }, "Save"), copyBtn(val, "Copy"), taskView(k, kind).state === "busy" ? el("span", { class: "foot" }, Core.taskWords(kind).busy) : el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => startTask(k, kind) }, "New draft (keeps yours)"), el("span", { class: "foot" }, val.split(/\s+/).filter(Boolean).length + " words")));
+    if (latest) parts.push(el("details", { class: "sub", id: "d-facts-" + kind }, el("summary", {}, "Facts used in Hunter’s draft"), (latest.facts_used || []).length ? el("ul", { class: "r" }, latest.facts_used.map((f) => el("li", {}, f.text + " (" + f.kind + ")"))) : el("p", { class: "foot" }, "Hunter’s draft names nothing beyond the role and the employer."), el("p", { class: "foot" }, "Only facts from your approved profile. Dates, pay, legal questions and numbers are never invented; what you type here is yours.")));
+    const s_ = (st.textStatus[k] || {})[kind]; if (s_) parts.push(el("div", { class: "save " + (s_.ok ? "ok" : "err"), role: "status" }, s_.text));
     return el("div", { class: "opt" }, ...parts);
   }
-  function renderApplied(k, w, e) {
-    const parts = []; const app = w && w.application; const a = act(k) || {};
-    if (e.applied_at) {
-      const sub = app && app.submitted_cv; const pendingCv = a.applied_cv && (!sub || sub.choice === "unknown" && a.applied_cv !== "unknown");
-      parts.push(el("div", { class: "s", style: "margin-top:6px" }, el("b", {}, "Applied " + fmtDay(e.applied_at)), " · ", sub && sub.label ? "CV sent: " + sub.label + " (version " + sub.version + ")" : (a.applied_cv === "unknown" || (sub && sub.choice === "unknown") ? "CV sent: not sure" : (pendingCv ? "CV sent: noted here; Hunter records it on its next run" : "CV sent: not recorded"))));
-      parts.push(renderFollowup(k, w, e));
-      parts.push(el("div", { class: "actions", style: "margin-top:8px" }, w && w.package ? el("button", { class: "btn sm", type: "button", onclick: () => { st.ws = true; renderDetail(); } }, "View submitted materials") : null, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "handoff") }, "Prepare for interview"), el("button", { class: "btn sm ghost", type: "button", disabled: !can(), onclick: () => doFlag(k, "applied", false) }, "Undo “I applied”")), requestLine(k, "handoff", { ready: w && w.handoff ? "Hand-off written " + rel(w.handoff.at) + ". Ask Hunter in Claude for the file." : "" }));
-      return el("div", { class: "applied" }, ...parts);
-    }
-    if (st.askApplied !== k) return el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn sm", disabled: !can(), onclick: () => { st.askApplied = k; renderDetail(); const n = $("applied-when"); if (n) n.focus(); } }, ico("check"), "I applied"), el("span", { class: "foot" }, "Press this after you applied on the employer’s page."));
+  function renderAppliedForm(k, w) {
+    const a = act(k) || {};
     const cv = w && w.cv; const options = (cv && cv.options) || ((st.profile && st.profile.cvs) || []).filter((c) => !c.archived);
     const prepared = (cv && cv.selected) || null; const chosenKey = a.cv_variant || (prepared && prepared.key);
     const preparedLabel = options.find((o) => o.key === chosenKey);
     const other = el("select", { id: "applied-other", "data-keep": true, "aria-label": "Which other CV", disabled: !can() }); for (const o of options) other.append(el("option", { value: o.key }, o.label + " (version " + o.version + ")"));
-    const form = el("form", { class: "applied", onsubmit: (ev) => { ev.preventDefault(); const fd = new FormData(ev.target); const choice = String(fd.get("cv")); doApplied(k, String(fd.get("when") || todayIso()), choice === "other" ? other.value : choice); } },
+    return el("form", { class: "applied", onsubmit: (ev) => { ev.preventDefault(); const fd = new FormData(ev.target); const choice = String(fd.get("cv")); doApplied(k, String(fd.get("when") || todayIso()), choice === "other" ? other.value : choice); } },
       el("div", { class: "tier" }, el("b", {}, "You applied. Well done.")),
       el("label", {}, "When", el("input", { type: "date", name: "when", id: "applied-when", "data-keep": true, value: todayIso(), max: todayIso() })),
       el("div", { class: "s" }, "Which CV did you send?"),
@@ -923,7 +975,6 @@ const Core = (() => {
       el("label", { class: "radio" }, el("input", { type: "radio", name: "cv", value: "other", id: "applied-cv-other", "data-keep": true }), "Another CV: ", other),
       el("label", { class: "radio" }, el("input", { type: "radio", name: "cv", value: "unknown", id: "applied-cv-unknown", "data-keep": true }), "Not sure"),
       el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Record it"), el("button", { class: "btn", type: "button", onclick: () => { st.askApplied = null; renderDetail(); } }, "Not yet")));
-    return form;
   }
   function renderFollowup(k, w, e) {
     const a = act(k) || {}; const f = w && w.followup; const pend = a.followup && (!w || !w.followup || a.followup.at > (w.at || ""));
@@ -932,38 +983,38 @@ const Core = (() => {
     const eff_ = pend ? { action: a.followup.action, due: (a.followup.due_at || "").slice(0, 10) } : (f ? { action: "set", due: f.due } : null);
     const due = eff_ && eff_.action !== "done" && eff_.action !== "stop" ? eff_.due : null;
     const input = el("input", { type: "date", id: "fu-when", "data-keep": true, "aria-label": "Follow-up date", value: due || plusDays(e.applied_at, 7), min: todayIso() });
-    const line = due ? el("div", { class: "s" }, "Follow-up reminder: " + fmtDay(due) + (f && f.overdue && !pend ? " · due now" : "") + (pend ? " · Hunter keeps it on its next run" : "")) : el("div", { class: "s" }, "No reminder set." + (eff_ && eff_.action === "stop" ? " Reminders stopped." : eff_ && eff_.action === "done" ? " Last follow-up done." : ""));
+    const line = due ? el("div", { class: "s" }, "Follow-up reminder: " + fmtDay(due) + (f && f.overdue && !pend ? " · due now" : "")) : el("div", { class: "s" }, "No reminder set." + (eff_ && eff_.action === "stop" ? " Reminders stopped." : eff_ && eff_.action === "done" ? " Last follow-up done." : ""));
     return el("div", { class: "fu" }, line,
       el("div", { class: "actions", style: "align-items:end" }, el("label", {}, due ? "Change the date" : "Remind me to follow up on", input), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "set", input.value) }, due ? "Change" : "Remind me")),
-      due ? el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "followup_draft") }, "Draft follow-up"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "snooze", plusDays(due, 3)) }, "Snooze 3 days"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "done") }, "Done"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "stop") }, "Stop reminding")) : null,
-      requestLine(k, "followup_draft", { ready: "Follow-up message drafted; ask Hunter in Claude to show it, then send it yourself." }));
+      due ? el("div", { class: "actions" }, taskChip(k, "followup_draft"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "snooze", plusDays(due, 3)) }, "Snooze 3 days"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "done") }, "Done"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "stop") }, "Stop reminding")) : null,
+      taskLine(k, "followup_draft"),
+      el("div", { class: "actions" }, taskChip(k, "handoff", () => {})), taskLine(k, "handoff"), w && w.handoff ? el("div", { class: "foot" }, "Hand-off written " + rel(w.handoff.at) + ". Ask Hunter in Claude for the file.") : null);
   }
   function renderPeople(k, j, w) {
     const a = act(k) || {}; const contacts = (w && w.contacts) || []; const parts = [];
-    const line = requestLine(k, "contact", { ready: "" });
-    parts.push(el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "contact") }, "Find a contact"), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = st.addContact === k ? null : k; renderDetail(); } }, "Add someone you know")), line);
+    parts.push(el("div", { class: "actions" }, taskChip(k, "contact", () => {}), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = st.addContact === k ? null : k; renderDetail(); } }, "Add someone you know")), taskLine(k, "contact"));
     if (st.addContact === k) parts.push(el("form", { class: "applied", onsubmit: (ev) => { ev.preventDefault(); const fd = new FormData(ev.target); doAddContact(k, { name: String(fd.get("name") || "").trim(), role: String(fd.get("role") || "").trim(), route: String(fd.get("route") || "").trim() }); } },
       el("label", {}, "Name", el("input", { type: "text", name: "name", id: "ct-name", "data-keep": true, required: true, maxlength: "120" })), el("label", {}, "Their role (optional)", el("input", { type: "text", name: "role", id: "ct-role", "data-keep": true, maxlength: "120" })), el("label", {}, "A public link or address you have (optional)", el("input", { type: "text", name: "route", id: "ct-route", "data-keep": true, maxlength: "400", placeholder: "https://… or name@company" })),
       el("div", { class: "actions" }, el("button", { class: "btn primary sm", type: "submit", disabled: !can() }, "Keep this contact"), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = null; renderDetail(); } }, "Cancel"))));
     const pendingNew = (a.contacts_new || []).filter((c) => !contacts.some((x) => x.type === "connection" && x.name === c.name));
-    for (const c of pendingNew) parts.push(el("div", { class: "contact" }, el("div", { class: "q" }, c.name, el("span", { class: "pill p-pending", style: "margin-left:6px" }, "Your connection · Hunter keeps it on its next run")), c.role ? el("div", { class: "s" }, c.role) : null));
+    for (const c of pendingNew) parts.push(el("div", { class: "contact" }, el("div", { class: "q" }, c.name, el("span", { class: "pill p-fresh", style: "margin-left:6px" }, "Your connection")), c.role ? el("div", { class: "s" }, c.role) : null));
     for (const c of contacts) {
       const cref = c.key || String(c.id); const done = c.contacted_at || ((a.contacted || {})[cref] || (a.contacted || {})[String(c.id)] || {}).at;
       parts.push(el("div", { class: "contact" },
         el("div", { class: "q" }, c.name || "Unnamed", el("span", { class: "pill " + (c.type === "connection" ? "p-fresh" : "g-worth_a_shot"), style: "margin-left:6px" }, c.type_label || c.type)),
         c.role ? el("div", { class: "s" }, c.role) : null,
-        el("div", { class: "foot" }, c.relevance || "", c.source_url && safeUrl(c.source_url) ? [" · ", el("a", { href: safeUrl(c.source_url), target: "_blank", rel: "noopener noreferrer" }, "source")] : null, c.checked_at ? " · checked " + fmtDay(c.checked_at) : null, c.type === "team" ? " · Involvement in this vacancy is not confirmed." : null),
+        el("div", { class: "foot" }, c.relevance || "", c.source_url && safeUrl(c.source_url) ? [" · ", el("a", { href: safeUrl(c.source_url), target: "_blank", rel: "noopener noreferrer" }, "source")] : null, c.type === "team" ? " · Involvement in this vacancy is not confirmed." : null),
         c.route ? el("div", { class: "s" }, "Public route: " + c.route) : el("div", { class: "foot" }, "No public contact route was given; Hunter does not guess one."),
         c.message ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (you send it, if you want to):"), el("div", { style: "white-space:pre-wrap" }, c.message), el("div", { class: "actions" }, copyBtn(c.message, "Copy message"))) : null,
-        done ? el("div", { class: "save ok", role: "status" }, "You contacted them " + fmtDay(done) + ".") : el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "message", { contact: cref }) }, c.message ? "New draft message" : "Draft a short message"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doContacted(k, cref) }, "I contacted them")),
-        requestLine(k, "message", { ready: "" })));
+        done ? el("div", { class: "save ok", role: "status" }, "You contacted them " + fmtDay(done) + ".") : el("div", { class: "actions" }, taskView(k, "message").state === "busy" ? el("span", { class: "foot" }, "Drafting…") : el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => startTask(k, "message", { contact: cref }) }, c.message ? "New draft message" : "Draft a short message"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doContacted(k, cref) }, "I contacted them")),
+        taskLine(k, "message")));
     }
     return el("div", { class: "people" }, ...parts);
   }
   function renderNotes(k, e) {
     const savedText = (e.note && e.note.text) || "";
     const busy = st.saving[k] && st.saving[k].status === "saving";
-    const ta = el("textarea", { id: "note", "aria-label": "Private note", placeholder: "Add a private note…", style: "min-height:70px",
+    const ta = el("textarea", { id: "note", "aria-label": "Private note", placeholder: "Add a private note…", style: "min-height:64px",
       onfocus: () => { if (!(k in st.noteBase)) st.noteBase[k] = (e.note && Number(e.note.rev)) || 0; },
       oninput: (ev) => { if (ev.target.value === savedText) delete st.drafts[k]; else st.drafts[k] = ev.target.value; } });
     ta.value = st.conflicts[k] ? st.conflicts[k].mine : (k in st.drafts ? st.drafts[k] : savedText);
@@ -972,21 +1023,20 @@ const Core = (() => {
       el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => { const c = st.conflicts[k]; delete st.conflicts[k]; st.noteBase[k] = c.theirsRev; doNote(k, c.mine); } }, "Keep mine"),
         el("button", { class: "btn", onclick: () => { delete st.conflicts[k]; delete st.noteBase[k]; renderDetail(); } }, "Use saved version"))) : null;
     return [el("h3", {}, ico("doc"), "My notes"), conflict, ta,
-      el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn sm primary", disabled: busy || !can(), onclick: () => doNote(k, $("note").value) }, "Save note"),
+      el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm primary", disabled: busy || !can(), onclick: () => doNote(k, $("note").value) }, "Save note"),
         el("button", { class: "btn sm ghost", disabled: busy || !can() || !(e.note && e.note.text), onclick: () => doNote(k, null) }, "Delete note"), saveLine(k, true))];
   }
   /* ----- My CVs and Preferences (Profile) ----- */
   function renderCvsBody() {
     const p = st.profile || {}; const cur = st.actions.get("_cvs") || {}; const edits = (cur.variants || {});
     const list = (p.cvs || []).map((c) => Object.assign({}, c, edits[c.key] || {}));
-    const pending = Number(cur.rev || 0) > Number(p.cvs_synced_rev || 0);
     const rows = list.filter((c) => st.cvsArchived || !c.archived).map((c) => {
       const label = el("input", { type: "text", id: "cvl-" + c.key, "data-keep": true, value: c.label, maxlength: "60", "aria-label": "Name of this CV" });
       const tags = el("input", { type: "text", id: "cvt-" + c.key, "data-keep": true, value: (c.tags || []).join(", "), maxlength: "200", "aria-label": "Tags", placeholder: "tags, for example: platform, english" });
       const req = cur.requests && cur.requests.cv_file; const mine = req && req.params && req.params.cv === c.key; const known = mine && (p.cv_requests || {})[req.id];
       let fstate = null;
-      if (known) fstate = { ok: known.state === "ready", text: (known.state === "ready" ? "Hunter has the file, unchanged: " : known.state === "needs_input" ? "" : "Hunter: ") + (known.message || known.state) + (known.state === "ready" ? " Ask Hunter in Claude to hand it to you." : "") };
-      else fstate = (st.reqStatus._cvs || {})[c.key] || (mine ? { ok: true, text: "Asked Hunter for the file. In Claude: “/jobhunter continue " + req.id + "”." } : null);
+      if (known) fstate = { ok: known.state === "ready", text: (known.state === "ready" ? "Hunter has the file, unchanged. It hands it to you in Claude." : known.state === "needs_input" ? (known.message || "") : (known.message || known.state)) };
+      else fstate = (st.reqStatus._cvs || {})[c.key] || (mine ? { ok: true, text: "Getting the file…" } : null);
       return el("div", { class: "cvrow" + (c.archived ? " off" : "") },
         el("div", { class: "q" }, c.label, c.default ? el("span", { class: "pill p-applied", style: "margin-left:6px" }, "default") : null, c.profile_cv ? el("span", { class: "pill g-backup", style: "margin-left:6px" }, "your profile was built from this") : null, c.archived ? el("span", { class: "pill p-dismissed", style: "margin-left:6px" }, "archived") : null),
         el("div", { class: "s foot" }, [c.filename, "version " + c.version, c.uploaded_at ? "uploaded " + fmtDay(c.uploaded_at) : null, c.file_available ? "file on Hunter’s computer" : "file not on Hunter’s computer"].filter(Boolean).join(" · ")),
@@ -998,8 +1048,7 @@ const Core = (() => {
           el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvFile(c.key) }, "Preview / download")),
         fstate ? el("div", { class: "save " + (fstate.ok ? "ok" : "warn"), role: "status" }, fstate.text) : null);
     });
-    return [pending ? el("div", { class: "save warn", role: "status" }, "Changes you made here wait for Hunter’s next run.") : null,
-      rows.length ? rows : el("p", { class: "foot" }, "No CV on file yet."),
+    return [rows.length ? rows : el("p", { class: "foot" }, "No CV on file yet."),
       el("p", { class: "foot", style: "margin:8px 0 0" }, "Hunter never rewrites a CV; every upload is kept exactly as sent and applications remember which version went out. To add a CV or a new version, give the file to Hunter in Claude."),
       el("div", { class: "actions", style: "margin-top:6px" }, el("label", { class: "radio" }, el("input", { type: "checkbox", checked: st.cvsArchived, onchange: (ev) => { st.cvsArchived = ev.target.checked; render(); } }), "Show archived"))];
   }
@@ -1008,14 +1057,13 @@ const Core = (() => {
     const val = (k, fallback) => (k in st.prefsDraft ? st.prefsDraft[k] : (cur[k] != null ? cur[k] : fallback));
     const keep = (ev) => { st.prefsDraft[ev.target.name] = ev.target.value; };
     const modeText = (pr.remote === "required") ? "remote only" : (pr.work_modes && pr.work_modes.length === 2 && !pr.work_modes.includes("onsite")) ? "remote preferred, hybrid ok, never fully on-site" : (pr.remote === "preferred") ? "remote preferred" : (pr.remote === "no_preference") ? "don't mind" : "";
-    const pendingPrefs = Number(cur.rev || 0) > Number(p.prefs_synced_rev || 0);
-    return el("form", { onsubmit: (ev) => { ev.preventDefault(); doPrefs(new FormData(ev.target)); }, style: "display:grid;gap:10px" },
+    return el("form", { onsubmit: (ev) => { ev.preventDefault(); doPrefs(new FormData(ev.target)); }, style: "display:grid;gap:8px" },
       el("label", {}, "Where you live", el("input", { type: "text", name: "location", id: "pf-location", "data-keep": true, value: val("location", pr.location || ""), oninput: keep })),
       el("label", {}, "Countries you can work in", el("input", { type: "text", name: "countries", id: "pf-countries", "data-keep": true, placeholder: "for example: Netherlands, Germany or EU", value: val("countries", pr.countries_text || ""), oninput: keep })),
       el("label", {}, "Lowest pay you’d be happy with (leave empty to skip)", el("input", { type: "text", name: "salary", id: "pf-salary", "data-keep": true, placeholder: "for example: 55000 EUR a year", value: val("salary", pr.salary_text || ""), oninput: keep })),
       el("label", {}, "Remote work", (() => { const s = el("select", { name: "remote", id: "pf-remote", "data-keep": true, onchange: keep }); for (const o of ["remote only", "remote preferred, hybrid ok, never fully on-site", "remote preferred", "hybrid ok, never fully on-site", "don't mind"]) s.append(el("option", { value: o, selected: val("remote", modeText) === o }, o)); return s; })()),
-      st.prefsStatus ? el("div", { class: "save " + (st.prefsStatus.ok ? "ok" : "err"), role: "status" }, st.prefsStatus.text) : (pendingPrefs ? el("div", { class: "save warn", role: "status" }, "New preferences saved; Hunter applies them on its next run.") : null),
-      el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Save"), el("span", { class: "foot" }, "Hunter re-checks every job with these on its next run.")));
+      st.prefsStatus ? el("div", { class: "save " + (st.prefsStatus.ok ? "ok" : "err"), role: "status" }, st.prefsStatus.text) : null,
+      el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Save"), el("span", { class: "foot" }, "Hunter re-checks every job with these.")));
   }
   /* ---------- detail column, focus and keyboard ---------- */
   function renderDetail() {
@@ -1023,20 +1071,23 @@ const Core = (() => {
     const active = document.activeElement; const keep = active && o.contains(active) && active.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
     const body = $("dbody"); const scroll = body ? body.scrollTop : 0; const colScroll = o.scrollTop;
     const kept = {}; for (const n of o.querySelectorAll("[data-keep][id]")) kept[n.id] = n.type === "radio" || n.type === "checkbox" ? { checked: n.checked } : { value: n.value };
+    const openParts = new Set([...o.querySelectorAll("details[id]")].filter((d) => d.open).map((d) => d.id));
+    const closedParts = new Set([...o.querySelectorAll("details[id]")].filter((d) => !d.open).map((d) => d.id));
     $("app").classList.toggle("has-sel", !!j);
     if (!j) { o.replaceChildren(el("div", { class: "detail placeholder", "aria-label": "No job selected" }, el("div", {}, el("div", { style: "font-family:var(--display);font-weight:700;font-size:16px;color:var(--ink-2)" }, "Pick a job"), el("div", { class: "foot", style: "margin-top:4px" }, "You will see what it is, why it matters and what to do next.")))); return; }
     const parts = st.ws ? renderWorkspace(k, j) : renderJob(k, j);
-    o.replaceChildren(el("aside", { class: "detail", role: "dialog", "aria-modal": "false", "aria-label": (st.ws ? "Your application: " : "") + (j.title || "Job"), id: "detail" }, ...parts));
+    o.replaceChildren(el("aside", { class: "detail", role: "dialog", "aria-modal": "false", "aria-label": (st.ws ? "Application: " : "") + (j.title || "Job"), id: "detail" }, ...parts));
     for (const n of o.querySelectorAll("[data-keep][id]")) { const v = kept[n.id]; if (!v) continue; if ("checked" in v) n.checked = v.checked; else if (n.value !== v.value) n.value = v.value; }
+    for (const d of o.querySelectorAll("details[id]")) { if (openParts.has(d.id)) d.open = true; else if (closedParts.has(d.id)) d.open = false; }
     const nb = $("dbody"); if (nb && scroll) nb.scrollTop = scroll; if (colScroll) o.scrollTop = colScroll;
     if (keep) { const n = $(keep.id); if (n) { n.focus({ preventScroll: true }); if (typeof keep.start === "number" && n.setSelectionRange) { try { n.setSelectionRange(keep.start, keep.end); } catch {} } } }
   }
   function select(k, workspace) {
     const row = document.activeElement && document.activeElement.closest && document.activeElement.closest(".row,.approw");
-    st.lastRow = k; st.sel = k; st.ws = !!workspace && Core.mainAction(work(k), act(k)).kind !== "prepare"; st.descOpen = false; st.askApplied = null; st.addContact = null;
+    st.lastRow = k; st.sel = k; st.ws = !!workspace && Core.mainAction(work(k), act(k)).kind !== "prepare"; st.descOpen = false; st.fitMore = false; st.briefOpen = false; st.askApplied = null; st.addContact = null; st.askQuestions = null;
     render();
     const d = $("detailCol"); d.scrollTop = 0;
-    if (row || window.matchMedia("(max-width:900px)").matches) { const h = d.querySelector(".dhead h2, .dhead button"); if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); } }
+    if (row || isPhone()) { const h = d.querySelector(".dhead h2, .dhead button"); if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); } }
   }
   function closeDetail() {
     const k = st.sel; st.sel = null; st.ws = false; st.askApplied = null; render();
@@ -1052,7 +1103,7 @@ const Core = (() => {
     const w = work(k); const e = act(k) || {};
     if (!st.ws || !w || !w.package || w.state !== "prepared" || e.opened_at || !can() || (st.openedSent && st.openedSent[k])) return;
     (st.openedSent = st.openedSent || {})[k] = true;
-    doField(k, "opened_at", new Date().toISOString());
+    doField(k, "opened_at", new Date().toISOString(), null, true);
   }
   window.addEventListener("beforeunload", (ev) => {
     const dirty = Object.keys(st.drafts).length > 0 || Object.keys(st.conflicts).length > 0 || Object.keys(st.prefsDraft).length > 0
@@ -1076,13 +1127,15 @@ const Core = (() => {
 
   /* ---------- writes: every control uses Hunter's real documents and services ---------- */
   const nextOp = (k) => (st.ops[k] = (st.ops[k] || 0) + 1);
+  function noteSave(k, res, retry) { if (res.status === "error" || res.status === "busy") st.failedSaves[k] = retry; else delete st.failedSaves[k]; }
+  function retryFailedSaves() { const fns = Object.values(st.failedSaves); st.failedSaves = {}; for (const f of fns) f(); }
   async function doFlag(k, field, value) {
     const op = nextOp(k);
     st.saving[k] = { status: "saving" }; renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.setFlag(k, field, value, eff(k)), TAB_ID, { blank: Core.blankAction(k) });
     if (st.ops[k] !== op) return;  // a newer operation owns the status line now
     if (res.status === "saved") st.actions.set(k, res.doc);  // what the database now holds; the snapshot confirms it
-    st.saving[k] = { status: res.status, code: res.code, retry: () => doFlag(k, field, value) }; render();
+    st.saving[k] = { status: res.status, code: res.code, retry: () => doFlag(k, field, value) }; noteSave(k, res, () => doFlag(k, field, value)); render();
   }
   async function doNote(k, text) {
     const op = nextOp(k);
@@ -1092,51 +1145,71 @@ const Core = (() => {
     if (st.ops[k] !== op) return;
     if (res.status === "conflict") { const n = (res.current && res.current.note) || null; st.conflicts[k] = { mine: text || "", theirs: n && n.text, theirsRev: (n && n.rev) || 0 }; }
     else if (res.status === "saved") { delete st.noteBase[k]; delete st.conflicts[k]; delete st.drafts[k]; st.actions.set(k, res.doc); }
-    st.saving[k] = { status: res.status, code: res.code, retry: () => doNote(k, text) }; render();
+    st.saving[k] = { status: res.status, code: res.code, retry: () => doNote(k, text) }; noteSave(k, res, () => doNote(k, text)); render();
   }
   async function doPrefs(fd) {
     const fields = { location: String(fd.get("location") || "").slice(0, 200), countries: String(fd.get("countries") || "").slice(0, 200), salary: String(fd.get("salary") || "").slice(0, 100), remote: String(fd.get("remote") || "").slice(0, 100) };
     const res = await Core.commit(st.db, "actions/_prefs", Core.setPrefs(fields), TAB_ID, { blank: { job_key: "_prefs", rev: 0 } });
     if (res.status === "saved") { st.prefsDraft = {}; st.actions.set("_prefs", res.doc); }
-    st.prefsStatus = res.status === "saved" ? { ok: true, text: "Saved to your dashboard. Hunter applies this on its next run." } : { ok: false, text: "Couldn't save (" + (res.code || res.status) + "). Your changes are still on screen; try again." };
-    render();
+    st.prefsStatus = res.status === "saved" ? { ok: true, text: "Saved" } : { ok: false, text: "Couldn’t save. Your changes are still on screen; try again." };
+    noteSave("_prefs", res, () => doPrefs(fd)); render();
   }
-  async function doField(k, field, value, extra) {
+  async function doField(k, field, value, extra, quiet) {
     const op = nextOp(k);
-    st.saving[k] = { status: "saving" }; renderDetail();
+    if (!quiet) { st.saving[k] = { status: "saving" }; renderDetail(); }
     const res = await Core.commit(st.db, "actions/" + k, Core.setFields(k, Object.assign({ [field]: value }, extra || {}), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
     if (st.ops[k] !== op) return;
     if (res.status === "saved") st.actions.set(k, res.doc);
-    st.saving[k] = { status: res.status, code: res.code, retry: () => doField(k, field, value, extra) }; render();
+    if (!quiet || res.status !== "saved") { st.saving[k] = { status: res.status, code: res.code, retry: () => doField(k, field, value, extra) }; noteSave(k, res, () => doField(k, field, value, extra)); }
+    render();
   }
-  async function doRequest(k, kind, params) {
+  // A Hunter task: stored first (never lost), then handed to the running session at once; the page watches the
+  // work document for the result. If Hunter cannot be reached the request stays and the page says so, with Retry.
+  async function startTask(k, kind, params) {
     const id = Core.requestId(kind);
-    st.reqStatus[k] = Object.assign({}, st.reqStatus[k], { [kind]: { status: "sending" } }); renderDetail();
+    st.reqStatus[k] = Object.assign({}, st.reqStatus[k], { [kind]: { status: "dispatching" } }); renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.setRequest(k, kind, id, params, eff(k)), TAB_ID, { blank: Core.blankAction(k) });
-    if (res.status !== "saved") { st.reqStatus[k][kind] = { status: "error", code: res.code || res.status }; st.saving[k] = { status: res.status, code: res.code, retry: () => doRequest(k, kind, params) }; render(); return; }
+    if (res.status !== "saved") { st.reqStatus[k][kind] = { status: "error", code: res.code || res.status }; st.saving[k] = { status: res.status, code: res.code, retry: () => startTask(k, kind, params) }; noteSave(k, res, () => startTask(k, kind, params)); render(); return; }
     st.actions.set(k, res.doc);
-    const reached = await reachHunter(id, k);
-    st.reqStatus[k][kind] = reached; render();
+    await dispatch(k, kind, id);
   }
-  async function reachHunter(id, k) {
-    const ch = st.run && st.run.hunter && st.run.hunter.channel; const command = "/jobhunter continue " + id;
-    if (!st.mcp || !ch || !ch.id) return { status: "handoff", code: !st.mcp ? (ch && ch.id ? "no direct line on this page" : "no direct line set") : "no direct line set" };
+  async function dispatch(k, kind, id) {
+    const reached = await reachHunter(id);
+    st.reqStatus[k] = Object.assign({}, st.reqStatus[k], { [kind]: reached.status === "sent" ? { status: "sent" } : { status: "offline", code: reached.code } });
+    st.online = reached.status === "sent";
+    render();
+  }
+  function redispatch(k, kind, id) { st.reqStatus[k] = Object.assign({}, st.reqStatus[k], { [kind]: { status: "dispatching" } }); renderDetail(); dispatch(k, kind, id); }
+  // The running Hunter is the person's own Claude Code session (or their nightly routine as a stand-in); the page
+  // hands it the request id through the viewer's own account. No employer or third party is contacted.
+  async function reachHunter(id) {
+    if (!st.mcp && !st.mcpTried) await connectMcp();
+    const ch = channel(); const command = "/jobhunter continue " + id;
+    if (!st.mcp || !ch || !ch.id) return { status: "offline", code: !st.mcp ? "no-capability" : "no-session" };
     try {
       const server = ch.server || "Claude Code Remote";
       if (ch.kind === "routine") await st.mcp.callTool(server, "fire_trigger", { trigger_id: ch.id, text: command });
       else await st.mcp.callTool(server, "send_message", { session_id: ch.id, message: command, priority: "next" });
-      return { status: "sent", text: ch.label || ch.kind };
-    } catch (e) { return { status: "handoff", code: (e && e.code) || "unavailable" }; }
+      return { status: "sent" };
+    } catch (e) { return { status: "offline", code: (e && e.code) || "unavailable" }; }
   }
-  function continueInClaude(id) { copyText("/jobhunter continue " + id); try { window.open("https://claude.ai/code", "_blank", "noopener"); } catch {} }
+  async function connectMcp() {
+    st.mcpTried = true;
+    try { st.mcp = (await window.claude.use("mcp")) || null; } catch { st.mcp = null; }
+  }
+  async function reconnect() {
+    st.online = null; st.mcpTried = false; await connectMcp(); render();
+    // Anything the page asked for while Hunter was away goes out again now.
+    for (const [k, kinds] of Object.entries(st.reqStatus)) for (const [kind, s] of Object.entries(kinds || {})) { const r = Core.requestState(work(k), act(k), kind); if (s && s.status === "offline" && r && r.state === "requested") await dispatch(k, kind, r.id); }
+  }
   async function doAnswer(k, aid, text) {
     const base = Number((((act(k) || {}).answers || {})[aid] || {}).rev || 0);
     const wa = ((((work(k) || {}).package || {}).answers) || []).find((x) => x.id === aid); const theirs = Number(((wa && wa.user) || {}).rev || 0);
     (st.answerStatus[k] = st.answerStatus[k] || {})[aid] = { ok: true, text: "Saving…" }; renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.saveAnswer(k, aid, text, Math.max(base, theirs), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
-    if (res.status === "saved") { st.actions.set(k, res.doc); if (st.answerDrafts[k]) delete st.answerDrafts[k][aid]; st.answerStatus[k][aid] = { ok: true, text: "Saved to your dashboard. Hunter keeps it on its next run." }; }
+    if (res.status === "saved") { st.actions.set(k, res.doc); if (st.answerDrafts[k]) delete st.answerDrafts[k][aid]; st.answerStatus[k][aid] = { ok: true, text: "Saved" }; }
     else if (res.status === "conflict") st.answerStatus[k][aid] = { ok: false, text: "This answer changed in another tab or device. Nothing was overwritten; copy your text, reload, and paste it again." };
-    else st.answerStatus[k][aid] = { ok: false, text: "Couldn't save (" + (res.code || res.status) + "). Your text is still here." };
+    else st.answerStatus[k][aid] = { ok: false, text: "Couldn’t save. Your text is still here." };
     render();
   }
   async function doText(k, kind, text) {
@@ -1144,8 +1217,8 @@ const Core = (() => {
     const w = work(k); const theirs = Number(((((w && w.package && w.package.optional) || {})[kind] || {}).user_text || {}).rev || 0);
     (st.textStatus[k] = st.textStatus[k] || {})[kind] = { ok: true, text: "Saving…" }; renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.saveText(k, kind, text, Math.max(base, theirs), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
-    if (res.status === "saved") { st.actions.set(k, res.doc); if (st.textDrafts[k]) delete st.textDrafts[k][kind]; st.textStatus[k][kind] = { ok: true, text: "Saved to your dashboard. Hunter keeps it on its next run." }; }
-    else st.textStatus[k][kind] = { ok: false, text: res.status === "conflict" ? "Changed in another tab or device. Nothing was overwritten." : "Couldn't save (" + (res.code || res.status) + "). Your text is still here." };
+    if (res.status === "saved") { st.actions.set(k, res.doc); if (st.textDrafts[k]) delete st.textDrafts[k][kind]; st.textStatus[k][kind] = { ok: true, text: "Saved" }; }
+    else st.textStatus[k][kind] = { ok: false, text: res.status === "conflict" ? "Changed in another tab or device. Nothing was overwritten." : "Couldn’t save. Your text is still here." };
     render();
   }
   async function doApplied(k, when, cv) {
@@ -1169,16 +1242,17 @@ const Core = (() => {
   async function doCvEdit(key, fields) {
     const res = await Core.commit(st.db, "actions/_cvs", Core.setCv(key, fields), TAB_ID, { blank: { job_key: "_cvs", variants: {}, rev: 0 } });
     if (res.status === "saved") st.actions.set("_cvs", res.doc);
-    (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = res.status === "saved" ? { ok: true, text: "Saved to your dashboard. Hunter applies it on its next run." } : { ok: false, text: "Couldn't save (" + (res.code || res.status) + ")." };
-    render();
+    (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = res.status === "saved" ? { ok: true, text: "Saved" } : { ok: false, text: "Couldn’t save. Try again." };
+    noteSave("_cvs:" + key, res, () => doCvEdit(key, fields)); render();
   }
   async function doCvFile(key) {
     const id = Core.requestId("cv_file");
     const res = await Core.commit(st.db, "actions/_cvs", Core.setCvRequest(key, id), TAB_ID, { blank: { job_key: "_cvs", variants: {}, rev: 0 } });
-    if (res.status !== "saved") { (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = { ok: false, text: "Couldn't save the request (" + (res.code || res.status) + ")." }; render(); return; }
+    if (res.status !== "saved") { (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = { ok: false, text: "Couldn’t save the request. Try again." }; render(); return; }
     st.actions.set("_cvs", res.doc);
     const reached = await reachHunter(id);
-    (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = reached.status === "sent" ? { ok: true, text: "Asked Hunter for the file. It hands it to you in Claude (the file never goes on this page)." } : { ok: true, text: "Files stay with Hunter. In Claude, say “/jobhunter continue " + id + "” and Hunter hands you the original file, or tells you to add it again if it is not on that computer." };
+    st.online = reached.status === "sent";
+    (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = reached.status === "sent" ? { ok: true, text: "Getting the file… Hunter hands it to you in Claude (files never go on this page)." } : { ok: false, text: "Hunter is offline. Reopen /jobhunter in Claude Code; the file stays with Hunter." };
     render();
   }
   function rebuildJobs() {
@@ -1193,14 +1267,15 @@ const Core = (() => {
     st.db = db; st.owner = user ? await user.isOwner().catch(() => null) : null;
     if (!db) { render(); return; }
     const fail = (e) => { st.dbError = (e && e.code) || "unavailable"; render(); };
-    db.doc("meta/run").onSnapshot((d) => { st.run = d.exists ? d.data() : null; st.loaded.run = true; rebuildJobs(); render(); }, fail);
+    db.doc("meta/run").onSnapshot((d) => { const before = (channel() || {}).id; st.run = d.exists ? d.data() : null; st.loaded.run = true; if ((channel() || {}).id !== before) st.online = null; rebuildJobs(); render(); }, fail);
     db.doc("meta/profile").onSnapshot((d) => { st.profile = d.exists ? d.data() : null; render(); }, fail);
     db.doc("meta/today").onSnapshot((d) => { st.today = d.exists ? d.data() : null; render(); }, fail);
+    db.doc("meta/logos").onSnapshot((d) => { st.logos = (d.exists && d.data() && d.data().logos) || {}; render(); }, fail);
     db.collection("board").limit(40).onSnapshot((s) => { st.shards = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.board = true; rebuildJobs(); render(); }, fail);
     db.collection("actions").limit(1000).onSnapshot((s) => { st.actions = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.actions = true; render(); }, fail);
     db.collection("work").limit(300).onSnapshot((s) => { st.work = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.work = true; render(); }, fail);
-    // A direct line to Hunter: only when this page was published with the mcp capability and Hunter set a channel.
-    window.claude.use("mcp").then((m) => { st.mcp = m || null; }).catch(() => { st.mcp = null; });
+    // The line to the running Hunter session: the page's mcp capability, used with the viewer's own credentials.
+    connectMcp().then(render);
   }
   boot();
 })();

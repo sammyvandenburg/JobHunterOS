@@ -4,12 +4,15 @@ One workspace per job, inside the job page of the dashboard (and the same facts 
 homepage stays about finding jobs; the work of applying starts from a job.
 
 ## The journey
-1. **Prepare application** (one main action on the job page). The page saves a request in its own database at
-   once and shows its state: *Saved, Hunter does this on its next run* with **Continue in Claude now** (copies
-   `/jobhunter continue <request id>` and opens Claude), or *Sent to Hunter in your Claude account* when the
-   page has a direct line. Hunter records the request once, runs it, and writes the result back; the same page
-   updates. States: requested, running, ready, needs input (what to add), failed (what happened).
-2. **Continue application**: the job page now holds, in order:
+1. **Get application help** (one main action on the job page, named by its state). The page saves the request
+   in its own database at once and hands it to the running Hunter session immediately; the button reads
+   **Working…** and the card says *Preparing…*. Hunter records the request once, runs it, and writes the result
+   back; the same page updates and the button becomes **Review application** (or **Answer question**, **Review
+   changes**, and **View application** once applied). When Hunter cannot be reached the request is kept and the
+   page says *Hunter is offline* with **Retry**; there is no "next run" and no command to copy. The chips
+   **Research company**, **Write cover letter**, **Draft answers** and **Find contacts** work the same way
+   (Researching… → View research, Drafting… → Review cover letter, Finding contacts… → View contacts).
+2. **Review application**: the focused workspace holds, in order:
    - the CV for this job (default preselected; Hunter may suggest another with one short reason; the choice is
      for this job only; a changed default never changes a job that chose);
    - the company and role brief: *The vacancy says* / *The company describes itself* / *Hunter's reading*, with
@@ -45,17 +48,20 @@ work-mode label, the posting age, the match badge and two to four role and tool 
 (`jobhunter/services/roles.py`, twenty families) and the company mark are recognition aids with no influence on
 matching. The job detail has Favorite, Save and Close at the top, one primary action with Open application beside
 it, Job overview next to "Why this could be a good fit", the description folded, the application state and the
-notes. The application workspace is a stepped view behind **Continue application** (CV, strongest case, questions,
-optional extras with people, Ready?). Logos are requested only from the employer's verified domain and cached by
-the browser; a missing logo never blocks a job.
+notes. The application workspace is a focused view behind **Review application** (CV, strongest case, questions,
+optional extras with people, Ready to apply?). Company marks are fetched once by Hunter during a search from the
+employer's verified domain (`jobhunter/services/logos.py`, a small private copy in the page's `meta/logos`
+document); the browser never contacts an employer site, and a missing mark shows initials.
 
 ## The page reaches Hunter
-Published-page action → the request is in the page's database (never lost) → Hunter reads it in its next sync
-(`board import`), runs it (`work run`), writes the result (`board export`) → the same page updates (its `work`
-collection). The direct line (optional, with the student's approval): the page is published with the `mcp`
-capability for the `Claude Code Remote` connector (`fire_trigger`, `send_message`) and Hunter names a poke-only
-Routine or a session (`board channel`); the page then calls it with `/jobhunter continue <request id>` as the
-viewer, with the viewer's own credentials. A refused or missing line falls back to **Continue in Claude now**.
+Published-page action → the request is in the page's database (never lost) → the page sends the request id to
+the running Hunter at once → Hunter reads the actions (`board import`), runs it (`work run <id>`), writes the
+result (`board export`) → the same page updates (its `work` collection). The page is published with the `mcp`
+capability for the `Claude Code Remote` connector (`fire_trigger`, `send_message`); `/jobhunter` binds its own
+session at startup (`board channel session`), and a poke-only Routine can stand in (`board channel routine`).
+The page calls it as the viewer, with the viewer's own credentials. When the call is refused the page keeps the
+request and shows *Hunter is offline* with Retry; a later `/jobhunter` or any sync still finds it. The nightly
+run is a separate thing: it searches, refreshes the page and sends the digest, and never stands in for a click.
 Nothing is ever claimed as running when no worker is.
 
 ## Today and automation modes
@@ -106,9 +112,8 @@ See [assisted-apply.md](assisted-apply.md): the capability per site is shown on 
 and where to apply"; the lane itself runs on the student's computer (`jobhunter assisted run`).
 
 ## Known limits
-- The direct line needs the `mcp` capability on the page and a Routine or session in the student's account;
-  both are created only with their approval. Until then every request still works through the next sync or
-  **Continue in Claude now**.
+- The live line needs the `mcp` capability on the page (a republish, with the student's approval) and a bound
+  session or Routine in their account. Without it the page says *Hunter is offline* and keeps every request.
 - CV files are only on the computer where they were added. A cloud session cannot preview or download one; it
   says so. The same file added again restores the same version (hash proven).
 - The rule-based brief reads the posting only. A richer brief with company sources comes from a Claude session

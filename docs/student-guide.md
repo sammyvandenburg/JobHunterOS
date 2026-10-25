@@ -46,15 +46,18 @@ dashboard: a private page at claude.ai that only you can open, on your phone too
 - **Needs checking**: jobs whose location or kind of work is unclear. **Older**: good matches older than 14 days.
 - Where the job is, the pay as the posting states it, the contract type, and work authorization as stated.
 
-On the dashboard you can star a **Favorite**, **Save for later**, press **I applied** after you applied,
-mark **Not interested**, and write a private note. Each change says "Saved to your dashboard" at once, and
-"Waiting for Hunter" until Hunter's next run picks it up; then "Synced". If a save fails you see
+On the dashboard you can star a **Favorite**, **Save**, press **I applied** after you applied, mark
+**Not interested**, and write a private note. Each change says "Saved" at once. If a save fails you see
 "Couldn't save" and a **Retry** button; nothing you typed is lost. The page is also fine with two tabs open:
 it never overwrites a note silently.
 
-**Applying.** Open a job and press **Prepare application**. The request is saved on your page at once; Hunter
-picks it up on its next run, or press **Continue in Claude now** to have it done right away (it copies a short
-command for Hunter). Then the job page shows **My application**: which CV to send (your default is chosen;
+**Hunter online.** While `/jobhunter` is open in Claude Code, the page says "Hunter online" and every button
+reaches Hunter straight away. If it says "Hunter is offline", reopen `/jobhunter` and press **Reconnect
+Hunter**; nothing you pressed is lost.
+
+**Applying.** Open a job and press **Get application help**. Hunter starts at once ("Working…") and the button
+becomes **Review application** when it is done. **Research company**, **Write cover letter**, **Draft answers**
+and **Find contacts** work the same way. The workspace shows which CV to send (your default is chosen;
 Hunter may suggest another with one reason; you decide, for this job only), a short brief of the company and
 the role with its sources, where to apply, your strongest case (what your profile proves and whether your CV
 says it), draft answers you rewrite in your own words, an optional introduction or cover letter if you ask for

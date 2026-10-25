@@ -1,7 +1,7 @@
 """The application workspace on the real dashboard page, driven in Chromium against the simulated artifact
 runtime: Prepare application -> a recorded request -> Hunter's work -> the same page shows the preparation; edited
-answers, the CV choice, "I applied" with which CV, follow-ups, contacts, My CVs, the direct line to Hunter when the
-page has one, and the same page at phone and desktop widths. Simulated runtime: this proves the page's JavaScript
+answers, the CV choice, "I applied" with which CV, follow-ups, contacts, My CVs, the live line to the running Hunter
+session, and the same page at phone and desktop widths. Simulated runtime: this proves the page's JavaScript
 and the hand-off files, never the claude.ai service."""
 
 from __future__ import annotations
@@ -92,30 +92,37 @@ def test_prepare_application_from_the_page_reaches_hunter_and_comes_back_to_the_
         context, page, errors = _open(browser, site["url"])
         _open_job(page, nw)
         dialog = page.get_by_role("dialog")
-        assert dialog.get_by_role("button", name="Prepare my application").count() >= 1
+        assert dialog.get_by_role("button", name="Get application help").count() == 1
         assert dialog.get_by_role("link", name="Open application").count() >= 1  # always there
-        dialog.get_by_role("button", name="Prepare my application").first.click()
+        dialog.get_by_role("button", name="Get application help").first.click()
         assert _wait(lambda: (((fake.doc(f"actions/{nw}") or {}).get("requests") or {}).get("prepare") or {}).get("id", "").startswith("prepare:"))
         req_id = fake.doc(f"actions/{nw}")["requests"]["prepare"]["id"]
-        # No direct line on this page: the request is saved and the person can continue in Claude now; never silent.
-        assert _wait(lambda: "Hunter picks this up on its next run" in dialog.inner_text())
-        assert dialog.get_by_role("button", name="Continue this request in Claude").count() == 1  # only after a task was started
-        assert dialog.get_by_role("button", name="Continue application").count() >= 1
+        # No running Hunter session behind this page: the request is kept, the page says Hunter is offline, with Retry.
+        assert _wait(lambda: "Hunter is offline" in dialog.inner_text())
+        assert dialog.get_by_role("button", name="Retry").count() >= 1
+        text = dialog.inner_text()
+        assert "Continue" not in text and "next run" not in text and req_id not in text
         # Hunter runs (read, do, write): the same open page shows the preparation.
         res, done, _ = _sync(ctx, db, site, 1)
         assert res["applied"][0]["changes"] == ["request:prepare"] and done[0]["request_id"] == req_id and done[0]["state"] == "ready"
-        assert _wait(lambda: dialog.get_by_role("button", name="Continue this request in Claude").count() == 0)
-        dialog.get_by_role("button", name="Continue application").first.click()  # the focused application workspace
+        assert _wait(lambda: dialog.get_by_role("button", name="Review application").count() == 1)
+        assert "Hunter is offline" not in dialog.locator(".help").inner_text() and dialog.get_by_role("button", name="Retry").count() == 0
+        dialog.get_by_role("button", name="Review application").first.click()  # the focused application workspace
         assert _wait(lambda: "Your strongest case" in dialog.inner_text())
         dialog.get_by_text("Company and role brief").click()
+        assert _wait(lambda: "The vacancy says" in dialog.inner_text()), dialog.inner_text()
         text = dialog.inner_text()
-        assert "The vacancy says" in text and "Sources" in text and "They ask for" in text and "Application questions" in text
+        assert "The vacancy says" in text and "Sources" in text and "Application questions" in text
+        assert dialog.locator(".ev .e").count() >= 1  # the strongest case: evidence lines, not a table or a paragraph
         assert "Prepared " in text and "version 1" in text
-        assert page.locator(f"button.row[data-key='{nw}']").inner_text().find("In progress") >= 0
+        row_text = page.locator(f"button.row[data-key='{nw}']").inner_text()
+        assert "In progress" not in row_text and "Ready" in row_text
         # The CV picker: default preselected, Hunter's one-line suggestion for the platform CV.
         assert "Hunter suggests “Platform — English”" in text and page.locator("#cv-select").input_value() != ""
-        # Edit an answer; a snapshot from Hunter meanwhile keeps the draft and the caret.
+        # Edit an answer (Hunter's examples are folded; open them); a snapshot from Hunter meanwhile keeps the draft and the caret.
+        dialog.get_by_text("Example answers from Hunter").click()
         ta = dialog.locator("textarea[id^=ans-]").first
+        assert _wait(lambda: ta.is_visible())
         aid = ta.get_attribute("id")[4:]
         ta.fill("Because the platform team runs things I")
         run = fake.doc("meta/run")
@@ -124,12 +131,13 @@ def test_prepare_application_from_the_page_reaches_hunter_and_comes_back_to_the_
         time.sleep(0.5)
         assert ta.input_value() == "Because the platform team runs things I" and page.evaluate("document.activeElement && document.activeElement.id") == "ans-" + aid
         ta.type(" care about.")
-        ta.locator("xpath=following-sibling::div[1]").get_by_role("button", name="Save my wording").click()
+        ta.locator("xpath=following-sibling::div[1]").get_by_role("button", name="Save", exact=True).click()
         assert _wait(lambda: (((fake.doc(f"actions/{nw}") or {}).get("answers") or {}).get(aid) or {}).get("text") == "Because the platform team runs things I care about.")
         assert fake.doc(f"actions/{nw}")["answers"][aid]["rev"] == 1
-        # Paste questions from the form.
+        # Paste questions from the form: Hunter drafts answers to the real questions, never an invented questionnaire.
+        dialog.get_by_role("button", name="Add the questions").click()
         dialog.locator("#newq").fill("Why do you want to work here? (500)\nWhat is your notice period?")
-        dialog.get_by_role("button", name="Add these questions").click()
+        dialog.get_by_role("button", name="Draft these answers").click()
         assert _wait(lambda: len((((fake.doc(f"actions/{nw}") or {}).get("requests") or {}).get("prepare") or {}).get("params", {}).get("questions", [])) == 2)
         qs = fake.doc(f"actions/{nw}")["requests"]["prepare"]["params"]["questions"]
         assert qs[0] == {"text": "Why do you want to work here?", "limit": 500}
@@ -157,7 +165,7 @@ def test_i_applied_records_the_cv_and_the_follow_up_has_a_changeable_date(site, 
         context, page, errors = _open(browser, site["url"])
         _open_job(page, nw)
         dialog = page.get_by_role("dialog")
-        assert _wait(lambda: "Continue application" in dialog.inner_text())
+        assert _wait(lambda: "Review application" in dialog.inner_text())
         # Opening the job and copying never count as applied (nothing is written by looking).
         assert fake.doc(f"actions/{nw}") is None
         dialog.get_by_role("button", name="I applied").first.click()
@@ -206,8 +214,8 @@ def test_contacts_are_found_on_request_named_by_the_person_and_only_confirmed_by
         context, page, errors = _open(browser, site["url"])
         _open_job(page, nw)
         dialog = page.get_by_role("dialog")
-        dialog.get_by_role("button", name="Continue application").first.click()  # people live in the application workspace
-        dialog.get_by_role("button", name="Find a contact").click()
+        dialog.get_by_role("button", name="Review application").first.click()  # people live in the application workspace
+        dialog.get_by_role("button", name="Find contacts").first.click()
         assert _wait(lambda: (((fake.doc(f"actions/{nw}") or {}).get("requests") or {}).get("contact") or {}).get("id"))
         res, done, _ = _sync(ctx, db, site, 1)
         assert done[0]["state"] == "needs_input"
@@ -257,10 +265,10 @@ def test_my_cvs_under_profile_edits_reach_hunter_and_files_stay_with_hunter(site
         page.locator(f"#cvt-{plat['key']}").fill("platform, english, kubernetes")
         page.locator(f"#cvt-{plat['key']}").locator("xpath=ancestor::div[contains(@class,'cvrow')]").get_by_role("button", name="Save name").click()
         assert _wait(lambda: (((fake.doc("actions/_cvs") or {}).get("variants") or {}).get(plat["key"]) or {}).get("tags") == ["platform", "english", "kubernetes"])
-        assert "wait for Hunter" in box.inner_text()
+        assert "Saved" in box.inner_text() and "next run" not in box.inner_text()
         box.get_by_role("button", name="Preview / download").first.click()
         assert _wait(lambda: (((fake.doc("actions/_cvs") or {}).get("requests") or {}).get("cv_file") or {}).get("id", "").startswith("cv_file:"))
-        assert "Files stay with Hunter" in box.inner_text()
+        assert _wait(lambda: "the file stays with Hunter" in box.inner_text())  # no session behind this page: honest, never silent
         res, done, _ = _sync(ctx, db, site, 1)
         assert any(c.startswith("cv:") and c.endswith(":default") for c in res["applied"][0]["changes"]) and "request:cv_file" in res["applied"][0]["changes"]
         assert docs.default_cv(db)["label"] == "Platform — English" and docs.get_cv(db, plat["key"])["tags"] == ["platform", "english", "kubernetes"]
@@ -271,7 +279,7 @@ def test_my_cvs_under_profile_edits_reach_hunter_and_files_stay_with_hunter(site
         browser.close()
 
 
-def test_a_direct_line_sends_the_request_to_hunter_and_a_refused_line_falls_back_honestly(site, ctx, db):
+def test_a_nightly_routine_as_the_stand_in_gets_the_request_and_a_refusal_shows_hunter_offline_with_retry(site, ctx, db):
     from playwright.sync_api import sync_playwright
 
     fake, nw = site["fake"], site["nw"]
@@ -283,19 +291,23 @@ def test_a_direct_line_sends_the_request_to_hunter_and_a_refused_line_falls_back
         context, page, errors = _open(browser, site["url"], extra_script=MCP_STUB)
         _open_job(page, nw)
         dialog = page.get_by_role("dialog")
-        dialog.get_by_role("button", name="Prepare my application").first.click()
-        assert _wait(lambda: "Sent to Hunter in your Claude account" in dialog.inner_text())
+        dialog.get_by_role("button", name="Get application help").first.click()
+        assert _wait(lambda: "Preparing…" in dialog.inner_text())
         calls = page.evaluate("window.__mcpCalls")
         req_id = fake.doc(f"actions/{nw}")["requests"]["prepare"]["id"]
         assert calls == [{"server": "Claude Code Remote", "tool": "fire_trigger", "input": {"trigger_id": "trig_01TEST", "text": "/jobhunter continue " + req_id}}]
-        assert dialog.get_by_role("button", name="Continue this request in Claude").count() == 0
-        # The connector refuses: the request is still saved and the page says so, with the way to continue.
+        text = dialog.inner_text()
+        assert "Continue" not in text and "next run" not in text and req_id not in text
+        # The connector refuses: the request is still saved, the page says Hunter is offline and offers Retry.
         page.evaluate("window.__mcpFail = 'server_not_connected'")
-        dialog.get_by_role("button", name="Continue application").first.click()
-        dialog.get_by_role("button", name="Find a contact").click()
-        assert _wait(lambda: "Direct line: server_not_connected" in dialog.inner_text())
-        assert dialog.get_by_role("button", name="Continue this request in Claude").count() == 1
+        dialog.get_by_role("button", name="Find contacts").first.click()
+        assert _wait(lambda: "Hunter is offline" in dialog.locator(".help").inner_text())
         assert (fake.doc(f"actions/{nw}")["requests"]["contact"]["id"]).startswith("contact:")
+        assert "server_not_connected" not in dialog.inner_text() and "Continue" not in dialog.inner_text()
+        page.evaluate("window.__mcpFail = null")
+        dialog.locator(".help").get_by_role("button", name="Hunter is offline — Retry").click()
+        assert _wait(lambda: len(page.evaluate("window.__mcpCalls")) == 3 and "Finding contacts…" in dialog.inner_text())  # the refused attempt counts too
+        assert page.evaluate("window.__mcpCalls")[2]["input"]["text"] == "/jobhunter continue " + fake.doc(f"actions/{nw}")["requests"]["contact"]["id"]
         assert not errors, errors
         context.close()
         browser.close()
@@ -316,10 +328,10 @@ def test_the_same_page_works_at_phone_and_desktop_widths(site, ctx, db):
             dialog = page.get_by_role("dialog")
             box = dialog.bounding_box()
             assert box["width"] <= width + 1 and (width > 860 or box["width"] >= width - 1)
-            assert dialog.get_by_role("button", name="Continue application").first.is_visible()
+            assert dialog.get_by_role("button", name="Review application").first.is_visible()
             assert dialog.get_by_role("link", name="Open application").first.is_visible()
             assert dialog.locator(".secnav").count() == 0  # no tabs inside the job
-            dialog.get_by_role("button", name="Continue application").first.click()
+            dialog.get_by_role("button", name="Review application").first.click()
             assert _wait(lambda d=dialog: "Your strongest case" in d.inner_text())
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
             dialog.get_by_role("button", name="Back to job").click()

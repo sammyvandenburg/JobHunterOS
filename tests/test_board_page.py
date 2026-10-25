@@ -82,7 +82,7 @@ def test_typed_note_survives_snapshots_and_saves_with_growing_revisions(site):
         doc = fake.doc(f"actions/{nw}")
         assert doc["rev"] == 1 and doc["note"]["rev"] == 1
         status = page.locator(".save[role=status]")
-        assert "Saved to your dashboard" in status.inner_text() and "Waiting for Hunter" in status.inner_text()
+        assert status.inner_text().strip() == "Saved"  # nothing about Hunter's runs: the save is the whole story
         # A second edit continues the revision, never resets it.
         ta.fill("Ask about on-call and pay")
         page.get_by_role("button", name="Save note").click()
@@ -94,7 +94,8 @@ def test_typed_note_survives_snapshots_and_saves_with_growing_revisions(site):
         shard["jobs"][nw]["state"]["synced_rev"] = 2
         shard["jobs"][nw]["state"]["note"] = "Ask about on-call and pay"
         fake.load({"board/jobs-0": shard})
-        assert _wait(lambda: "Synced" in page.locator(".save[role=status]").inner_text())
+        time.sleep(0.3)
+        assert page.locator(".save[role=status]").inner_text().strip() == "Saved" and page.locator("textarea#note").input_value() == "Ask about on-call and pay"
         assert not errors, errors
         context.close()
         browser.close()
@@ -111,14 +112,14 @@ def test_a_failed_save_offers_retry_and_keeps_the_change_on_screen(site):
         fake.fail_set = True
         page.get_by_role("dialog").get_by_role("button", name="☆ Favorite").click()
         status = page.locator(".save[role=status]")
-        assert _wait(lambda: "Couldn't save" in status.inner_text())
+        assert _wait(lambda: "Couldn’t save" in status.inner_text())
         assert fake.doc(f"actions/{nw}") is None or not fake.doc(f"actions/{nw}").get("favorite")
-        retry = page.get_by_role("button", name="Retry")
+        retry = page.get_by_role("button", name="Retry", exact=True)
         assert retry.is_visible()
         fake.fail_set = False
         retry.click()
         assert _wait(lambda: (fake.doc(f"actions/{nw}") or {}).get("favorite") is True)
-        assert _wait(lambda: "Saved to your dashboard" in status.inner_text())
+        assert _wait(lambda: status.inner_text().strip() == "Saved")
         assert _wait(lambda: page.get_by_role("dialog").get_by_role("button", name="★ Favorite").count() == 1)
         assert not errors, errors
         context.close()
@@ -214,7 +215,8 @@ def test_a_note_can_be_edited_again_after_hunter_synced_it(site):
         shard["jobs"][nw]["state"]["synced_rev"] = 1
         shard["jobs"][nw]["state"]["note"] = "First version"
         fake.load({"board/jobs-0": shard})
-        assert _wait(lambda: "Synced" in page.locator(".save[role=status]").inner_text())
+        assert _wait(lambda: "First version" in (fake.doc("board/jobs-0")["jobs"][nw]["state"].get("note") or ""))
+        time.sleep(0.3)
         page.locator("textarea#note").fill("Second version")
         page.get_by_role("button", name="Save note").click()
         assert _wait(lambda: (fake.doc(f"actions/{nw}") or {}).get("rev") == 2), fake.doc(f"actions/{nw}")

@@ -169,6 +169,12 @@ def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids:
             except Exception as exc:  # a preparation problem never fails the search
                 stats["auto_prepared"] = 0
                 stats["auto_prepare_note"] = f"Automatic preparation did not run ({type(exc).__name__})."
+            try:
+                from jobhunter.services import logos
+
+                stats["logos"] = logos.refresh(db, client, limit=15) if client is not None else {"checked": 0, "ok": 0}
+            except Exception:  # a mark is decoration: never a reason to fail a search
+                stats["logos"] = {"checked": 0, "ok": 0}
             status = "completed" if not stats["sources_failed"] and not stats["sources_partial"] else "partial"
             if stats.get("deadline_hit") and status == "completed":
                 status = "partial"

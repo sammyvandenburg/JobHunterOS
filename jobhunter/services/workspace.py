@@ -222,9 +222,14 @@ def run_request(ctx: AppContext, db: Database, request_id: str, use_model: bool 
             state = "ready" if res["contacts"] else "needs_input"
             return _finish(db, rid, state, res["message"], {"contacts": [c["id"] for c in res["contacts"]]})
         if kind in {"intro", "letter"}:
+            if not _package_row(db, job["id"]):
+                drafts_svc.prepare(ctx, db, job["id"], use_model=use_model)  # Hunter manages the dependency: a letter needs the pack
+                ensure_research(db, job)
             res = write_optional_text(db, job, kind)
             return _finish(db, rid, "ready", f"Your {'short introduction' if kind == 'intro' else 'cover letter'} is drafted. Read it, change it, and only use what is true.", {"version": res["version"]})
         if kind == "message":
+            if not _package_row(db, job["id"]):
+                drafts_svc.prepare(ctx, db, job["id"], use_model=use_model)
             if params.get("contact") is None:
                 return _finish(db, rid, "needs_input", "Which contact? Pick one under People & notes first.")
             d = contact_message(db, job["id"], params["contact"])
@@ -1126,6 +1131,7 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
         "cv": {"selected": {"key": cv["key"], "label": cv["label"], "version": cv["version"], "choice": cv.get("choice") or "default", "file_available": bool((docs.cv_revision(db, cv["revision_key"]) or {}).get("file_available")) if cv.get("revision_key") else None} if cv else None, "suggestion": suggestion, "options": [{"key": c["key"], "label": c["label"], "version": c["version"], "default": c["default"]} for c in cvs]},
         "requests": requests_state,
         "package": pkg_view,
+        "brief": current_research(db, job_id),  # "View research" works before a full preparation exists
         "contacts": list_contacts(db, job_id),
         "followup": followup,
         "followup_last": followup_view(last_followup) if last_followup else None,

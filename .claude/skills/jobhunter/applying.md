@@ -1,13 +1,14 @@
 # The application workspace (help me apply)
 
-Every job has one workspace, on the dashboard and on the command line: **Prepare application → Continue
-application → View application**. Hunter prepares; the person applies on the employer's page and presses
+Every job has one workspace, on the dashboard and on the command line: **Get application help → Working… →
+Review application → View application** (the main action is named by its state; there is no "continue"). Hunter prepares; the person applies on the employer's page and presses
 **I applied**. Hunter never submits anything, never emails an employer, never rewrites a CV, never invents a
 fact, a date, a number, pay, or an answer to a legal or personal question.
 
 ## When the page asked for something (`/jobhunter continue <request id>`, or any sync)
 The dashboard writes requests into its own database (`requests.<kind>` in the job's action document); they
-are never lost. Hunter picks them up in every sync, in this order:
+are never lost. The bound session gets the id at once (SKILL.md step 1); any sync also picks up whatever is
+pending. Do it right away, in this order:
 1. Read the page's actions (board.md step 1: list `actions`, `board import --listed <total>`).
 2. `uv run jobhunter work requests --json` shows what is pending; `uv run jobhunter work run --json` does all
    of it (or `work run <request id>` for one). Every request ends `ready`, `needs_input` (what the person
@@ -16,9 +17,11 @@ are never lost. Hunter picks them up in every sync, in this order:
 4. Tell the person in one or two lines what was done ("Your application for X is prepared: open it on your
    dashboard."). If a request needs input, ask that one thing.
 
-Kinds: `prepare` (the package below), `research` (refresh the brief), `contact`, `message` (a draft to one
-contact), `intro`, `letter`, `followup_draft`, `handoff` (InterviewOS), `cv_file` (hand the original file over).
-A page without a direct line to Hunter shows "Continue in Claude now", which copies `/jobhunter continue <id>`.
+Kinds: `prepare` (the package below; with `questions` from the form it is the page's "Draft answers"),
+`research` (the brief, with or without a package), `contact`, `message` (a draft to one contact), `intro`,
+`letter` (each prepares the package first when none exists; the person's own text is never overwritten),
+`followup_draft`, `handoff` (InterviewOS), `cv_file` (hand the original file over). The page names these for
+the student as Research company, Write cover letter, Draft answers, Find contacts; it never shows ids.
 
 ## Prepare (`uv run jobhunter apply prepare <job id or key> [--cv <cv key>] --json`)
 Idempotent: the same job, approved facts, selected CV version and policy give the same package; a change marks

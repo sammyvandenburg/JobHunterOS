@@ -85,7 +85,7 @@ def test_today_first_four_destinations_and_scannable_rows(site):
         assert 2 <= row.locator(".tag").count() <= 4 and row.locator(".tag").first.inner_text() == "Infrastructure"
         assert row.locator(".logo").inner_text().strip() == "EL" or row.locator(".logo img").count() == 1  # initials, or the employer's own favicon
         assert "Why:" not in text and len(text) < 400  # no matching paragraphs in the list
-        assert page.locator(".ricon").count() == 0  # role icons belong to the detail and the pipeline, not to the compact rows
+        assert page.locator("button.row .ricon.xs").count() == page.locator("button.row").count()  # one small role icon per row, with a label
         assert page.locator(".secnav").count() == 0
         assert not errors, errors
         context.close()
@@ -104,19 +104,24 @@ def test_the_job_detail_shows_what_matters_without_scrolling_and_has_no_tabs(sit
         # Header: role icon, title, employer, match badge; Favorite, Save, Close together at the top.
         assert dialog.locator(".ricon[aria-label='Infrastructure Engineer role']").count() == 1
         head = dialog.locator(".dhead")
-        for name in ("☆ Favorite", "Save for later", "Close"):
-            assert head.get_by_role("button", name=name).count() == 1
-        assert dialog.get_by_role("button", name="☆ Favorite").count() == 1 and dialog.get_by_role("button", name="Save for later").count() == 1  # never repeated lower down
+        for name in ("☆ Favorite", "Save", "Close"):
+            assert head.get_by_role("button", name=name, exact=True).count() == 1
+        assert dialog.get_by_role("button", name="☆ Favorite").count() == 1 and dialog.get_by_role("button", name="Save", exact=True).count() == 1  # never repeated lower down
         assert dialog.get_by_role("button", name="Not interested?").count() == 0 and dialog.locator(".secnav").count() == 0
         # Primary and secondary actions visible without scrolling.
-        for loc in (dialog.get_by_role("button", name="Prepare my application"), dialog.get_by_role("link", name="Open application")):
+        for loc in (dialog.get_by_role("button", name="Get application help"), dialog.get_by_role("link", name="Open application"), dialog.get_by_role("button", name="Research company"), dialog.get_by_role("button", name="I applied")):
             box = loc.first.bounding_box()
             assert box and box["y"] + box["height"] <= 900, box
-        assert dialog.get_by_role("button", name="Prepare my application").count() == 1
+        assert dialog.get_by_role("button", name="Get application help").count() == 1 and dialog.get_by_role("button", name="Continue application").count() == 0
         text = dialog.inner_text()
-        assert "Get help with this application" in text and "Job overview" in text and "Why this could be a good fit" in text and "Job description" in text and "Your application" in text and "My notes" in text
-        assert "View all locations" in text and "Dublin" not in text.split("View all locations")[0]  # the long list stays folded
-        assert "Hunter reads this on its next run" not in text and "Press Help me apply" not in text and "Continue in Claude" not in text
+        assert "Application help" in text and "Job overview" in text and "Why this could be a good fit" in text and "Job description" in text and "Application status: Not applied" in text and "My notes" in text
+        assert "Your application" not in text  # one home for the application actions, no second card
+        for chip in ("Research company", "Write cover letter", "Draft answers", "Find contacts"):
+            assert dialog.locator(".help").get_by_role("button", name=chip).count() == 1
+        assert "View all" in text and "Dublin" not in text.split("View all")[0]  # the long list stays folded
+        assert "Remote, Remote" not in text
+        for bad in ("next run", "Press Help me apply", "Continue in Claude", "Direct line", "Waiting for Hunter", "request id", "queue", "MCP", "session id"):
+            assert bad not in text, bad
         # The description is collapsed by default.
         assert "Kubernetes on AWS" not in text
         dialog.get_by_role("button", name="Show full description").click()
@@ -146,7 +151,7 @@ def test_keyboard_opens_and_closes_a_job_and_focus_returns_to_the_row(site):
         assert page.evaluate(f"document.activeElement && document.activeElement.getAttribute('data-key') === '{site['el']}'")
         # Escape inside the workspace goes back to the job first.
         page.locator(f"button.row[data-key='{site['nw']}']").first.click()
-        page.get_by_role("dialog").get_by_role("button", name="Continue application").first.click()
+        page.get_by_role("dialog").get_by_role("button", name="Review application").first.click()
         assert _wait(lambda: "Your strongest case" in page.get_by_role("dialog").inner_text())
         page.keyboard.press("Escape")
         assert _wait(lambda: "Job overview" in page.get_by_role("dialog").inner_text())
@@ -172,9 +177,13 @@ def test_on_a_phone_the_list_is_the_screen_and_a_job_opens_full_screen(site):
         page.wait_for_selector("textarea#note")
         box = dialog.bounding_box()
         assert box["width"] >= 389 and box["x"] <= 1
-        assert dialog.get_by_role("button", name="Prepare my application").first.is_visible()
+        assert dialog.get_by_role("button", name="Get application help").first.is_visible()
+        head = dialog.locator(".dhead")
+        for name in ("Back", "☆ Favorite", "Save"):
+            assert head.get_by_role("button", name=name, exact=True).first.is_visible()  # the sticky top row on a phone
+        assert head.get_by_role("button", name="Close").count() == 0
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
-        dialog.get_by_role("button", name="Close").click()
+        dialog.get_by_role("button", name="Back", exact=True).click()
         assert _wait(lambda: page.locator("#detailCol").is_hidden())
         assert page.locator("#listCol").evaluate("el => el.scrollTop") == 100  # back returns to the same place
         # The rail sits at the bottom with the four destinations.

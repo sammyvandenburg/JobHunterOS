@@ -80,8 +80,8 @@ id and revision, `texts`, `applied_cv`, `contacts_new`, `contacted`, `followup`)
 request (states, brief, route, case, answers with the person's wording, optional texts with facts used,
 checklist, contacts, follow-up, hand-off). Idempotent packages hash the job text, the profile fingerprint, the
 selected CV version and the policy; a change shows as **Needs review** and the person's wording survives the
-next version. The direct line from the page is the viewer's own Claude Code Remote connector through the
-`mcp` capability (a poke-only Routine or a session that `board channel` names); without it the page shows
-"Continue in Claude now" with the request id. The state file carries CV metadata and per-job CV state (never
+next version. The page reaches the running Hunter through the viewer's own Claude Code Remote connector (the
+page's `mcp` capability): the session `/jobhunter` binds at startup, or a poke-only Routine as a stand-in
+(`board channel`). When the call fails the page keeps the request and says Hunter is offline, with Retry. The state file carries CV metadata and per-job CV state (never
 files, text, answers or drafts); a restored database recreates the CVs as placeholders and restores the bytes
 when the same file is added again (hash proven).

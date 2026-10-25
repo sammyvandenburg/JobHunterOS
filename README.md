@@ -79,6 +79,7 @@ uv run jobhunter --help               # everything else; add --json to any comma
 
 ## Documentation
 - [docs/capability-matrix.md](docs/capability-matrix.md): what Hunter does by itself, what you approve, and what was verified in this build (release candidate 0.2.0rc1).
+- [docs/handoff-2026-10-25-realtime-ux.md](docs/handoff-2026-10-25-realtime-ux.md): the real-time UX round (the page and the running `/jobhunter` session as one application, the job detail and workspace overhaul, company marks), its tests, and the two approvals still needed for the live check.
 - [docs/handoff-2026-10-25-competitive.md](docs/handoff-2026-10-25-competitive.md): the founder report for the competitive-upgrade round, the phased checklist to resume from, the acceptance journeys and the exact tests, and the approvals still needed.
 - [docs/assisted-apply.md](docs/assisted-apply.md): what Hunter may do on an application form (per site), and the one lane that fills and, with your one-time approval, submits.
 

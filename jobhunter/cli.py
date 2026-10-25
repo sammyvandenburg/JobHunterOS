@@ -884,7 +884,7 @@ def cmd_board(args):
             emit(args, board.status(db))
         elif c == "page":
             p = board.page_path()
-            emit(args, {"page": str(p), "exists": p.exists(), "title": "JobHunterOS by KubeCraft", "mark": "file" if board.BRAND_PNG.exists() else "text", "capabilities": {"db": {"rules": [{"path": "", "read": "owner", "write": "owner"}]}, "user": {}}, "note": "Use `board build --out <file>` to write the page to publish (the KubeCraft mark is inlined when brand/KubeCraft-Cog-3.png exists)."}, text=str(p))
+            emit(args, {"page": str(p), "exists": p.exists(), "title": "JobHunterOS by KubeCraft", "mark": "file" if board.BRAND_PNG.exists() else "text", "capabilities": {"db": {"rules": [{"path": "", "read": "owner", "write": "owner"}]}, "user": {}, "mcp": {"servers": [{"server": "Claude Code Remote", "tools": ["fire_trigger", "send_message"]}]}}, "note": "Use `board build --out <file>` to write the page to publish (the KubeCraft mark is inlined when brand/KubeCraft-Cog-3.png exists). The mcp capability is what lets the page reach the running Hunter session; without it the page shows Hunter as offline."}, text=str(p))
         elif c == "build":
             emit(args, board.build_page(args.out))
         elif c == "export":

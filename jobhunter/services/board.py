@@ -96,9 +96,10 @@ def link(db: Database, url: str) -> dict:
 
 
 def set_channel(db: Database, kind: str | None, ident: str | None = None, label: str | None = None) -> dict:
-    """The page's direct line to Hunter: a poke-only routine (`trig_…`) or a session (`session_…`) in the person's own
-    Claude account, called through the page's `mcp` capability (Claude Code Remote connector, the viewer's own
-    credentials). Without one the page still records every request and offers "Continue in Claude"."""
+    """Where the page reaches the running Hunter: the interactive Claude Code session (`session_…`, bound by
+    `/jobhunter` at start) or a poke-only routine (`trig_…`), called through the page's `mcp` capability with the
+    viewer's own credentials. The page shows "Hunter online" while this is set and reachable; without it every
+    request is still stored safely and the page says Hunter is offline."""
     if not kind:
         db.delete_setting(CHANNEL_SETTING)
         return {"channel": None}
@@ -532,10 +533,13 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
         writes.append({"collection": "work", "doc_id": key, "file": str(out / "work" / f"{key}.json")})
         work_written += 1
     run["work"] = work_written
+    from jobhunter.services import logos
     from jobhunter.services import today as today_svc
 
     _write(out / "meta" / "today.json", today_svc.today(ctx, db))
     writes.append({"collection": "meta", "doc_id": "today", "file": str(out / "meta" / "today.json")})
+    _write(out / "meta" / "logos.json", logos.doc(db))
+    writes.append({"collection": "meta", "doc_id": "logos", "file": str(out / "meta" / "logos.json")})
     _write(out / "meta" / "run.json", run)
     writes.append({"collection": "meta", "doc_id": "run", "file": str(out / "meta" / "run.json")})
     manifest = {

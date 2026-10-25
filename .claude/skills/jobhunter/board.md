@@ -63,17 +63,18 @@ Never write under `actions/` (that is the page's), never republish the page with
 never put a CV file or its text, or a token, in any document. The `work/<key>` documents do carry the student's
 own application drafts and answers: the page's database is owner-only, and that is where their edits live.
 
-## A direct line from the page to Hunter (optional, with their approval)
-Without one, a button on the page saves the request and shows "Continue in Claude now" (it copies
-`/jobhunter continue <request id>`). With one, the page reaches Hunter at once through the viewer's own
-Claude Code Remote connector: publish the page with the extra capability
-`"mcp": {"servers": [{"server": "Claude Code Remote", "tools": ["fire_trigger", "send_message"]}]}` next to
-`db` and `user`, and tell Hunter where to knock: `uv run jobhunter board channel routine trig_…` (a poke-only
-Routine whose prompt is "/jobhunter continue" followed by the text it receives, in their own copy) or
-`board channel session session_…` (a session that stays open). Both are the student's own resources: ask
-before creating a Routine or republishing with the new capability, and say that the page will ask them once
-to allow the connector. `board channel none` removes it. Never claim the line works until a request made on
-the page came back `ready` on the page.
+## The page and this session are one application
+The page is published with the `mcp` capability next to `db` and `user`:
+`"mcp": {"servers": [{"server": "Claude Code Remote", "tools": ["fire_trigger", "send_message"]}]}`
+(`uv run jobhunter board page --json` prints the full set). With it, a click on the page is stored in the
+page's own database and handed to the running Hunter at once, through the viewer's own account: the session
+bound at startup (SKILL.md step 1, `board channel session session_…`), or, as a stand-in when no session is
+open, a poke-only Routine in their own copy whose prompt is "/jobhunter continue" followed by the text it
+receives (`board channel routine trig_…`). The student sees only "Hunter online" or "Hunter is offline.
+Reopen /jobhunter to reconnect." A click never waits for a nightly run. A Routine and a republished page are
+the student's own resources: ask before creating or changing them, and say the page asks them once to allow
+the connector. `board channel none` unbinds. Never claim the line works until a request made on the page came
+back `ready` on the page.
 
 ## What the page does on its own
 - Four destinations in a dark rail (Today, Jobs, Applications, Profile; Settings opens the profile's
@@ -85,21 +86,28 @@ the page came back `ready` on the page.
   checking, Older, Favorites, Saved, Applied, Not interested, Everything). Each row: the employer's mark (its
   own favicon from a verified domain, else initials), title, employer, a short place and work-mode label,
   posting age, the match badge and two to four role and tool tags. No matching paragraphs in the list.
-- **A job**: role icon, title, employer, place, match badge; Favorite, Save and Close together at the top;
-  then "Get help with this application" with one main action (**Prepare my application** → **Continue
-  application** → **View application**) and **Open application** beside it, visible without scrolling; Job
-  overview and "Why this could be a good fit" side by side (reasons from evidence, things to check); the
-  description folded; "Your application" (state, CV sent, follow-up, **I applied**); My notes. No tabs.
-- **Continue application** opens the focused workspace: 1 Your CV, 2 Your strongest case (with the brief),
-  3 Application questions, 4 Optional extras (introduction, cover letter, people), 5 Ready? (checklist,
-  destination, Open application). Back to job returns; Escape closes.
+- **A job**: role icon, title, employer with its mark, place, match badge; a compact line (type, age,
+  still listed, pay); Favorite, Save and Close together at the top (on a phone: Back, Favorite, Save, sticky).
+  Then the "Application help" card: one sentence, one main action named by state (**Get application help** →
+  **Working…** → **Answer question** / **Review changes** / **Review application** → **View application**),
+  **Open application** beside it whenever a link exists, four direct chips (**Research company** →
+  Researching… → View research; **Write cover letter** → Drafting… → Review cover letter; **Draft answers**,
+  which asks for the form's questions first; **Find contacts** → Finding contacts… → View contacts), and one
+  status row ("Application status: Not applied · I applied", later "Applied 25 Oct · CV sent: …"). Job
+  overview and "Why this could be a good fit" side by side (at most three lines each, Show more); the
+  description folded; My notes. No second application card, no tabs.
+- **Review application** (and View research, View contacts, Review cover letter) opens the focused workspace:
+  Your CV, Your strongest case (two or three evidence lines, a gap, the brief folded under it), Application
+  questions (the form's real ones, editable, Copy), Optional (cover letter, introduction, people), Ready to
+  apply? (checklist, Open application, I applied). Back to job returns; Escape closes.
 - **Applications**: one pipeline (Preparing, Ready, Applied, Interview, Closed) with the CV used, dates,
   the follow-up and the next action. **Profile**: the approved profile, Preferences (writes `actions/_prefs`),
   My CVs (writes `actions/_cvs`), connected services and Hunter settings as they really are.
-- Favorite, Save, a private note, I applied, follow-ups, answers, CV choice and every request are saved to
-  the page's own database at once and marked as waiting until the next sync applies them. A request shows
-  "Continue this request in Claude" only when the page has no direct line to Hunter.
-- Its status chips say when Hunter last synced, how many changes wait, and a running search, never more.
+- Favorite, Save, a private note, I applied, follow-ups, answers and the CV choice are saved to the page's
+  own database at once and say "Saved", nothing more. A task shows what Hunter is doing, then the result;
+  when it cannot be reached: "Hunter is offline" with Retry, and the request is kept.
+- Its status chips: "Hunter online" or "Hunter is offline", the last job search, "Nightly on" when a routine
+  really runs, and "N changes failed to save — Retry" only for real save errors. Never more.
 
 ## If something is off
 - "Hunter hasn't synced yet" on the page: run a sync.
