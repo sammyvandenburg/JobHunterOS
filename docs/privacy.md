@@ -29,6 +29,12 @@ holds a CV file or its text, nor a token. CV files live only in Hunter's data fo
 were added; the state file in the student's private repository carries CV names, versions and hashes, never
 files, text, notes, answers or drafts. Requests from the page carry only a kind, an id and bounded parameters.
 
+## Assisted Apply
+The form lane runs only on the student's own computer, in a browser they can see, with the identity they
+confirmed, the exact CV version they chose and their own answers. The read-back, the approval hash, the receipt
+and two screenshots are stored privately in the data folder; the one-time code is never stored. Nothing is sent
+to an employer without the student's approval of the exact read-back, once per submission.
+
 ## Backups, export, deletion
 `uv run jobhunter data backup` copies the database (copy the documents folder too for a full backup). `data export` writes JSON per table plus your original documents; secrets are excluded. `data delete --confirm DELETE` removes secrets first, then the database, documents, derived text, exports, cache, logs, and locks; backups are kept on purpose and listed so you can remove them yourself. Copies you exported or emailed, and anything held by Google or your mail provider, are outside Hunter's reach; the deletion screen says so. "CV immutability" means Hunter never modifies originals in normal use; you can always delete them.
 

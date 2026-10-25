@@ -101,6 +101,18 @@ them, never a gate. When they open a prepared application on the page (or `work 
 no employer and has not expired (pay, notice and start answers expire after 90 days; personal and legal ones
 are never offered). It is a suggestion with its origin ("from X, date"); they press *Use my earlier answer*.
 
+## Assisted Apply (on their computer only)
+`uv run jobhunter assisted capability <job>` says what Hunter may do for that application page: prepare only
+(default), assisted fill (Greenhouse-style forms: fill and read back, they press submit), reviewed submit (only on
+hosts they allowed with `assisted allow-host`; Hunter presses submit once after their one-time code), manual only
+(LinkedIn, Indeed). The lane is `uv run jobhunter assisted run <job>` in a terminal on their own computer: it
+needs their confirmed identity (`assisted identity`), the prepared pack and the CV file. Never run it in a cloud
+session (it refuses: no browser of theirs). Never claim a form was submitted unless the run's state is
+`submitted` with a receipt; `uncertain` means "check the site or your inbox" and `assisted resolve` records what
+they saw. The filler sends only what they confirmed: identity, the exact CV version, their own answers and
+letter; never a draft of yours, never a guessed choice. See docs/assisted-apply.md. Nothing in this lane was
+verified on a live employer form in this build: say "tested on a simulated form" when they ask.
+
 ## Interview hand-off
 `uv run jobhunter apply handoff <job> --json` (also the page's "Prepare for interview") writes a Markdown
 snapshot for InterviewOS: the vacancy as seen, the brief with sources, the exact CV version sent (or "unknown"),

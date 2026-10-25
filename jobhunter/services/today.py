@@ -203,6 +203,9 @@ def today(ctx: AppContext, db: Database) -> dict:
     for r in db.fetchall("SELECT r.request_id, r.kind, r.message, r.job_id FROM requests r WHERE r.state = 'failed' ORDER BY r.id DESC LIMIT 5"):
         b = _job_bits(db, r["job_id"]) if r.get("job_id") else {"key": None, "title": "", "employer": ""}
         attention.append(_item("request_failed", f"Hunter could not {r['kind'].replace('_', ' ')}{(' for ' + b['title']) if b['title'] else ''}: {r['message']}", "Retry", key=b["key"], command=f"jobhunter work request {r['job_id']} {r['kind']}" if r.get("job_id") else None))
+    for r in db.fetchall("SELECT run_key, job_id, error FROM assisted_runs WHERE state = 'uncertain' ORDER BY id DESC LIMIT 3"):
+        b = _job_bits(db, r["job_id"])
+        attention.append(_item("assisted_uncertain", f"{b['title']} at {b['employer']}: Hunter pressed submit but could not confirm it went through. Check the site or your inbox.", "Resolve", key=b["key"], command=f"jobhunter assisted resolve {r['job_id']} submitted|not_submitted"))
     if notifications.failed_digest(db):
         attention.append(_item("digest_failed", "The last job email could not be sent.", "Retry", command="jobhunter digest send"))
     if notifications.unresolved(db):

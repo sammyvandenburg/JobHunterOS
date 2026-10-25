@@ -74,6 +74,10 @@ and keeps your wording.
 - The state file in your private repository: CV metadata (keys, labels, versions, hashes) and per-job CV state;
   never files, text, notes, answers, drafts, research or contacts.
 
+## Assisted Apply
+See [assisted-apply.md](assisted-apply.md): the capability per site is shown on the job page under "The vacancy
+and where to apply"; the lane itself runs on the student's computer (`jobhunter assisted run`).
+
 ## Known limits
 - The direct line needs the `mcp` capability on the page and a Routine or session in the student's account;
   both are created only with their approval. Until then every request still works through the next sync or

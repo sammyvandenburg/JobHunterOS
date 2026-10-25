@@ -114,6 +114,38 @@ def cmd_plan(args):
     emit(args, workflow.plan(ctx, db, nightly=bool(args.nightly)))
 
 
+def cmd_assisted(args):
+    from jobhunter.services import assisted
+
+    ctx, db = _open(args)
+    try:
+        c = args.assisted_cmd
+        if c == "identity":
+            emit(args, assisted.set_identity(db, args.first, args.last, args.email, args.phone))
+        elif c == "allow-host":
+            emit(args, assisted.allow_submit_host(db, args.host, allow=not args.remove))
+        elif c == "capability":
+            job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (args.id,))
+            if not job:
+                raise CliError(f"Job {args.id} not found.")
+            emit(args, assisted.capability_for(db, job))
+        elif c == "preflight":
+            emit(args, assisted.preflight(ctx, db, args.id))
+        elif c == "run":
+            emit(args, assisted.run_interactive(ctx, db, args.id, headless=args.headless, executable_path=args.browser))
+        elif c == "status":
+            emit(args, assisted.status(db, args.id))
+        elif c == "resolve":
+            emit(args, assisted.resolve(ctx, db, args.id, args.outcome))
+        elif c == "cancel":
+            run = assisted.current_run(db, args.id)
+            if not run:
+                raise CliError("No assisted attempt for this job.")
+            emit(args, assisted.cancel(db, run["run_key"]))
+    except assisted.AssistedError as exc:
+        raise CliError(str(exc)) from exc
+
+
 def cmd_today(args):
     from jobhunter.services import today as today_svc
 
@@ -1463,6 +1495,28 @@ def build_parser() -> argparse.ArgumentParser:
     pl = sub.add_parser("plan", help="the run contract: which step is done, which comes next, judged from evidence (read dashboard, hunt, digest, save, publish)")
     pl.add_argument("--nightly", action="store_true", help="a nightly run starts by restoring the state from the private copy")
     pl.set_defaults(fn=cmd_plan)
+
+    asd = sub.add_parser("assisted", help="Assisted Apply on your own computer: capability per site, preflight, fill and read-back, one approval code, receipt")
+    asds = asd.add_subparsers(dest="assisted_cmd", required=True)
+    x = asds.add_parser("identity", help="the name, email and phone to put on forms (confirmed by you, never guessed)")
+    x.add_argument("--first", required=True)
+    x.add_argument("--last", required=True)
+    x.add_argument("--email", required=True)
+    x.add_argument("--phone")
+    x = asds.add_parser("allow-host", help="allow Hunter to press submit on this host after your approval code (off for every host by default)")
+    x.add_argument("host")
+    x.add_argument("--remove", action="store_true")
+    for name, h in (("capability", "what Hunter may do for this job's application page"), ("preflight", "everything that must be true before a browser opens"), ("status", "the current attempt"), ("cancel", "stop the current attempt")):
+        x = asds.add_parser(name, help=h)
+        x.add_argument("id", type=job_ref)
+    x = asds.add_parser("run", help="open the form in a browser here, fill it from what you confirmed, read it back, then your approval or your own submit")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("--headless", action="store_true")
+    x.add_argument("--browser", help="path to a Chromium/Chrome executable when Playwright's is missing")
+    x = asds.add_parser("resolve", help="after an uncertain attempt: what did you see?")
+    x.add_argument("id", type=job_ref)
+    x.add_argument("outcome", choices=["submitted", "not_submitted"])
+    asd.set_defaults(fn=cmd_assisted)
 
     td = sub.add_parser("today", help="what waits for you today: ready to review, needs your answer, follow-up due, something changed, needs attention")
     td.set_defaults(fn=cmd_today)

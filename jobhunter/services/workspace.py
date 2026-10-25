@@ -451,8 +451,12 @@ def route_view(db: Database, job: dict) -> dict:
         note = "The posting disappeared from the feed Hunter reads. That is not proof it is closed: open the employer's page to check."
     elif job.get("direct_url_status") != "verified" and job.get("direct_url"):
         note = "Hunter could not confirm the employer's own page; the link below is where it found the job."
+    from jobhunter.services import assisted
+
+    cap = assisted.capability_for(db, job)
     return {
         "apply_url": primary,
+        "capability": {"id": cap["id"], "label": cap["label"], "note": cap["note"], "verified": cap["verified"]},
         "employer_url": job.get("direct_url") if job.get("direct_url_status") == "verified" else None,
         "discovery_url": job.get("discovery_url"),
         "requisition_id": req_id,

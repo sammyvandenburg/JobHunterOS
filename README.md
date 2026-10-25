@@ -72,6 +72,7 @@ uv run jobhunter --help               # everything else; add --json to any comma
 ```
 
 ## Documentation
+- [docs/assisted-apply.md](docs/assisted-apply.md): what Hunter may do on an application form (per site), and the one lane that fills and, with your one-time approval, submits.
 
 - [docs/setup.md](docs/setup.md): environment checks, platforms, first run, updating.
 - [docs/sources.md](docs/sources.md): every job source, its access method, terms, limits, and verification date.
