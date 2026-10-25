@@ -291,7 +291,7 @@ def set_stage(db: Database, job_id: int, stage: str, actor: str = "user", occurr
         db.update("applications", values, "id = ?", (app["id"],))
         if stage == "applied":
             _bind_submission(db, app, ts)
-        if stage in FINISHED_STAGES or stage == "replied":
+        if stage in FINISHED_STAGES or stage in {"replied", "interview"}:
             db.execute("UPDATE followups SET status = 'cancelled', resolved_at = ?, reason = ? WHERE application_id = ? AND status = 'pending'", (ts, f"stage changed to {stage}", app["id"]))
     return {"application_id": app["id"], "stage": stage, "changed": True}
 

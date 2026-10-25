@@ -15,6 +15,34 @@ from jobhunter.services.sources.import_text import LINKEDIN_VIEW, parse_alert_em
 from jobhunter.util import normalize_company
 
 STAGE_FOR = {"receipt": "applied", "rejection": "rejected", "interview": "interview", "offer": "offer", "recruiter": "replied"}
+POLICY_SETTING = "mail.auto_update"
+POLICIES = ("receipts", "suggest", "all")
+POLICY_WORDS = {
+    "receipts": "Automated application receipts may mark a job as applied by themselves (undoable). Rejections, interviews, offers and recruiter replies are suggested for your confirmation.",
+    "suggest": "Nothing changes by itself. Every email that looks like a status change waits for your confirmation.",
+    "all": "Confident matches (a known job link, or the employer and the title) change the pipeline by themselves, reversibly. Ambiguous ones still wait for you.",
+}
+
+
+def policy(db: Database) -> str:
+    p = db.get_setting(POLICY_SETTING) or "receipts"
+    return p if p in POLICIES else "receipts"
+
+
+def set_policy(db: Database, value: str) -> dict:
+    if value not in POLICIES:
+        raise ValueError(f"Unknown policy '{value}'. Choose receipts, suggest or all.")
+    db.set_setting(POLICY_SETTING, value)
+    return {"policy": value, "meaning": POLICY_WORDS[value]}
+
+
+def _may_auto(db: Database, kind: str, automated: bool) -> bool:
+    p = policy(db)
+    if p == "suggest":
+        return False
+    if p == "receipts":
+        return kind == "receipt" and automated
+    return True
 
 
 def _candidates(db: Database) -> list[dict]:
@@ -25,21 +53,29 @@ def _candidates(db: Database) -> list[dict]:
 
 
 def find_job(db: Database, sender: str, subject: str, text: str) -> tuple[dict | None, str]:
-    """Return (job, confidence) where confidence is high | medium | none."""
+    """Return (job, confidence) where confidence is high | medium | none. Two jobs at the same employer that share a
+    word ("Engineer"): the fuller title match wins; a tie is a question for the person, never a guess."""
     blob = f"{sender}\n{subject}\n{text}".lower()
+    plain = re.sub(r"[^a-z0-9 ]+", " ", blob)
     best, best_conf = None, "none"
+    scored: list[tuple[float, dict]] = []
     for j in _candidates(db):
         comp = normalize_company(j.get("employer_name"))
-        comp_hit = bool(comp) and comp in re.sub(r"[^a-z0-9 ]+", " ", blob)
+        comp_hit = bool(comp) and comp in plain
         for url in (j.get("direct_url"), j.get("apply_url"), j.get("discovery_url")):
             if url and url.lower() in blob:
                 return j, "high"
         title_words = [w for w in re.sub(r"[^a-z0-9 ]+", " ", (j.get("title") or "").lower()).split() if len(w) > 3]
-        title_hit = title_words and sum(w in blob for w in title_words) >= max(1, len(title_words) // 2)
-        if comp_hit and title_hit:
-            return j, "high"
-        if comp_hit and best_conf == "none":
+        hits = sum(w in plain for w in title_words)
+        if comp_hit and title_words and hits >= max(1, len(title_words) // 2):
+            scored.append((hits / len(title_words), j))
+        elif comp_hit and best_conf == "none":
             best, best_conf = j, "medium"
+    if scored:
+        scored.sort(key=lambda t: -t[0])
+        if len(scored) == 1 or scored[0][0] > scored[1][0]:
+            return scored[0][1], "high"
+        return scored[0][1], "medium"
     return best, best_conf
 
 
@@ -56,10 +92,10 @@ def link_message(db: Database, email_id: int) -> dict:
     if not job:
         db.update("email_messages", {"link_status": "needs_confirmation" if kind in STAGE_FOR else "none"}, "id = ?", (email_id,))
         return {"linked": False, "needs_confirmation": kind in STAGE_FOR}
-    if conf == "high" and em["classification_confidence"] in {"high", "medium"} and not (kind == "recruiter" and em["classification_confidence"] == "low"):
+    if conf == "high" and em["classification_confidence"] in {"high", "medium"} and not (kind == "recruiter" and em["classification_confidence"] == "low") and _may_auto(db, kind, bool(em["is_automated"])):
         return apply_link(db, email_id, job["id"], actor="email")
     db.update("email_messages", {"linked_job_id": job["id"], "link_status": "needs_confirmation"}, "id = ?", (email_id,))
-    return {"linked": False, "needs_confirmation": True, "suggested_job_id": job["id"]}
+    return {"linked": False, "needs_confirmation": True, "suggested_job_id": job["id"], "policy": policy(db)}
 
 
 def apply_link(db: Database, email_id: int, job_id: int, actor: str = "email") -> dict:
@@ -110,6 +146,23 @@ def _import_alert(db: Database, em: dict) -> dict:
     res = hunt.import_postings(ctx, db, postings, trigger="import") if postings else {"imported": 0}
     db.update("email_messages", {"link_status": "auto"}, "id = ?", (em["id"],))
     return {"linked": False, "imported": res.get("imported", 0)}
+
+
+def review_queue(db: Database, days: int = 7) -> dict:
+    """What the mailbox suggested (waiting for the person) and what it changed by itself lately (undoable)."""
+    from datetime import timedelta
+
+    from jobhunter.util import now
+
+    since = (now() - timedelta(days=days)).isoformat()
+    suggested = []
+    for r in pending_confirmations(db):
+        j = r.get("suggested") or {}
+        suggested.append({"email_id": r["id"], "kind": r["classification"], "confidence": r["classification_confidence"], "from": r.get("from_addr"), "subject": r.get("subject"), "received_at": r.get("received_at"), "job_id": r.get("linked_job_id"), "job": f"{j.get('title')} at {j.get('employer_name')}" if j else None})
+    applied = []
+    for r in db.fetchall("SELECT e.*, j.title, j.employer_name FROM email_messages e JOIN jobs j ON j.id = e.linked_job_id WHERE e.link_status = 'auto' AND e.event_id IS NOT NULL AND e.received_at >= ? ORDER BY e.received_at DESC LIMIT 20", (since,)):
+        applied.append({"email_id": r["id"], "kind": r["classification"], "from": r.get("from_addr"), "subject": r.get("subject"), "received_at": r.get("received_at"), "job_id": r["linked_job_id"], "job": f"{r['title']} at {r['employer_name']}", "stage": STAGE_FOR.get(r["classification"])})
+    return {"policy": policy(db), "meaning": POLICY_WORDS[policy(db)], "suggested": suggested, "applied_by_itself": applied}
 
 
 def pending_confirmations(db: Database) -> list[dict]:

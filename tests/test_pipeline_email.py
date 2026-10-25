@@ -48,6 +48,7 @@ def test_acc20_manual_and_email_confirmations_dedupe_and_ambiguous_ask(ctx, db):
 
 def test_acc21_automated_receipts_never_inflate_replies_or_interviews(ctx, db):
     approve_profile(db, ctx)
+    linking.set_policy(db, "all")  # confident human stage changes by themselves: an explicit choice since Slice D (default: receipts only)
     jid = _seed_job(ctx, db)
     actions.mark_applied(db, jid)
     linking.import_text_message(db, "We received your application for Platform Engineer at Northwind Cloud. We will contact you if there is a match.", sender="noreply@northwindcloud.example", subject="Application received")
@@ -62,6 +63,7 @@ def test_acc21_automated_receipts_never_inflate_replies_or_interviews(ctx, db):
 
 def test_acc22_corrections_and_late_emails_keep_pipeline_sane(ctx, db):
     approve_profile(db, ctx)
+    linking.set_policy(db, "all")
     jid = _seed_job(ctx, db)
     actions.mark_applied(db, jid, applied_at="2026-10-10T10:00:00+00:00")
     actions.set_stage(db, jid, "interview", actor="user", occurred_at="2026-10-15T10:00:00+00:00")

@@ -174,6 +174,14 @@ def today(ctx: AppContext, db: Database) -> dict:
         if open_qs:
             b = _job_bits(db, a["job_id"])
             needs.append(_item("question", f"{b['title']} at {b['employer']}: {len(open_qs)} question{'s' if len(open_qs) != 1 else ''} from the form only you can answer ({open_qs[0]['text'][:60]}{'…' if len(open_qs[0]['text']) > 60 else ''}).", "Answer", key=b["key"]))
+    from jobhunter.services.email import linking
+
+    queue = linking.review_queue(db)
+    for s in queue["suggested"][:5]:
+        words = {"receipt": "an application receipt", "rejection": "a rejection", "interview": "an interview invitation", "offer": "an offer", "recruiter": "a recruiter's message"}.get(s["kind"], "a status change")
+        b = _job_bits(db, s["job_id"]) if s.get("job_id") else {"key": None, "title": None, "employer": None}
+        text = f"An email from {s['from'] or 'someone'} looks like {words}" + (f" for {s['job']}" if s.get("job") else ", but Hunter cannot tell which job") + ". Is it?"
+        needs.append(_item("email_review", text, "Confirm or dismiss", key=b["key"], command=f"jobhunter email confirm {s['email_id']} {s['job_id'] or '<job>'}  /  jobhunter email reject {s['email_id']}", email_id=s["email_id"]))
     conflicts = db.get_setting("preferences.conflicts") or {}
     if conflicts:
         needs.append(_item("preference_conflict", f"Your preferences were changed on two computers: {', '.join(list(conflicts)[:3])}. Which is right?", "Review", command="jobhunter prefs show --json"))
@@ -193,6 +201,8 @@ def today(ctx: AppContext, db: Database) -> dict:
             changed.append(_item("job_changed", f"{b['title']} at {b['employer']}: the posting changed since Hunter prepared it. Your wording is kept.", "Prepare again", key=b["key"], command=f"jobhunter work request {a['job_id']} prepare"))
         elif job.get("availability") in {"closed", "gone", "missing"}:
             changed.append(_item("job_gone", f"{b['title']} at {b['employer']}: no longer listed where Hunter found it (last checked {(job.get('last_checked_at') or '')[:10]}). Not the same as closed.", "Open", key=b["key"]))
+    for a in queue["applied_by_itself"][:5]:
+        changed.append(_item("email_applied", f"{a['job']}: marked {a['stage']} from an email ({a['subject'] or a['from']}, {(a['received_at'] or '')[:10]}). Undo if that is wrong.", "Undo", key=_job_bits(db, a["job_id"])["key"], command=f"jobhunter email unlink {a['email_id']}", email_id=a["email_id"]))
     attention: list[dict] = []
     last = hunt.last_run(db)
     if last and last.get("status") in {"failed", "no_sources", "aborted"}:

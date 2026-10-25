@@ -74,6 +74,14 @@ and keeps your wording.
 - The state file in your private repository: CV metadata (keys, labels, versions, hashes) and per-job CV state;
   never files, text, notes, answers, drafts, research or contacts.
 
+## Intake and email updates
+`jobhunter intake` takes a link, a pasted description, a job-alert email, a recruiter message or a referral and
+makes the same vacancy record the hunt makes (board links carry the board's identity; the same job merges, a
+different one stays distinct; source differences stay as observations). Recruiters and referrers become contacts
+with their provenance; the message joins the timeline and the hand-off says how the job reached Hunter.
+`jobhunter email policy` decides what an email may change by itself (receipts only, by default); everything else
+is a suggestion on Today with confirm, dismiss and undo (`email review`, `email confirm|reject|unlink`).
+
 ## Assisted Apply
 See [assisted-apply.md](assisted-apply.md): the capability per site is shown on the job page under "The vacancy
 and where to apply"; the lane itself runs on the student's computer (`jobhunter assisted run`).

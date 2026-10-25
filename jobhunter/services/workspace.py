@@ -38,7 +38,7 @@ MAX_QUESTION_CHARS = 300
 MAX_QUESTIONS = 12
 MAX_CONTACT_FIELD = 120
 WORK_SCHEMA = "hunter-work/1"
-CONTACT_TYPES = {"listed": "Listed contact", "team": "Possible team contact", "connection": "Your connection"}
+CONTACT_TYPES = {"listed": "Listed contact", "team": "Possible team contact", "connection": "Your connection", "recruiter": "Recruiter who wrote to you"}
 
 
 class WorkspaceError(Exception):
@@ -454,8 +454,19 @@ def route_view(db: Database, job: dict) -> dict:
     from jobhunter.services import assisted
 
     cap = assisted.capability_for(db, job)
+    if job.get("direct_url_status") == "verified" and job.get("direct_url"):
+        best = {"url": job["direct_url"], "why": "The employer's own listing, confirmed by Hunter: apply there, not through a copy."}
+    elif primary:
+        best = {"url": primary, "why": "Where Hunter found the job. The employer's own page is not confirmed; check for one before you apply."}
+    else:
+        best = None
+    people = db.fetchall("SELECT name, contact_type, role FROM contacts WHERE job_id = ? AND contact_type IN ('listed', 'recruiter') ORDER BY id", (job["id"],))
+    if best and people:
+        p = people[0]
+        best["contact"] = f"{p['name']}{(' (' + p['role'] + ')') if p.get('role') else ''} is {'named in the posting' if p['contact_type'] == 'listed' else 'the recruiter who wrote to you'}: mention the role and apply through the official page as well."
     return {
         "apply_url": primary,
+        "best": best,
         "capability": {"id": cap["id"], "label": cap["label"], "note": cap["note"], "verified": cap["verified"]},
         "employer_url": job.get("direct_url") if job.get("direct_url_status") == "verified" else None,
         "discovery_url": job.get("discovery_url"),
@@ -841,7 +852,7 @@ def find_contact(db: Database, job: dict, params: dict | None = None) -> dict:
 
 def _add_contact(db: Database, job_id: int, ctype: str, name: str, role: str | None, relevance: str, source_url: str | None, provenance: str, route: str | None = None, note: str | None = None) -> dict:
     ts = now_iso()
-    conf = {"listed": "confirmed", "connection": "confirmed", "team": "likely"}[ctype]
+    conf = {"listed": "confirmed", "connection": "confirmed", "team": "likely", "recruiter": "confirmed"}[ctype]
     with db.tx():
         cid = db.insert("contacts", {"job_id": job_id, "contact_key": "ct" + secrets.token_hex(5), "name": truncate(name, MAX_CONTACT_FIELD), "role": truncate(role or "", MAX_CONTACT_FIELD) or None, "organization": None, "route": truncate(route or "", 400) or None, "provenance": provenance if provenance == "user" else f"public_page:{source_url or ''}", "confidence": conf, "created_at": ts, "contact_type": ctype, "relevance": truncate(relevance, 300), "source_url": (source_url or "")[:500] or None, "checked_at": ts, "status": "found"})
         if note:

@@ -101,6 +101,23 @@ them, never a gate. When they open a prepared application on the page (or `work 
 no employer and has not expired (pay, notice and start answers expire after 90 days; personal and legal ones
 are never offered). It is a suggestion with its origin ("from X, date"); they press *Use my earlier answer*.
 
+## Intake: a link, a description, an alert email, a recruiter message, a referral
+`uv run jobhunter intake --text "<pasted>" [--kind link|description|alert|recruiter|referral] [--sender ...]
+[--subject ...] [--from "Name"] [--title ...] [--company ...]` (or `--file`). The kind is detected when omitted.
+Everything becomes the same vacancy record a search makes: a Greenhouse, Lever or Ashby link carries the board's
+own identity, so the board's posting later is the same job; a message about a job already known merges into it.
+A recruiter becomes a contact "Recruiter who wrote to you", a referrer "Your connection", both marked as pasted
+by the person; the message joins the job's timeline (and the hand-off, with permission). Nothing is fetched from
+the link; say "stored, not fetched". `jobhunter intake list` shows what arrived by hand.
+
+## Email updates: what may change by itself
+`uv run jobhunter email policy` (default **receipts**: an automated application receipt may mark a job applied
+by itself, undoable; rejections, interviews, offers and recruiter replies wait for the person). `suggest` makes
+everything wait; `all` lets confident matches change the pipeline reversibly. `uv run jobhunter email review
+--json` lists what waits ("Needs your answer" on Today) and what changed by itself lately ("Something changed",
+with Undo = `email unlink <id>`). Never confirm an email link for them; ask one question and use their answer
+(`email confirm <id> <job>` or `email reject <id>`). A newsletter or an automated message is never a reply.
+
 ## Assisted Apply (on their computer only)
 `uv run jobhunter assisted capability <job>` says what Hunter may do for that application page: prepare only
 (default), assisted fill (Greenhouse-style forms: fill and read back, they press submit), reviewed submit (only on

@@ -114,6 +114,20 @@ def cmd_plan(args):
     emit(args, workflow.plan(ctx, db, nightly=bool(args.nightly)))
 
 
+def cmd_intake(args):
+    from jobhunter.services import intake as intake_svc
+
+    ctx, db = _open(args)
+    try:
+        if args.intake_cmd == "list":
+            emit(args, intake_svc.history(db, args.job, limit=args.limit))
+            return
+        text = Path(args.file).read_text(encoding="utf-8") if args.file else (args.text or "")
+        emit(args, intake_svc.intake(ctx, db, text, kind=args.kind, sender=args.sender or "", subject=args.subject or "", url=args.url, title=args.title, company=args.company, location=args.location, from_name=getattr(args, "from_name", None)))
+    except intake_svc.IntakeError as exc:
+        raise CliError(str(exc)) from exc
+
+
 def cmd_assisted(args):
     from jobhunter.services import assisted
 
@@ -1004,7 +1018,11 @@ def cmd_email(args):
             emit(args, linking.reject_link(db, args.email_id))
         elif c == "unlink":
             emit(args, linking.unlink(db, args.email_id))
-    except gmail.GmailError as exc:
+        elif c == "policy":
+            emit(args, linking.set_policy(db, args.value) if args.value else {"policy": linking.policy(db), "meaning": linking.POLICY_WORDS[linking.policy(db)]})
+        elif c == "review":
+            emit(args, linking.review_queue(db))
+    except (gmail.GmailError, ValueError) as exc:
         raise CliError(str(exc)) from exc
 
 
@@ -1643,7 +1661,27 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("reject", "unlink"):
         x = els.add_parser(name)
         x.add_argument("email_id", type=int)
+    x = els.add_parser("policy", help="what an email may change by itself: receipts (default), suggest (nothing), all (confident matches, reversibly)")
+    x.add_argument("value", nargs="?", choices=["receipts", "suggest", "all"])
+    els.add_parser("review", help="what the mailbox suggested (waiting for you) and what it changed by itself lately (undoable)")
     el.set_defaults(fn=cmd_email)
+
+    ik = sub.add_parser("intake", help="one entry for a link, a pasted description, a job-alert email, a recruiter message or a referral: the same vacancy record the hunt makes")
+    iks = ik.add_subparsers(dest="intake_cmd")
+    ik.add_argument("--text")
+    ik.add_argument("--file")
+    ik.add_argument("--kind", choices=["link", "description", "alert", "recruiter", "referral"], help="detected when omitted")
+    ik.add_argument("--url")
+    ik.add_argument("--title")
+    ik.add_argument("--company")
+    ik.add_argument("--location")
+    ik.add_argument("--sender", help="who sent it (an email address or 'Name <address>')")
+    ik.add_argument("--subject")
+    ik.add_argument("--from", dest="from_name", help="the recruiter's or referrer's name")
+    x = iks.add_parser("list", help="what arrived by hand, newest first")
+    x.add_argument("--job", type=job_ref)
+    x.add_argument("--limit", type=int, default=30)
+    ik.set_defaults(fn=cmd_intake)
 
     mo = sub.add_parser("model", help="unattended Claude explanations (optional)")
     mos = mo.add_subparsers(dest="model_cmd", required=True)

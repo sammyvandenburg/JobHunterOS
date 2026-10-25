@@ -178,3 +178,11 @@ localhost, both through the HTTP layer and in a real browser (`tests/test_email_
 refresh, revocation, profile lookup and `messages/send`. No live Google account or OAuth client was
 available in this environment, so the real Google consent screen is still a manual check:
 docs/release-checklist.md lists exactly what to verify on real machines.
+
+## What an email may change by itself (since 2026-10-25)
+`jobhunter email policy receipts|suggest|all` (default `receipts`): an automated application receipt may mark a
+job as applied on its own, reversibly; a rejection, an interview invitation, an offer or a recruiter's reply is
+suggested on Today under "Needs your answer" until you confirm or dismiss it. `suggest` makes every change wait
+for you; `all` restores confident automatic matches (a known job link, or the employer and the title). Every
+automatic change shows under "Something changed" for a week with Undo (`jobhunter email unlink <id>`).
+`jobhunter email review` lists both. Newsletters and automated messages never count as replies.

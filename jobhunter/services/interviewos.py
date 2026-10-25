@@ -58,8 +58,13 @@ def export(ctx: AppContext, db: Database, job_id: int, include_messages: bool = 
         cv_text = ""
     case = workspace.strongest_case(db, job, facts, cv_text, years_relevant=(profile.get("targets") or {}).get("professional_years_relevant")) if facts else {"items": [], "examples": []}
     employer = job.get("employer_name") or ("confidential employer" if job.get("employer_confidential") else "unknown employer")
+    from jobhunter.services import intake as intake_svc
+
+    origin_line = intake_svc.provenance_line(db, job_id)
 
     lines = [f"# InterviewOS hand-off: {job['title']} at {employer}", "", f"Exported by Hunter (JobHunterOS by KubeCraft) on {now_iso()}. A snapshot: nothing here is rewritten later.", ""]
+    if origin_line:
+        lines += [origin_line, ""]
     lines += ["## Vacancy snapshot (as Hunter saw it)", "", f"- Title: {job['title']}", f"- Employer: {employer}", f"- Location: {job.get('location_text') or 'not stated'}" + (f" · {job['remote_restriction']}" if job.get("remote_restriction") else ""), f"- Pay as listed: {job.get('salary_text') or 'not stated'}", f"- Posted: {job.get('posted_at') or 'unknown'} (source field: {job.get('posted_at_provenance') or 'unknown'})", f"- First seen by Hunter: {job['first_seen_at']}; last checked {job.get('last_checked_at') or job.get('last_seen_at') or 'unknown'}", f"- Discovery link: {job.get('discovery_url') or 'none'}", f"- Employer link: {job.get('direct_url') if job.get('direct_url_status') == 'verified' else 'not confirmed'}", f"- Apply link: {job.get('apply_url') or 'none'}", "", "### Description (stored copy)", "", (job.get("description_text") or "")[:6000], ""]
     lines += ["## Company and role brief (with sources)", ""]
     if research:
