@@ -529,22 +529,32 @@ def archive_cv(db: Database, variant_key: str, archive: bool = True) -> dict:
     return _variant_view(db, _variant_row(db, variant_key))
 
 
-def delete_cv(db: Database, variant_key: str) -> dict:
-    """Remove a CV for good. Refused when an application recorded one of its versions as sent (history must
-    stay true) and for the profile CV (the profile was built from it): those can be archived instead."""
+def delete_cv(db: Database, variant_key: str, force: bool = False) -> dict:
+    """Remove a CV for good: its files, text and versions. When an application recorded one of its versions as
+    sent, the plain delete is refused (archive hides it instead); `force` deletes anyway and leaves a tombstone on
+    those applications (label, version, file name, hash, date) so the history stays true without the file. The
+    profile CV is never deleted (the profile was built from it): archive it."""
     ensure_cv_variants(db)
     v = _variant_row(db, variant_key)
     if v["is_profile"]:
         raise CVError("This is the CV your profile was built from. Archive it instead of deleting it.")
-    keys = [r["revision_key"] for r in db.fetchall("SELECT revision_key FROM cv_revisions WHERE variant_id = ?", (v["id"],))]
-    used = db.fetchone(f"SELECT COUNT(*) AS n FROM applications WHERE submitted_cv_revision_key IN ({','.join('?' * len(keys)) or 'NULL'})", tuple(keys))["n"] if keys else 0
-    if used:
-        raise CVError("You told Hunter you sent this CV for an application, so it stays in your history. Archive it instead.")
-    docs_ids = [r["document_id"] for r in db.fetchall("SELECT document_id FROM cv_revisions WHERE variant_id = ?", (v["id"],))]
+    revs = db.fetchall("SELECT r.*, d.sha256, d.original_filename FROM cv_revisions r JOIN source_documents d ON d.id = r.document_id WHERE r.variant_id = ?", (v["id"],))
+    keys = [r["revision_key"] for r in revs]
+    used = db.fetchall(f"SELECT id, submitted_cv_revision_key FROM applications WHERE submitted_cv_revision_key IN ({','.join('?' * len(keys)) or 'NULL'})", tuple(keys)) if keys else []
+    if used and not force:
+        raise CVError("You told Hunter you sent this CV for an application, so it stays in your history. Archive it instead, or delete it with --force to remove the file and keep only a record of what was sent (name, version, hash).")
+    docs_ids = [r["document_id"] for r in revs]
     with db.tx():
+        by_key = {r["revision_key"]: r for r in revs}
+        for a in used:
+            r = by_key[a["submitted_cv_revision_key"]]
+            db.update("applications", {"submitted_cv_tombstone_json": json.dumps({"label": v["label"], "number": r["number"], "filename": r["original_filename"], "sha256": r["sha256"], "revision_key": r["revision_key"], "deleted_at": now_iso()})}, "id = ?", (a["id"],))
         db.execute("UPDATE applications SET cv_variant_key = NULL, cv_choice = NULL WHERE cv_variant_key = ?", (variant_key,))
         db.execute("DELETE FROM cv_revisions WHERE variant_id = ?", (v["id"],))
         db.execute("DELETE FROM cv_variants WHERE id = ?", (v["id"],))
+        for did in docs_ids:
+            db.execute("UPDATE source_documents SET superseded_by = NULL WHERE superseded_by = ?", (did,))
+            db.execute("UPDATE applications SET cv_document_id = NULL WHERE cv_document_id = ?", (did,))
         for did in docs_ids:
             row = db.fetchone("SELECT * FROM source_documents WHERE id = ?", (did,))
             db.execute("DELETE FROM source_documents WHERE id = ?", (did,))

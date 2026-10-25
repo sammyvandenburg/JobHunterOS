@@ -20,7 +20,27 @@ from jobhunter.services import documents as docs
 from jobhunter.services import profile as profile_svc
 from jobhunter.util import now, now_iso, parse_iso, sha256_text, stable_json
 
-SENSITIVE = re.compile(r"(work authori[sz]ation|right to work|visa|sponsorship|salary|compensation|expected pay|notice period|start date|availability|gender|ethnicity|race|disability|veteran|religion|sexual orientation|age|date of birth|criminal|background check|nationality|citizenship|marital)", re.I)
+# Questions Hunter never drafts. Two kinds, kept apart: personal, legal or eligibility declarations (only the
+# person may answer; never guessed), and factual declarations only they can make (pay, notice period, start
+# date). Word boundaries matter: "manage", "languages" and "trace" are not "age" or "race".
+PERSONAL_RX = re.compile(r"\b(work authori[sz]ation|legally (?:authori[sz]ed|allowed|permitted|entitled)|authori[sz]ed to work|eligible to work|work permit|right to work|visa|sponsorship|sponsor|gender|ethnicity|ethnic|race|racial|disability|disabled|veteran|religion|religious|sexual orientation|\bage\b|how old|date of birth|birth ?date|criminal|conviction|background check|nationality|citizenship|citizen|marital|pregnan\w*|health condition)\b", re.I)
+DECLARATION_RX = re.compile(r"\b(salary|compensation|expected pay|pay expectation|rate expectation|notice period|start date|when (?:can|could) you start|earliest start|available to start|availability to start|available from)\b", re.I)
+SENSITIVE = re.compile(PERSONAL_RX.pattern + "|" + DECLARATION_RX.pattern, re.I)  # kept for callers: "Hunter must not draft this"
+QUESTION_NOTES = {
+    "personal": "Only you can answer this one. Hunter never guesses personal, legal or eligibility questions.",
+    "declaration": "Needs your answer: only you know this (pay, notice, start date). Hunter never guesses it.",
+    "open": "Write this in your own words. Hunter's draft, when there is one, uses only your approved facts.",
+}
+
+
+def classify_question(question: str) -> str:
+    """personal (never drafted, never guessed), declaration (needs the person's own answer), or open."""
+    q = question or ""
+    if PERSONAL_RX.search(q):
+        return "personal"
+    if DECLARATION_RX.search(q):
+        return "declaration"
+    return "open"
 COMMON_QUESTIONS = [
     "Why are you interested in this role?",
     "Tell us about your experience with the technologies in this job.",
@@ -552,13 +572,10 @@ def save_user_answer(db: Database, draft_id: int, question: str, text: str) -> d
     row = db.fetchone("SELECT * FROM drafts WHERE id = ? AND kind = 'package'", (draft_id,))
     if not row:
         raise DraftError("That help-to-apply package was not found.")
-    content = json.loads(row["content_json"])
-    edits = content.setdefault("user_answers", {})
-    text = (text or "").strip()
-    if text:
-        edits[question] = {"text": text[:4000], "saved_at": now_iso()}
-    else:
-        edits.pop(question, None)
-    with db.tx():
-        db.update("drafts", {"content_json": json.dumps(content)}, "id = ?", (draft_id,))
-    return {"draft_id": draft_id, "question": question, "saved": bool(text)}
+    from jobhunter.services import workspace
+
+    try:
+        res = workspace.save_answer(db, row["job_id"], workspace.answer_id(question), text)
+    except workspace.WorkspaceError as exc:
+        raise DraftError(str(exc)) from exc
+    return {"draft_id": draft_id, "question": question, "saved": res["saved"]}

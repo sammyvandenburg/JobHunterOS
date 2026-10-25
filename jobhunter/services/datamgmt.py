@@ -16,6 +16,7 @@ EXPORT_TABLES = [
     "hunt_runs", "source_runs", "jobs", "job_observations", "matches", "recommendations", "applications", "events",
     "drafts", "contacts", "followups", "email_accounts", "email_messages", "notifications", "consents", "feedback",
     "schedule", "settings", "handoffs", "job_notes",
+    "cv_variants", "cv_revisions", "requests", "research", "user_texts", "board_sync",
 ]
 
 
@@ -33,7 +34,12 @@ def export_all(ctx: AppContext, db: Database) -> dict:
         p = Path(row["stored_path"])
         if p.exists():
             shutil.copy2(p, docs_dir / p.name)
-    write_private_file(out_dir / "README.txt", b"JobHunterOS export. JSON per table plus your original documents (byte-identical). Secrets are not exported.\n")
+    write_private_file(out_dir / "README.txt", (
+        b"JobHunterOS export.\n\n"
+        b"JSON per table: your profile, preferences, jobs, matches, applications (with the submission snapshots), your own answers and letters (user_texts), "
+        b"CV names and versions (cv_variants, cv_revisions: metadata with the hash of every version), research, contacts, follow-ups, notes, requests.\n"
+        b"documents/: the original files themselves (CVs, LinkedIn PDF), byte-identical, named by their hash. A version whose file was not on this computer is listed in cv_revisions but has no file here.\n"
+        b"Secrets (tokens, passwords) are not exported.\n"))
     return {"path": str(out_dir), "tables": counts, "note": "Secrets (tokens, passwords) are not included."}
 
 

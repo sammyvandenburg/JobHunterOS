@@ -40,7 +40,7 @@ class LeverAdapter(SourceAdapter):
             except (FetchError, UnsafeURL) as exc:
                 if postings:
                     return FetchResult(source_id=source_id, status="partial", postings=postings, error=str(exc), complete=False, http_status=getattr(exc, "status", None))
-                return self.failed(source_id, f"Could not read Lever site '{site}': {exc}", getattr(exc, "status", None))
+                return self.failed(source_id, f"Could not read Lever site '{site}': {exc}", getattr(exc, "status", None), retry_after=getattr(exc, "retry_after", None))
             except ValueError:
                 return self.failed(source_id, f"Lever site '{site}' returned data Hunter could not parse.")
             if not isinstance(data, list):

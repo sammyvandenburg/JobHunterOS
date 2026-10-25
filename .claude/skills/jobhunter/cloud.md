@@ -62,8 +62,9 @@ is done and which comes next from the evidence in the database, so check it when
 6. **Save.** `uv run jobhunter cloud save --branch main --json` (commits `state/` and pushes it to their copy's
    `main`; pulls and rebases first if they saved meanwhile). If the push fails, say so plainly: the email may
    have gone out but the history did not reach the repository.
-7. **Publish.** If the dashboard is linked, step 2 of the Sync in [board.md](board.md) (`board export`, then the
-   batch of writes).
+7. **Publish.** If the dashboard is linked, step 2 of the Sync in [board.md](board.md) (`board export`, the
+   batch of writes, then `board published` once the batch result shows every write done). "Synced" in the
+   report means that confirmation ran; a batch that was refused or never sent is "written, not published".
 8. Report in four lines: jobs found (and sources that failed), email sent (Gmail message id) or why not, state
    saved (commit) or not, dashboard read and written or not. Every line comes from a command's output, never
    from memory.

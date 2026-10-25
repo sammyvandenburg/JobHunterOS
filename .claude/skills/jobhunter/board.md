@@ -53,6 +53,10 @@ get past it on their behalf.
    the lists did not show), plus a `delete` (with its version) for every `delete_if_present` name the
    `board` list did show. If the batch would exceed 1 MiB, split it: shards first, `meta/run` last.
    If a write is refused because a version changed, list again and set again, once.
+   **Confirm it landed:** when the batch result reports every write as done, run
+   `uv run jobhunter board published --manifest <DIR>/out/manifest.json --json`. Until then the run contract
+   says "written to disk, not published", `plan` keeps the publish step open, and the status says the page was
+   not synced. Never run it after a refused or partial batch; fix the batch first.
 3. Say what the page shows now: how many recommended, and the link.
 
 Never write under `actions/` (that is the page's), never republish the page with a student's data in it,

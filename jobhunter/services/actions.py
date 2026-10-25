@@ -129,7 +129,7 @@ def mark_prepared(db: Database, job_id: int, cv_document_id: int | None = None) 
     return {"application_id": app["id"], "stage": app["stage"]}
 
 
-def _bind_submission(db: Database, app: dict, ts: str, cv_document_id: int | None = None, cv_choice: str | None = None) -> None:
+def _bind_submission(db: Database, app: dict, ts: str, cv_document_id: int | None = None, cv_choice: str | None = None, evidence: dict | None = None, destination: str | None = None) -> None:
     """Attach the CV and package that were current when the person applied, plus a snapshot of what was prepared.
     Never overwritten later. `cv_choice`: "prepared" (the version in the package), a CV variant key ("another
     CV": its current version), or "unknown" ("not sure": no version is invented)."""
@@ -140,6 +140,17 @@ def _bind_submission(db: Database, app: dict, ts: str, cv_document_id: int | Non
         choice = cv_choice or "prepared"
         if choice == "unknown":
             values.update({"submitted_cv_choice": "unknown", "submitted_cv_revision_key": None})
+        elif isinstance(choice, str) and choice.startswith("rev"):
+            # The exact version the person saw at confirmation: that one, or nothing. Never a quiet substitute.
+            r = docs.cv_revision(db, choice)
+            if r and not r.get("archived_at_variant"):
+                v = db.fetchone("SELECT archived_at FROM cv_variants WHERE id = ?", (r["variant_id"],))
+                if v and v.get("archived_at"):
+                    raise ActionError(f"The CV version you chose ({r['label']}, version {r['number']}) is archived. Bring it back or choose another CV.")
+                values.update({"submitted_cv_choice": "exact", "submitted_cv_revision_key": r["revision_key"]})
+                cv_document_id = cv_document_id or r["document_id"]
+            else:
+                raise ActionError("That CV version is not known here. Choose the CV again.")
         elif choice == "prepared":
             sel = db.fetchone("SELECT cv_variant_key FROM applications WHERE id = ?", (app["id"],))
             pkg = db.fetchone("SELECT content_json FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (app["job_id"],))
@@ -177,26 +188,43 @@ def _bind_submission(db: Database, app: dict, ts: str, cv_document_id: int | Non
         if cur:
             values["cv_document_id"] = cur["id"]
     if not app.get("submission_json"):
-        values["submission_json"] = json.dumps(_submission_snapshot(db, app, values, ts))
+        values["submission_json"] = json.dumps(_submission_snapshot(db, app, values, ts, evidence=evidence, destination=destination))
+        values["submitted_destination"] = destination or (db.fetchone("SELECT COALESCE(apply_url, direct_url, discovery_url) AS d FROM jobs WHERE id = ?", (app["job_id"],)) or {}).get("d")
     if values:
         values["updated_at"] = ts
         db.update("applications", values, "id = ?", (app["id"],))
 
 
-def _submission_snapshot(db: Database, app: dict, values: dict, ts: str) -> dict:
-    """What was prepared when the person said "I applied": the vacancy as stored, the package version, the answers
-    they confirmed (their wording, not Hunter's drafts), and the CV version. Kept as history, never recomputed."""
-    job = db.fetchone("SELECT title, employer_name, description_hash, apply_url, direct_url, location_text, salary_text, posted_at, last_checked_at FROM jobs WHERE id = ?", (app["job_id"],)) or {}
+def _submission_snapshot(db: Database, app: dict, values: dict, ts: str, evidence: dict | None = None, destination: str | None = None) -> dict:
+    """What was prepared when the person said "I applied": the vacancy as stored, the destination, the package
+    version, the answers they confirmed (their wording, never Hunter's drafts), the messages confirmed sent, the
+    CV version with its hash, and the evidence. Kept as history, never recomputed; three states stay distinct:
+    unknown (not sure), not recorded (nothing was saved), explicitly empty (the person cleared it)."""
+    from jobhunter.services import documents as docs
+    from jobhunter.services import workspace
+
+    job = db.fetchone("SELECT title, employer_name, description_hash, apply_url, direct_url, discovery_url, location_text, salary_text, posted_at, last_checked_at FROM jobs WHERE id = ?", (app["job_id"],)) or {}
     pkg_id = values.get("package_draft_id") or app.get("package_draft_id")
     pkg = db.fetchone("SELECT id, content_json, created_at FROM drafts WHERE id = ?", (pkg_id,)) if pkg_id else None
     content = json.loads(pkg["content_json"] or "{}") if pkg else {}
-    answers = {q: {"text": a.get("text"), "saved_at": a.get("saved_at")} for q, a in (content.get("user_answers") or {}).items()}
+    answers = {}
+    for r in workspace.user_texts(db, app["job_id"], "answer"):
+        answers[r["question"] or r["key"]] = {"text": r.get("text") or "", "saved_at": r.get("updated_at"), "state": "explicitly_empty" if not (r.get("text") or "") else "confirmed"}
+    texts = {k: {"text": t["text"], "saved_at": t.get("updated_at")} for k in ("intro", "letter") if (t := workspace.user_text(db, app["job_id"], k, k)) and t.get("text")}
+    sent = [{"draft_id": d["id"], "kind": d["kind"], "sent_confirmed_at": d["sent_confirmed_at"]} for d in db.fetchall("SELECT id, kind, sent_confirmed_at FROM drafts WHERE job_id = ? AND status = 'sent_confirmed'", (app["job_id"],))]
+    rev_key = values.get("submitted_cv_revision_key") or app.get("submitted_cv_revision_key")
+    rev = docs.cv_revision(db, rev_key) if rev_key else None
     return {
         "at": ts,
         "vacancy": job,
+        "destination": destination or job.get("apply_url") or job.get("direct_url") or job.get("discovery_url"),
         "package": {"draft_id": pkg_id, "version": content.get("version"), "created_at": pkg["created_at"] if pkg else None, "inputs_hash": content.get("inputs_hash")} if pkg else None,
         "answers": answers,
-        "cv": {"choice": values.get("submitted_cv_choice") or app.get("submitted_cv_choice"), "revision_key": values.get("submitted_cv_revision_key") or app.get("submitted_cv_revision_key")},
+        "answers_state": "confirmed" if any(a["state"] == "confirmed" for a in answers.values()) else ("explicitly_empty" if answers else "not_recorded"),
+        "texts": texts,
+        "messages_sent": sent,
+        "cv": {"choice": values.get("submitted_cv_choice") or app.get("submitted_cv_choice") or "unknown", "revision_key": rev_key, "sha256": rev["sha256"] if rev else None, "filename": rev["original_filename"] if rev else None, "label": rev["label"] if rev else None, "number": rev["number"] if rev else None},
+        "evidence": evidence or {"source": "user"},
     }
 
 
@@ -221,7 +249,7 @@ def mark_applied(db: Database, job_id: int, applied_at: str | None = None, sourc
         if STAGE_ORDER[app["stage"]] < STAGE_ORDER["applied"]:
             values.update({"stage": "applied", "stage_changed_at": ts})
         db.update("applications", values, "id = ?", (app["id"],))
-        _bind_submission(db, app, ts, cv_document_id, cv_choice)
+        _bind_submission(db, app, ts, cv_document_id, cv_choice, evidence={"source": source, **(evidence or {})})
     return {"application_id": app["id"], "stage": "applied", "duplicate": False}
 
 

@@ -220,7 +220,7 @@ JOURNEY_POSTINGS = [
 ]
 
 
-def _record_without_watch_source_update(db, run_id, source, res, stats):
+def _record_without_watch_source_update(db, run_id, source, res, stats, **_kwargs):
     """The fake source has no watch_sources row; record its jobs and counts without touching that table."""
     from jobhunter.services import jobs as jobs_svc
 

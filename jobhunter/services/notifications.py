@@ -86,7 +86,7 @@ def _followup_lines(db: Database) -> list[str]:
 
 
 def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) -> Digest:
-    lines = ["Hi,", "", f"Hunter found {len(jobs)} job(s) worth a look.", ""]
+    lines = ["Hi,", "", f"Hunter found {len(jobs)} job(s) worth a look." if jobs else "No new jobs today. Your reminders:", ""]
     html_items = []
     reminders = _followup_lines(db)
     if reminders:
@@ -121,7 +121,9 @@ def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) ->
     text = "\n".join(lines)
     html = "<p>Hi,</p><p>Hunter found {} job(s) worth a look.</p><ul>{}</ul><p>Open your dashboard on the computer where Hunter runs to act on these.</p><p>Hunter, your JobHunterOS assistant by KubeCraft</p>".format(len(jobs), "".join(html_items))
     ids = [int(j["id"]) for j in jobs]
-    return Digest(subject=f"JobHunterOS: {len(jobs)} job(s) worth a look", text=text, html=html, job_ids=ids, content_hash=sha256_text(json.dumps(sorted(ids))))
+    subject = f"JobHunterOS: {len(jobs)} job(s) worth a look" if jobs else "JobHunterOS: your follow-up reminders"
+    seed = json.dumps(sorted(ids)) if ids else "reminders|" + now_iso()[:10] + "|" + "|".join(reminders)
+    return Digest(subject=subject, text=text, html=html, job_ids=ids, content_hash=sha256_text(seed))
 
 
 def _salary(j: dict) -> str:
@@ -347,7 +349,7 @@ def prepare_handoff(ctx: AppContext, db: Database) -> dict:
 
     _board.apply_unresolved(db)  # a page action whose job arrived with this hunt counts before anything is emailed
     jobs = pending_jobs(db)
-    if not jobs:
+    if not jobs and not _followup_lines(db):
         return _prepared(db, {"status": "skipped", "note": "Nothing new worth emailing."})
     digest = compose(db, jobs)
     path = ctx.paths.exports_dir / "digests" / f"digest-{now_iso().replace(':', '')}.txt"

@@ -12,8 +12,11 @@ class SourceAdapter:
         raise NotImplementedError
 
     @staticmethod
-    def failed(source_id: str, error: str, status: int | None = None) -> FetchResult:
-        return FetchResult(source_id=source_id, status="failed", error=error, http_status=status, complete=False)
+    def failed(source_id: str, error: str, status: int | None = None, retry_after: float | None = None) -> FetchResult:
+        if status == 304:
+            # The source said nothing changed since the last check: a real answer, not a failure, and not a reason to close anything.
+            return FetchResult(source_id=source_id, status="skipped", notes="Unchanged since the last check (the source said so).", http_status=304, complete=True)
+        return FetchResult(source_id=source_id, status="failed", error=error, http_status=status, complete=False, retry_after=retry_after)
 
     def convert_all(self, source_id: str, items: list, config: dict) -> tuple[list, list[str]]:
         """Convert every raw item, keeping the ids of the ones that could not be read. The caller turns a non-empty

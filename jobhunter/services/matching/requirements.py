@@ -83,8 +83,8 @@ def parse(description: str | None, title: str | None = None) -> Requirements:
             seen_header = True
             if len(line.split()) <= 4:
                 continue
-        elif section == "preferred" and not re.match(r"^[-*•·▪◦]|^\d+[.)]", line) and (len(line) > 40 or line.endswith((".", "!"))) and not PREFERRED_CUE.search(line):
-            section = "essential"  # a "nice to have" list is a list; a full sentence after it is the posting again
+        elif section == "preferred" and not re.match(r"^[-*•·▪◦]|^\d+[.)]", line) and len(line.split()) >= 6 and (len(line) > 40 or line.endswith((".", "!"))) and not PREFERRED_CUE.search(line):
+            section = "essential"  # a "nice to have" list is a list ("Pulumi." is still an item); a full sentence after it is the posting again
         for m in NEGATION_CUE.finditer(line):
             phrase = m.group("tool") or m.group("tool2") or m.group("tool3") or ""
             req.negated |= extract_skills(phrase, implied=False)

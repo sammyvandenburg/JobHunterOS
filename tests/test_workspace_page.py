@@ -116,7 +116,9 @@ def test_prepare_application_from_the_page_reaches_hunter_and_comes_back_to_the_
         ta = dialog.locator("textarea[id^=ans-]").first
         aid = ta.get_attribute("id")[4:]
         ta.fill("Because the platform team runs things I")
-        run = fake.doc("meta/run"); run["at"] = "2026-10-22T10:00:00Z"; fake.load({"meta/run": run})
+        run = fake.doc("meta/run")
+        run["at"] = "2026-10-22T10:00:00Z"
+        fake.load({"meta/run": run})
         time.sleep(0.5)
         assert ta.input_value() == "Because the platform team runs things I" and page.evaluate("document.activeElement && document.activeElement.id") == "ans-" + aid
         ta.type(" care about.")
@@ -218,13 +220,13 @@ def test_contacts_are_found_on_request_named_by_the_person_and_only_confirmed_by
         assert len(cs) == 1 and cs[0]["type"] == "connection" and cs[0]["route"] == "https://www.linkedin.com/in/sam-friend"
         assert _wait(lambda: dialog.get_by_role("button", name="I contacted them").count() == 1)
         dialog.get_by_role("button", name="Draft a short message").click()
-        assert _wait(lambda: (((fake.doc(f"actions/{nw}") or {}).get("requests") or {}).get("message") or {}).get("params", {}).get("contact") == cs[0]["id"])
+        assert _wait(lambda: (((fake.doc(f"actions/{nw}") or {}).get("requests") or {}).get("message") or {}).get("params", {}).get("contact") in (cs[0]["key"], cs[0]["id"]))
         _, done, _ = _sync(ctx, db, site, 3)
         assert done[0]["state"] == "ready"
         assert _wait(lambda: "Hi Sam Friend," in dialog.inner_text())
         assert not [e for e in __import__("jobhunter.services.actions", fromlist=["history"]).history(db, jid) if e["kind"] == "contacted"]
         dialog.get_by_role("button", name="I contacted them").click()
-        assert _wait(lambda: str(cs[0]["id"]) in ((fake.doc(f"actions/{nw}") or {}).get("contacted") or {}))
+        assert _wait(lambda: cs[0]["key"] in ((fake.doc(f"actions/{nw}") or {}).get("contacted") or {}))  # the portable key, not the row id
         res, _, _ = _sync(ctx, db, site, 4)
         assert "contacted" in res["applied"][0]["changes"] and workspace.list_contacts(db, jid)[0]["status"] == "contacted"
         assert _wait(lambda: "You contacted them" in dialog.inner_text())
@@ -296,7 +298,7 @@ def test_a_direct_line_sends_the_request_to_hunter_and_a_refused_line_falls_back
 def test_the_same_page_works_at_phone_and_desktop_widths(site, ctx, db):
     from playwright.sync_api import sync_playwright
 
-    fake, nw, jid = site["fake"], site["nw"], site["jid"]
+    nw, jid = site["nw"], site["jid"]
     workspace.run_request(ctx, db, workspace.request(db, jid, "prepare", {}, request_id="prepare:seed")["request_id"])
     _sync(ctx, db, site, 0)
     with sync_playwright() as p:

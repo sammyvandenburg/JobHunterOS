@@ -2,6 +2,7 @@
 
 | Capability | Implemented | Fixture-tested | Live-tested in this build | Notes |
 |---|---|---|---|---|
+| Gate A (2026-10-25): push destination proven on the push URL, exactly two state files committed, immutable job/contact/request identities, field-level preference merge with visible conflicts, match fingerprints, forward-only delivery state, leased request claims, the person's answers kept apart from Hunter's suggestions, exact CV binding and an immutable submission snapshot, workspace export and tombstoned deletion, sourced research kept across refreshes, one requirement evaluation, question classes and limit units, field authority per source, conditional requests with Retry-After, `board published` confirmation and separated status fields | yes | yes (`tests/test_gate_a.py`, 18 tests) | no live writes made for this gate | Per-item record in `docs/gate-a-2026-10-25.md`. |
 | Onboarding, resume, readiness gate | yes | yes | n/a | Self-reported readiness; no course verification exists. |
 | Document import (PDF/DOCX/MD/TXT), hashing, immutability | yes | yes (text/markdown; PDF/DOCX parsers exercised by code paths) | n/a | Scans reported as unreadable. |
 | GitHub evidence (public repos) | yes | parser only | no | Unauthenticated GitHub API; 60 req/h limit applies. |

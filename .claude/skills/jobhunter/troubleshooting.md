@@ -15,7 +15,7 @@
 | Claude explanations unavailable | Results stay rule-based and are labelled that way. You can write explanations in this session via `match pending` / `match submit`. |
 | Environment problems | `uv run jobhunter doctor` lists checks with fixes. |
 | Person wants their data gone | `uv run jobhunter data export` first if they want a copy, then `uv run jobhunter data delete --confirm DELETE`. Backups and copies elsewhere are not touched; say so. |
-| Dashboard page says "Hunter hasn't synced yet" or shows old jobs | Run the Sync in board.md (read their actions, `board import`, `board export`, write the files). After a Hunter update the export rematches by itself. |
+| Dashboard page says "Hunter hasn't synced yet" or shows old jobs | Run the Sync in board.md (read their actions, `board import`, `board export`, write the files, `board published`). After a Hunter update the export rematches by itself. |
 | Dashboard page says "Sign in to see your jobs" | They opened the link signed out, or in another account. The page's data is owner-only by design; sign in to the Claude account that created it. |
 | `board export` says there is no approved profile | Finish setup first (`uv run jobhunter next`). |
 | Artifact tools missing in this session | Say so; use the local dashboard (`uv run jobhunter dashboard`). Never type job data into a page by hand. |

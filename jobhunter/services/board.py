@@ -392,14 +392,22 @@ def _hunter_status(db: Database) -> dict:
     last = hunt.last_run(db)
     last_sent = db.fetchone("SELECT sent_at FROM notifications WHERE kind = 'digest' AND status = 'sent' ORDER BY sent_at DESC LIMIT 1")
     last_digest = db.fetchone("SELECT status, sent_at, created_at FROM notifications WHERE kind = 'digest' AND channel = 'email' ORDER BY id DESC LIMIT 1")
+    work = {r["state"]: r["n"] for r in db.fetchall("SELECT state, COUNT(*) AS n FROM requests GROUP BY state")}
+    last_cloud = db.fetchone("SELECT status, finished_at, started_at FROM hunt_runs WHERE trigger = 'cloud' ORDER BY id DESC LIMIT 1")
     return {
         "channel": db.get_setting(CHANNEL_SETTING),
+        "dashboard_url": db.get_setting(URL_SETTING),
+        "publish": publish_state(db),
+        "work": {"queued": int(work.get("requested") or 0), "running": int(work.get("running") or 0), "needs_input": int(work.get("needs_input") or 0), "ready": int(work.get("ready") or 0), "failed": int(work.get("failed") or 0)},
+        "routine": {"last_run_at": (last_cloud.get("finished_at") or last_cloud.get("started_at")) if last_cloud else None, "last_status": last_cloud["status"] if last_cloud else None, "verified": bool(last_cloud), "note": "Only runs that happened are known here; the schedule itself lives in the person's Claude account."},
         "last_successful_hunt_at": ok.get("finished_at") if ok else None,
         "last_run": {"status": last["status"], "trigger": last.get("trigger"), "at": last.get("finished_at") or last.get("started_at")} if last else None,
         "automatic_hunting": "running" if (sched.get("enabled") and running) else ("set up, not running now" if sched.get("enabled") else "off"),
         "next_hunt_at": sched.get("next_run_at") if (sched.get("enabled") and running) else None,
         "email": {
             "enabled": bool(address) and db.get_setting("digest.transport") in {"claude", "gmail", "smtp"},
+            "configured": bool(address) and db.get_setting("digest.transport") in {"claude", "gmail", "smtp"},
+            "delivery_active": bool(last_sent),  # configured is not delivered: only a recorded send proves delivery works
             "address_hint": (address[:2] + "…@" + address.split("@", 1)[1]) if address and "@" in address else None,
             "last_sent_at": last_sent["sent_at"] if last_sent else None,
             "last_status": last_digest["status"] if last_digest else None,
@@ -510,6 +518,25 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
     _write(out / "manifest.json", manifest)
     db.set_setting("board.last_export", {"at": run["at"], "seq": _next_seq(db), "jobs": len(docs), "recommended": len(recommended), "shards": len(shards)})
     return manifest
+
+
+PUBLISH_SETTING = "board.last_publish"
+
+
+def published(db: Database, manifest: dict | None = None, at: str | None = None) -> dict:
+    """Claude confirms that the batch write of an export really landed on the page. Only then does the run
+    contract say "the page shows this run"; an export that was never written stays "written to disk, not published"."""
+    exp = db.get_setting("board.last_export") or {}
+    value = {"at": at or now_iso(), "export_at": exp.get("at"), "seq": exp.get("seq"), "jobs": (manifest or {}).get("jobs", exp.get("jobs")), "work": (manifest or {}).get("work")}
+    db.set_setting(PUBLISH_SETTING, value)
+    return {"published": value}
+
+
+def publish_state(db: Database) -> dict:
+    exp = db.get_setting("board.last_export") or {}
+    pub = db.get_setting(PUBLISH_SETTING) or {}
+    confirmed = bool(pub) and pub.get("seq") == exp.get("seq")
+    return {"exported_at": exp.get("at"), "published_at": pub.get("at") if confirmed else None, "confirmed": confirmed, "note": None if confirmed else ("The last export was written to disk but its publication was never confirmed (`jobhunter board published`)." if exp else None)}
 
 
 def _next_seq(db: Database) -> int:

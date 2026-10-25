@@ -131,7 +131,7 @@ def test_the_page_shows_the_same_work_in_a_new_browser_session(ctx, db, tmp_path
                 context.add_init_script(SHIM)
                 page = context.new_page()
                 errors: list[str] = []
-                page.on("pageerror", lambda e: errors.append(str(e)))
+                page.on("pageerror", lambda e, errors=errors: errors.append(str(e)))
                 page.goto(url + "/")
                 page.wait_for_selector("button.row")
                 page.get_by_role("button", name="Applied").first.click()

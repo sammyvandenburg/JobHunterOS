@@ -128,6 +128,7 @@ class SafeClient:
     ):
         self.timeout = timeout
         self.max_bytes = max_bytes
+        self.last_response: dict = {}  # etag, last_modified, bytes, status of the last successful GET
         self.retries = retries
         self.min_interval = min_interval_per_host
         self._client = httpx.Client(
@@ -166,8 +167,12 @@ class SafeClient:
                     raise FetchError(f"network error after {attempt} attempts: {exc}") from exc
                 time.sleep(min(2.0 ** attempt, 8.0))
             except FetchError as exc:
+                if exc.status == 304:
+                    raise
                 if exc.status in (429, 500, 502, 503, 504) and attempt <= self.retries:
-                    time.sleep(min(2.0 ** attempt, 8.0))
+                    if exc.retry_after and exc.retry_after > 30:
+                        raise  # the source asked for a long wait: respect it on a later run, never spin here
+                    time.sleep(min(exc.retry_after or (2.0 ** attempt), 8.0))
                     continue
                 raise
 
@@ -178,7 +183,10 @@ class SafeClient:
         while True:
             host = urlparse(current).hostname or ""
             self._politeness(host)
-            with self._client.stream("GET", current, params=params if hops == 0 else None, headers=headers) as resp:
+            send_headers = dict(headers or {}) if hops == 0 else {k: v for k, v in (headers or {}).items() if k.lower() not in {"if-none-match", "if-modified-since"}}
+            with self._client.stream("GET", current, params=params if hops == 0 else None, headers=send_headers or None) as resp:
+                if resp.status_code == 304:
+                    raise FetchError("not modified since the last check", status=304)
                 if resp.status_code in (301, 302, 303, 307, 308):
                     hops += 1
                     if hops > MAX_REDIRECTS:
@@ -199,7 +207,8 @@ class SafeClient:
                 content = b"".join(chunks)
                 elapsed = int((time.monotonic() - start) * 1000)
                 if resp.status_code >= 400:
-                    raise FetchError(f"HTTP {resp.status_code} for {current}", status=resp.status_code, body=content[:500])
+                    raise FetchError(f"HTTP {resp.status_code} for {current}", status=resp.status_code, body=content[:500], retry_after=parse_retry_after(resp.headers.get("retry-after")))
+                self.last_response = {"etag": resp.headers.get("etag"), "last_modified": resp.headers.get("last-modified"), "bytes": total, "status": resp.status_code, "url": current}
                 return Response(
                     url=url,
                     final_url=current,
@@ -226,8 +235,24 @@ class SafeClient:
             return current, resp.status_code
 
 
+def parse_retry_after(value: str | None) -> float | None:
+    """Seconds to wait, from a Retry-After header (delay-seconds or an HTTP date)."""
+    if not value:
+        return None
+    v = value.strip()
+    if v.isdigit():
+        return float(v)
+    try:
+        from email.utils import parsedate_to_datetime
+
+        dt = parsedate_to_datetime(v)
+        return max(0.0, (dt - __import__("datetime").datetime.now(dt.tzinfo)).total_seconds())
+    except Exception:
+        return None
+
+
 class FetchError(Exception):
-    def __init__(self, message: str, status: int | None = None, body: bytes | None = None):
+    def __init__(self, message: str, status: int | None = None, body: bytes | None = None, retry_after: float | None = None):
         super().__init__(message)
         self.status = status
         self.body = body

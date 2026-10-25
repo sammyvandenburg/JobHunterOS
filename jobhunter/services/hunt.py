@@ -411,7 +411,7 @@ def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] |
     def step(source: dict, res: FetchResult) -> None:
         # Progressive persistence: each source's jobs are stored as soon as that source answers,
         # so the dashboard fills up during the search instead of at the end.
-        new_ids = _record_source_run(db, run_id, source, res, stats) or []
+        new_ids = _record_source_run(db, run_id, source, res, stats, last_response=res.refresh) or []
         if new_ids:
             # Early matches: compare this source's new jobs right away, so the best ones are visible
             # while slower sources are still answering. The full pass at the end catches the rest.
@@ -506,9 +506,40 @@ def _execute(ctx: AppContext, db: Database, run_id: int, source_ids: list[str] |
     return stats
 
 
+class _SourceClient:
+    """One source's view of the shared client: the first GET carries the source's conditional headers (ETag,
+    Last-Modified), and the headers of the last successful answer are kept for the refresh history. Sources are
+    fetched side by side, so this state must not live on the shared client."""
+
+    def __init__(self, client: SafeClient, conditional: dict | None):
+        self._client = client
+        self._conditional = conditional
+        self.last_response: dict = {}
+
+    def get(self, url: str, params: dict | None = None, headers: dict | None = None, allow_http: bool = False):
+        send = dict(headers or {})
+        cond, self._conditional = self._conditional, None
+        if cond:
+            if cond.get("etag"):
+                send["If-None-Match"] = cond["etag"]
+            if cond.get("last_modified"):
+                send["If-Modified-Since"] = cond["last_modified"]
+        resp = self._client.get(url, params=params, headers=send or None, allow_http=allow_http)
+        self.last_response = {"etag": resp.headers.get("etag"), "last_modified": resp.headers.get("last-modified"), "bytes": len(resp.content), "status": resp.status, "url": resp.final_url}
+        return resp
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
 def _fetch_one(client: SafeClient, source: dict) -> FetchResult:
     adapter = get_adapter(source["kind"])
     cfg = json.loads(source["config_json"] or "{}")
+    wait_until = source.get("next_allowed_at")
+    if wait_until and wait_until > now_iso():
+        return FetchResult(source_id=source["id"], status="skipped", notes=f"The source asked Hunter to wait until {wait_until[:16]} (Retry-After); not checked this run.", complete=False)
+    cond = {"etag": source.get("etag"), "last_modified": source.get("last_modified")} if (source.get("etag") or source.get("last_modified")) else None
+    client = _SourceClient(client, cond)  # type: ignore[assignment]
     if source["kind"] == "adzuna":
         from jobhunter.services.secrets import SecretStore  # keys may live in the secret store
 
@@ -518,11 +549,14 @@ def _fetch_one(client: SafeClient, source: dict) -> FetchResult:
             cfg.setdefault("app_key", store.get("adzuna.app_key"))
         except Exception:
             pass
-    return adapter.fetch(client, source["id"], cfg)
+    res = adapter.fetch(client, source["id"], cfg)
+    res.refresh = dict(getattr(client, "last_response", {}) or {})
+    return res
 
 
-def _record_source_run(db: Database, run_id: int, source: dict, res: FetchResult, stats: dict) -> list[int]:
-    """Store one source's answer. Returns the ids of the new relevant jobs, for early matching."""
+def _record_source_run(db: Database, run_id: int, source: dict, res: FetchResult, stats: dict, last_response: dict | None = None) -> list[int]:
+    """Store one source's answer (with the refresh history: ETag, Last-Modified, size, Retry-After). Returns the ids
+    of the new relevant jobs, for early matching."""
     ts = now_iso()
     employer_hosted = PROVIDERS.get(source["kind"], {}).get("employer_hosted", False)
     fetched = len(res.postings)
@@ -567,10 +601,20 @@ def _record_source_run(db: Database, run_id: int, source: dict, res: FetchResult
                 "notes": res.notes if res.complete else ((res.notes or "") + " Incomplete snapshot: not used to close jobs.").strip(),
             },
         )
-        values = {"last_run_at": ts, "last_status": res.status, "last_error": res.error}
+        values = {"last_run_at": ts, "last_status": res.status, "last_error": res.error, "last_fetch_at": ts}
         if res.status in {"ok", "partial"}:
             values["last_success_at"] = ts
             values["consecutive_failures"] = 0
+            values["next_allowed_at"] = None
+            if last_response:
+                values.update({"etag": last_response.get("etag"), "last_modified": last_response.get("last_modified"), "last_bytes": last_response.get("bytes")})
+        elif res.status == "skipped" and res.http_status == 304:
+            values["last_success_at"] = ts  # the source answered: nothing changed
+            values["consecutive_failures"] = 0
+        if res.retry_after:
+            from datetime import timedelta
+
+            values["next_allowed_at"] = (now() + timedelta(seconds=min(float(res.retry_after), 86400.0))).isoformat()
         elif res.status == "failed":
             values["consecutive_failures"] = int(source.get("consecutive_failures") or 0) + 1
         db.update("watch_sources", values, "id = ?", (source["id"],))

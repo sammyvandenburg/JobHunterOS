@@ -26,7 +26,6 @@ def _fmt(ts: str | None) -> str:
 
 def export(ctx: AppContext, db: Database, job_id: int, include_messages: bool = False, include_notes: bool = True) -> dict:
     from jobhunter.services import documents as docs
-    from jobhunter.services import drafts as drafts_svc
     from jobhunter.services import workspace
 
     job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (job_id,))
@@ -48,7 +47,6 @@ def export(ctx: AppContext, db: Database, job_id: int, include_messages: bool = 
     unsent = [d for d in drafts if d["status"] != "sent_confirmed" and d["kind"] != "package"]
     history = actions.history(db, job_id)
     emails = db.fetchall("SELECT * FROM email_messages WHERE linked_job_id = ? ORDER BY received_at", (job_id,)) if include_messages else []
-    package = drafts_svc.current_package(db, job_id)
     submission = json.loads(app["submission_json"]) if app.get("submission_json") else {}
     research = workspace.current_research(db, job_id)
     contacts = workspace.list_contacts(db, job_id)
@@ -58,7 +56,7 @@ def export(ctx: AppContext, db: Database, job_id: int, include_messages: bool = 
         cv_text = docs.cv_text(db, rev["revision_key"]) if rev else ""
     except docs.DocumentError:
         cv_text = ""
-    case = workspace.strongest_case(db, job, facts, cv_text) if facts else {"items": [], "examples": []}
+    case = workspace.strongest_case(db, job, facts, cv_text, years_relevant=(profile.get("targets") or {}).get("professional_years_relevant")) if facts else {"items": [], "examples": []}
     employer = job.get("employer_name") or ("confidential employer" if job.get("employer_confidential") else "unknown employer")
 
     lines = [f"# InterviewOS hand-off: {job['title']} at {employer}", "", f"Exported by Hunter (JobHunterOS by KubeCraft) on {now_iso()}. A snapshot: nothing here is rewritten later.", ""]
@@ -72,17 +70,29 @@ def export(ctx: AppContext, db: Database, job_id: int, include_messages: bool = 
     else:
         lines += ["- No brief was prepared for this job.", ""]
     lines += ["## CV version you said you sent", ""]
+    tomb = json.loads(app["submitted_cv_tombstone_json"]) if app.get("submitted_cv_tombstone_json") else None
     if rev:
         lines += [f"- {rev['label']}, version {rev['number']}: {rev['original_filename']} ({rev['byte_size']} bytes), SHA-256 {rev['sha256']}", f"- Recorded from your answer to 'which CV?': {cv_choice}. The file itself is not in this export; attach it yourself if InterviewOS needs it."]
+    elif tomb:
+        lines += [f"- {tomb.get('label')}, version {tomb.get('number')}: {tomb.get('filename')}, SHA-256 {tomb.get('sha256')} (you deleted this CV on {str(tomb.get('deleted_at') or '')[:10]}; the record of what was sent stays)."]
     else:
         lines += [f"- Unknown: no CV version was recorded for this application ({'you said you were not sure' if cv_choice == 'unknown' else 'nothing recorded'}). Hunter does not guess."]
+    if submission.get("destination"):
+        lines += [f"- Sent to: {submission['destination']} (evidence: {(submission.get('evidence') or {}).get('source', 'you')})"]
     lines += ["", "## Answers you confirmed (your own wording)", ""]
-    answers = submission.get("answers") or (package or {}).get("user_answers") or {}
-    if answers:
+    answers = submission.get("answers") or {}
+    if submission.get("answers_state") == "confirmed":
         for q, a in answers.items():
-            lines += [f"### {q}", "", (a.get("text") or "").strip(), ""]
+            lines += [f"### {q}", "", (a.get("text") or "").strip() or "(you left this empty)", ""]
+    elif submission.get("answers_state") == "explicitly_empty":
+        lines += ["- You cleared your answers before applying; nothing is listed as yours.", ""]
+    elif submission:
+        lines += ["- No answers were recorded at the time you applied. Later drafts are not listed as sent.", ""]
     else:
-        lines += ["- None saved. Hunter's draft answers were never confirmed as sent and are not listed as yours.", ""]
+        lines += ["- Not yet applied: nothing recorded as sent.", ""]
+    if submission.get("texts"):
+        for kind, t in submission["texts"].items():
+            lines += [f"### Your {'introduction' if kind == 'intro' else 'cover letter'} at the time you applied", "", (t.get("text") or "").strip(), ""]
     lines += ["## Messages confirmed as sent", ""]
     if sent:
         for d in sent:
@@ -98,7 +108,6 @@ def export(ctx: AppContext, db: Database, job_id: int, include_messages: bool = 
     for x in case.get("examples") or []:
         lines.append(f"- Example to tell ({x['kind']}): {x['text']}")
     if match:
-        expl = json.loads(match.get("explanation_json") or "{}")
         lines += [f"- Hunter's assessment ({match['explanation_source']}): {match.get('explanation_text')}"]
         for g in json.loads(match.get("gaps_json") or "[]"):
             lines.append(f"- Gap to prepare for: {g}")

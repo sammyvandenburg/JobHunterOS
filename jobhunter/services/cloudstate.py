@@ -29,6 +29,7 @@ import json
 import re
 import uuid
 from datetime import timedelta
+from pathlib import Path
 
 from jobhunter.config import AppContext
 from jobhunter.db import Database

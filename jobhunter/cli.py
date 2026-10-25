@@ -220,7 +220,7 @@ def cmd_cv(args):
         elif c == "unarchive":
             emit(args, docs.archive_cv(db, args.key, archive=False))
         elif c == "delete":
-            emit(args, docs.delete_cv(db, args.key))
+            emit(args, docs.delete_cv(db, args.key, force=getattr(args, "force", False)))
         elif c == "file":
             f = docs.cv_file(db, args.key)
             data = f.pop("data")
@@ -777,6 +777,9 @@ def cmd_board(args):
             emit(args, board.unlink(db))
         elif c == "channel":
             emit(args, board.set_channel(db, None if args.kind == "none" else args.kind, args.id, args.label))
+        elif c == "published":
+            manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8")) if args.manifest else None
+            emit(args, board.published(db, manifest))
         elif c == "status":
             emit(args, board.status(db))
         elif c == "page":
@@ -1140,6 +1143,8 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("archive", "unarchive", "delete"):
         x = cvs.add_parser(name)
         x.add_argument("key")
+        if name == "delete":
+            x.add_argument("--force", action="store_true", help="delete even a CV you recorded as sent; the applications keep a record (name, version, hash), not the file")
     x = cvs.add_parser("file", help="the original bytes of a CV or version, verified by hash")
     x.add_argument("key", help="a CV key (current version) or a version key")
     x.add_argument("--out", help="write the file here (a folder or a file name)")
@@ -1436,6 +1441,8 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("kind", choices=["routine", "session", "none"])
     x.add_argument("id", nargs="?")
     x.add_argument("--label")
+    x = bds.add_parser("published", help="confirm that the export's batch write really landed on the page (run it after the ArtifactData batch)")
+    x.add_argument("--manifest")
     x = bds.add_parser("export", help="write the documents for the page into a folder, plus a manifest Claude follows")
     x.add_argument("--out", required=True)
     x.add_argument("--limit", type=int, default=150, help="how many recommended jobs to show (default 150)")

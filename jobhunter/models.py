@@ -145,6 +145,8 @@ class FetchResult(BaseModel):
     notes: str | None = None
     complete: bool = True  # False when pagination stopped early, the feed was truncated, or a posting could not be read
     skipped_ids: list[str] = Field(default_factory=list)  # raw posting ids the adapter could not convert
+    retry_after: float | None = None  # seconds the source asked Hunter to wait (Retry-After)
+    refresh: dict | None = None  # etag, last_modified, bytes, status of the answer (refresh history)
 
 
 class MatchReason(BaseModel):

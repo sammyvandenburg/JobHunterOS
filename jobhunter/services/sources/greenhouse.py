@@ -31,7 +31,7 @@ class GreenhouseAdapter(SourceAdapter):
             resp = client.get(url, params={"content": "true"})
             data = resp.json()
         except (FetchError, UnsafeURL) as exc:
-            return self.failed(source_id, f"Could not read Greenhouse board '{token}': {exc}", getattr(exc, "status", None))
+            return self.failed(source_id, f"Could not read Greenhouse board '{token}': {exc}", getattr(exc, "status", None), retry_after=getattr(exc, "retry_after", None))
         except ValueError:
             return self.failed(source_id, f"Greenhouse board '{token}' returned data Hunter could not parse.")
         jobs = data.get("jobs") if isinstance(data, dict) else None

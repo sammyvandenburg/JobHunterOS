@@ -93,8 +93,9 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
         if _may_reopen(job, raw, employer_hosted):
             values.update({"availability": "open", "availability_note": None})
         if changed:
-            values.update(_job_values(norm, raw, employer_id, codes_json, direct_url, direct_status, keep_first_seen=job))
-            values.pop("canonical_key", None)  # the job's identity is set once; a changed title or location never moves actions
+            fresh = _job_values(norm, raw, employer_id, codes_json, direct_url, direct_status, keep_first_seen=job)
+            fresh.pop("canonical_key", None)  # the job's identity is set once; a changed title or location never moves actions
+            values.update(_by_authority(job, fresh, employer_hosted or raw.is_employer_hosted))
         db.update("jobs", values, "id = ?", (job["id"],))
         return int(job["id"]), False, changed
 
@@ -147,6 +148,31 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
         },
     )
     return job_id, is_new, True
+
+
+EMPLOYER_OWNED = ("title", "description_text", "description_hash", "apply_url", "direct_url", "direct_url_status", "salary_text", "salary_min", "salary_max", "salary_currency", "salary_period", "salary_basis", "location_text", "country_codes_json", "remote_type", "remote_restriction", "employment_type", "requisition_id", "sponsorship")
+NEVER_EMPTIED = ("description_text", "description_hash", "salary_text", "salary_min", "salary_max", "salary_currency", "salary_period", "location_text", "apply_url", "direct_url", "employment_type", "requisition_id", "posted_at", "posted_at_provenance", "country_codes_json")
+
+
+def _empty(v) -> bool:
+    return v is None or v == "" or v == "[]" or v == []
+
+
+def _by_authority(job: dict, fresh: dict, employer_hosted: bool) -> dict:
+    """Which of a refreshed observation's values may replace what is stored. The employer's own listing outranks an
+    aggregator copy: once a job has a verified employer source, an aggregator may not rewrite its content, links or
+    pay. And no source empties a field it does not carry: a missing value is not a changed value."""
+    out = dict(fresh)
+    if job.get("direct_url_status") == "verified" and not employer_hosted:
+        for k in EMPLOYER_OWNED:
+            out.pop(k, None)
+    for k in NEVER_EMPTIED:
+        if k in out and _empty(out[k]) and not _empty(job.get(k)):
+            out.pop(k, None)
+    if "posted_at" in out and job.get("posted_at") and job.get("posted_at_provenance") not in (None, "unknown") and fresh.get("posted_at_provenance") == "unknown":
+        out.pop("posted_at", None)
+        out.pop("posted_at_provenance", None)
+    return out
 
 
 def _may_reopen(job: dict, raw: RawPosting, employer_hosted: bool) -> bool:

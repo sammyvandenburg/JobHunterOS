@@ -73,7 +73,7 @@ def test_a_page_request_becomes_recorded_work_with_a_state_the_page_can_show(ctx
     assert "score" not in json.dumps(pkg).lower().replace("scoreboard", "")
     # The pasted question is there with its limit, unanswered, never guessed.
     custom = next(a for a in pkg["answers"] if a["question"] == "Why do you want to work here?")
-    assert custom["limit"] == 600 and custom["needs_user"] and custom["suggested"] == "" and custom["user"] is None
+    assert custom["limit"] == 600 and custom["custom"] and not custom["example"] and custom["suggested"] == "" and custom["user"] is None and "own words" in custom["note"]
     # Sensitive questions are never drafted.
     assert all(a["suggested"] == "" for a in pkg["answers"] if "salary" in a["question"].lower() or "visa" in a["question"].lower())
     assert pkg["checklist"] and not any(c["done"] for c in pkg["checklist"] if c["id"] == "applied")

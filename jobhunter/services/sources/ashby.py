@@ -46,7 +46,7 @@ class AshbyAdapter(SourceAdapter):
         try:
             data = client.get(f"{BASE}/{board}", params={"includeCompensation": "true"}).json()
         except (FetchError, UnsafeURL) as exc:
-            return self.failed(source_id, f"Could not read Ashby board '{board}': {exc}", getattr(exc, "status", None))
+            return self.failed(source_id, f"Could not read Ashby board '{board}': {exc}", getattr(exc, "status", None), retry_after=getattr(exc, "retry_after", None))
         except ValueError:
             return self.failed(source_id, f"Ashby board '{board}' returned data Hunter could not parse.")
         jobs = data.get("jobs") if isinstance(data, dict) else None

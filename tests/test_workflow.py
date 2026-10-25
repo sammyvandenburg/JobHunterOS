@@ -38,7 +38,10 @@ def test_the_order_is_read_hunt_digest_save_publish_and_judged_from_evidence(ctx
     notifications.record_handoff(db, h["notification_id"], "sent", message_id="gmail-1")
     p = workflow.plan(ctx, db)
     assert _status(p)["digest"] == "done" and p["next"] == "publish_dashboard"
-    board.export(ctx, db, tmp_path / "out")
+    manifest = board.export(ctx, db, tmp_path / "out")
+    p = workflow.plan(ctx, db)
+    assert not p["complete"] and p["next"] == "publish_dashboard"  # written to disk is not written to the page
+    board.published(db, manifest)
     p = workflow.plan(ctx, db)
     assert p["complete"] and p["next"] is None
     assert p["next_run_starts_with"] == "read_dashboard"
@@ -122,7 +125,7 @@ def test_a_full_nightly_cycle_never_loops_back_to_restore(ctx, db, tmp_path, fak
     seq.append(workflow.plan(c2, d2, nightly=True)["next"])
     d2.set_setting("cloud.last_export", {"at": now_iso(), "pushed": True})
     seq.append(workflow.plan(c2, d2, nightly=True)["next"])
-    board.export(c2, d2, tmp_path / "out")
+    board.published(d2, board.export(c2, d2, tmp_path / "out"))
     p = workflow.plan(c2, d2, nightly=True)
     seq.append(p["next"])
     assert seq == ["read_dashboard", "hunt", "digest", "save", "publish_dashboard", None], seq

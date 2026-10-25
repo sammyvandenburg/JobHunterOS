@@ -54,6 +54,7 @@ def evidence(db: Database) -> dict:
         "dashboard_linked": bool(db.get_setting(board.URL_SETTING)),
         "dashboard_read": db.get_setting("board.last_import"),
         "dashboard_written": db.get_setting("board.last_export"),
+        "dashboard_published": board.publish_state(db),
         "dashboard_stale": board.stale_reason(db),
         "restored": db.get_setting("cloud.last_import"),
         "saved": db.get_setting("cloud.last_export"),
@@ -152,8 +153,10 @@ def plan(ctx: AppContext, db: Database, nightly: bool = False) -> dict:
     if not linked:
         add("publish_dashboard", "skipped", "No dashboard linked yet.")
     else:
-        done = bool(t_written[0]) and t_written >= t_hunt and t_written >= t_read and (not t_digest[0] or t_written >= t_digest)
-        add("publish_dashboard", "done" if done else ("next" if prev_done else "pending"), "The page shows this run." if done else "Write the page after the hunt and the digest.", "uv run jobhunter board export --out <DIR>/out --json, then the ArtifactData batch from the manifest", at=_iso(ev["dashboard_written"]))
+        written = bool(t_written[0]) and t_written >= t_hunt and t_written >= t_read and (not t_digest[0] or t_written >= t_digest)
+        confirmed = written and ev["dashboard_published"]["confirmed"]
+        why = "The page shows this run." if confirmed else ("Written to disk, but the write to the page was never confirmed: run the ArtifactData batch, then `uv run jobhunter board published`." if written else "Write the page after the hunt and the digest.")
+        add("publish_dashboard", "done" if confirmed else ("next" if prev_done else "pending"), why, "uv run jobhunter board export --out <DIR>/out --json, then the ArtifactData batch from the manifest, then uv run jobhunter board published --json", at=ev["dashboard_published"]["published_at"] if confirmed else None)
 
     nxt = next((s for s in steps if s["status"] in {"next", "blocked"}), None) or next((s for s in steps if s["status"] == "pending"), None)
     return {"order": list(ORDER), "steps": steps, "next": nxt["step"] if nxt else None, "complete": nxt is None, "next_run_starts_with": "restore" if nightly else ("read_dashboard" if linked else "hunt"), "evidence": ev}

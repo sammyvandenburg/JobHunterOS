@@ -87,10 +87,11 @@ def _clean_params(kind: str, params: dict) -> dict:
                     limit = int(limit) if limit not in (None, "") else None
                 except (TypeError, ValueError):
                     limit = None
+                unit = str(q.get("limit_unit") or q.get("unit") or "").lower()
             else:
-                text, limit = str(q or "").strip()[:MAX_QUESTION_CHARS], None
+                text, limit, unit = str(q or "").strip()[:MAX_QUESTION_CHARS], None, ""
             if text:
-                qs.append({"text": text, "limit": limit if limit and 0 < limit <= 20000 else None})
+                qs.append({"text": text, "limit": limit if limit and 0 < limit <= 20000 else None, "limit_unit": ("words" if unit.startswith("word") else "characters") if limit and 0 < limit <= 20000 else None})
         out["questions"] = qs
     if kind in {"prepare"} and params.get("cv"):
         out["cv"] = str(params["cv"])[:40]
@@ -209,9 +210,9 @@ def run_request(ctx: AppContext, db: Database, request_id: str, use_model: bool 
         if kind == "prepare":
             if params.get("cv"):
                 drafts_svc.select_cv(db, job["id"], params["cv"])
-            pkg = drafts_svc.prepare(ctx, db, job["id"], use_model=use_model)
             if params.get("questions"):
                 add_questions(db, job["id"], params["questions"])
+            pkg = drafts_svc.prepare(ctx, db, job["id"], use_model=use_model)
             ensure_research(db, job)
             return _finish(db, rid, "ready", "Your application is prepared." if not pkg.get("reused") else "Nothing changed since last time; the same preparation is shown.", {"draft_id": pkg["draft_id"], "version": pkg.get("version")})
         if kind == "research":
@@ -287,7 +288,7 @@ RESEARCH_POLICY = "2026.10-22b"  # bump when the rules that read a posting impro
 def research_inputs_hash(job: dict) -> str:
     from jobhunter.util import sha256_text, stable_json
 
-    return sha256_text(stable_json({k: job.get(k) for k in ("description_hash", "title", "employer_name", "direct_url", "apply_url", "discovery_url", "last_checked_at")} | {"policy": RESEARCH_POLICY}))
+    return sha256_text(stable_json({k: job.get(k) for k in ("description_hash", "title", "employer_name", "direct_url", "apply_url", "discovery_url")} | {"policy": RESEARCH_POLICY}))
 
 
 UNQUOTABLE_RX = re.compile(r"(@[\w.-]+\.[a-z]{2,}|https?://|\b(ignore|disregard|forget)\b[^.\n]{0,40}\b(previous|prior|above|earlier)\b|\bsystem prompt\b|\bassistant\b)", re.I)
@@ -332,17 +333,34 @@ def rule_based_research(db: Database, job: dict) -> dict:
         "employer": job.get("employer_name") if not job.get("employer_confidential") else None,
         "employer_domain": domain,
         "confidential": bool(job.get("employer_confidential")),
+        "level": "posting",  # posting-only: never to be called "company researched"
         "uncertainty": "Only the posting was read. Company lines are the employer's own words; Hunter's reading is marked as such." if not job.get("employer_confidential") else "The employer is not named in the posting, so nothing about the company is claimed.",
     }
 
 
 def ensure_research(db: Database, job: dict, force: bool = False) -> dict:
-    """The current brief for this job, made once per posting version (a changed posting makes a new version)."""
+    """The current brief for this job. A brief written from real sources (by Claude) outlives ordinary refreshes:
+    a new check time or a change in the posting-reading rules never replaces it. When the posting's text itself
+    changes, a new version is made and the earlier sourced research is carried forward, dated, rather than lost.
+    A posting-only brief is remade whenever the posting or the rules change."""
     h = research_inputs_hash(job)
     cur = db.fetchone("SELECT * FROM research WHERE job_id = ? ORDER BY version DESC LIMIT 1", (job["id"],))
-    if cur and cur.get("inputs_hash") == h and not force:
-        return _research_view(cur)
+    if cur and not force:
+        if cur.get("inputs_hash") == h:
+            return _research_view(cur)
+        prev = json.loads(cur["content_json"])
+        if cur["created_by"] != "rules" and prev.get("description_hash") == job.get("description_hash"):
+            return _research_view(cur)  # sourced research; only the posting text matters, and it is the same
     content = rule_based_research(db, job)
+    content["description_hash"] = job.get("description_hash")
+    if cur and cur["created_by"] != "rules":
+        prev = json.loads(cur["content_json"])
+        posting_urls = {s.get("url") for s in content["sources"]}
+        carried = [s for s in prev.get("sources") or [] if s.get("url") not in posting_urls]
+        if carried or prev.get("company_describes"):
+            content["company_describes"] = prev.get("company_describes") or content["company_describes"]
+            content["sources"] = content["sources"] + carried
+            content["carried_from"] = {"version": cur["version"], "created_at": cur["created_at"], "note": f"Company lines and sources from the brief of {str(cur['created_at'])[:10]}; the posting text changed since, so the vacancy lines are new."}
     with db.tx():
         again = db.fetchone("SELECT * FROM research WHERE job_id = ? ORDER BY version DESC LIMIT 1", (job["id"],))
         if again and again.get("inputs_hash") == h and not force:
@@ -407,7 +425,7 @@ def submit_research(db: Database, job_id: int, payload: dict, created_by: str = 
     dom = base["employer_domain"]
     if dom and company and not any(dom in (s["url"] or "") for s in sources):
         problems.append(f"company lines need a source on the employer's own site ({dom})")
-    content = {**base, "vacancy_says": lines("vacancy_says", 6) or base["vacancy_says"], "company_describes": company or base["company_describes"], "interpretation": lines("interpretation", 4) or base["interpretation"], "sources": base["sources"] + sources, "uncertainty": truncate(str(payload.get("uncertainty") or base["uncertainty"]), 300)}
+    content = {**base, "vacancy_says": lines("vacancy_says", 6) or base["vacancy_says"], "company_describes": company or base["company_describes"], "interpretation": lines("interpretation", 4) or base["interpretation"], "sources": base["sources"] + sources, "uncertainty": truncate(str(payload.get("uncertainty") or base["uncertainty"]), 300), "description_hash": job.get("description_hash"), "level": "researched"}
     if problems:
         return {"accepted": False, "problems": problems}
     with db.tx():
@@ -453,17 +471,26 @@ def route_view(db: Database, job: dict) -> dict:
 EVIDENCE_WORDS = {"paid work": "a paid role", "project work": "a project", "a guided course project": "a guided course project", "a course or certification": "a course or certification", "your skills list": "your skills list"}
 
 
-def strongest_case(db: Database, job: dict, facts: list[Fact], cv_text: str) -> dict:
+def strongest_case(db: Database, job: dict, facts: list[Fact], cv_text: str, years_relevant: float | None = None) -> dict:
     """Three things they ask for, what in your profile supports each (and what kind of evidence it is), whether
     the selected CV says it in so many words, and the gap when there is one. Profile support and CV wording
     are two separate columns on purpose: the profile is the truth, the CV is one presentation of it."""
+    from jobhunter.services.matching.requirements import parse as parse_requirements
     from jobhunter.services.matching.scoring import evidence_kinds, job_tools, tool_label
     from jobhunter.services.normalize import seniority_of
 
     desc = job.get("description_text") or ""
     title = job.get("title") or ""
     kinds = evidence_kinds(facts)
-    tools = sorted(job_tools(desc, title), key=lambda t: (t not in kinds, t))
+    req = parse_requirements(desc, title)  # the same reading the matching uses: essential, preferred, negated
+    low_desc = desc.lower()
+
+    def position(t: str) -> int:
+        i = low_desc.find(tool_label(t).lower())
+        return i if i >= 0 else 10**6
+
+    essential = sorted(req.essential - req.negated, key=position)
+    tools = essential or sorted((job_tools(desc, title) - req.negated), key=position)
     low_cv = (cv_text or "").lower()
     items = []
     for t in tools[:3]:
@@ -480,9 +507,14 @@ def strongest_case(db: Database, job: dict, facts: list[Fact], cv_text: str) -> 
             "note": None if not ev or in_cv or not low_cv else f"Your profile shows {label}, but the selected CV does not use that word. Check the CV says it where it matters.",
         })
     seniority, years_required = seniority_of(title, desc)
-    if len(items) < 3 and years_required:
+    if years_required:
+        # Years are a requirement like any other, judged from the profile's relevant paid work: 6.7 years do not prove 10.
         paid = [f for f in facts if f.category == "role" and f.experience_kind == "professional"]
-        items.append({"requirement": f"About {years_required}+ years of experience", "profile_supports": bool(paid), "evidence_type": "a paid role" if paid else None, "evidence": truncate(paid[0].text, 160) if paid else None, "cv_communicates": bool(paid) and bool(low_cv), "gap": None if paid else "Your profile has no paid experience yet. Be open about that and show your projects.", "note": None})
+        have = float(years_relevant or 0)
+        enough = bool(paid) and have + 0.5 >= float(years_required)
+        items.append({"requirement": f"About {years_required}+ years of experience", "profile_supports": enough, "evidence_type": "a paid role" if enough else None, "evidence": f"About {have:g} years of relevant paid work in your profile." if paid else None, "cv_communicates": enough and bool(low_cv), "gap": None if enough else (f"They ask for about {years_required} years; your profile shows about {have:g} years of relevant paid work. Say so plainly and show what those years covered." if paid else "Your profile has no paid experience yet. Be open about that and show your projects."), "note": None})
+    if req.preferred:
+        items.append({"requirement": "Nice to have: " + ", ".join(tool_label(t) for t in sorted(req.preferred, key=position)[:3]), "profile_supports": any(t in kinds for t in req.preferred), "evidence_type": next((EVIDENCE_WORDS.get(kinds[t][0], kinds[t][0]) for t in sorted(req.preferred, key=position) if t in kinds), None), "evidence": next((truncate(kinds[t][1].text, 120) for t in sorted(req.preferred, key=position) if t in kinds), None), "cv_communicates": any(t in kinds and tool_label(t).lower() in low_cv for t in req.preferred), "gap": None, "note": "Not required: a plus when you have it, never a gap when you do not.", "optional": True})
     examples = []
     for f in facts:
         if f.category == "project" and len(examples) < 2:
@@ -490,7 +522,7 @@ def strongest_case(db: Database, job: dict, facts: list[Fact], cv_text: str) -> 
     for f in facts:
         if f.category == "role" and f.experience_kind == "professional" and len(examples) < 3:
             examples.append({"kind": "paid role", "text": truncate(f.text, 200)})
-    return {"items": items[:3], "examples": examples[:3], "note": "Two columns on purpose: what your profile proves, and whether the CV you picked says it. Neither column is a rating."}
+    return {"items": items[:5], "examples": examples[:3], "negated": sorted(tool_label(t) for t in req.negated), "note": "Two columns on purpose: what your profile proves, and whether the CV you picked says it. Neither column is a rating."}
 
 
 # ---------------------------------------------------------------------------
@@ -500,50 +532,120 @@ def _package_row(db: Database, job_id: int) -> dict | None:
     return db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' AND status = 'draft' ORDER BY id DESC LIMIT 1", (job_id,))
 
 
-def add_questions(db: Database, job_id: int, questions: list[dict]) -> dict:
-    """Questions the person pasted from the application form, with limits. Kept with the package; Hunter
-    drafts nothing for a sensitive one and marks the rest as 'write this yourself' unless a model drafts them."""
-    row = _package_row(db, job_id)
-    if not row:
-        raise WorkspaceError("Prepare the application first; then add the form's questions.")
-    content = json.loads(row["content_json"])
-    custom = content.setdefault("custom_questions", [])
-    known = {answer_id(q["text"]) for q in custom} | {answer_id(a["question"]) for a in content.get("draft", {}).get("answers", [])}
-    added = 0
-    for q in _clean_params("prepare", {"questions": questions}).get("questions", []):
-        if answer_id(q["text"]) in known or len(custom) >= MAX_QUESTIONS:
-            continue
-        sensitive = bool(drafts_svc.SENSITIVE.search(q["text"]))
-        custom.append({"text": q["text"], "limit": q["limit"], "needs_user": True, "note": "Only you can answer this one." if sensitive else "Write this one in your own words; Hunter can suggest a draft in Claude, from your facts only."})
-        known.add(answer_id(q["text"]))
-        added += 1
+def _any_package_row(db: Database, job_id: int) -> dict | None:
+    return _package_row(db, job_id) or db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (job_id,))
+
+
+# ---- The person's own texts: a table of their own, never inside a package (so a new package never loses them)
+USER_TEXTS_MIGRATED = "work.user_texts_migrated"
+
+
+def ensure_user_texts(db: Database) -> int:
+    """Older packages kept the person's answers, questions and letters inside their JSON. Move them out once."""
+    if db.get_setting(USER_TEXTS_MIGRATED):
+        return 0
+    n = 0
+    ts = now_iso()
     with db.tx():
-        db.update("drafts", {"content_json": json.dumps(content)}, "id = ?", (row["id"],))
-    return {"draft_id": row["id"], "added": added, "questions": len(custom)}
+        for row in db.fetchall("SELECT id, job_id, content_json FROM drafts WHERE kind = 'package' ORDER BY id"):
+            c = json.loads(row["content_json"] or "{}")
+            for q in c.get("custom_questions") or []:
+                _upsert_text(db, row["job_id"], "question", answer_id(q["text"]), question=q["text"], text=None, rev=0, limit_n=q.get("limit"), limit_unit="characters" if q.get("limit") else None, when=ts, only_if_missing=True)
+                n += 1
+            for q, a in (c.get("user_answers") or {}).items():
+                _upsert_text(db, row["job_id"], "answer", answer_id(q), question=q, text=a.get("text"), rev=int(a.get("rev") or 1), when=a.get("saved_at") or ts, only_if_older=True)
+                n += 1
+            for kind in ("intro", "letter"):
+                ut = ((c.get("optional") or {}).get(kind) or {}).get("user_text")
+                if ut and ut.get("text"):
+                    _upsert_text(db, row["job_id"], kind, kind, question=None, text=ut["text"], rev=int(ut.get("rev") or 1), when=ut.get("saved_at") or ts, only_if_older=True)
+                    n += 1
+        db.set_setting(USER_TEXTS_MIGRATED, {"at": ts, "moved": n})
+    return n
+
+
+def _upsert_text(db: Database, job_id: int, kind: str, key: str, question: str | None, text: str | None, rev: int, when: str | None = None, limit_n=None, limit_unit=None, only_if_missing: bool = False, only_if_older: bool = False) -> dict | None:
+    cur = db.fetchone("SELECT * FROM user_texts WHERE job_id = ? AND kind = ? AND key = ?", (job_id, kind, key))
+    ts = when or now_iso()
+    if cur:
+        if only_if_missing or (only_if_older and int(cur.get("rev") or 0) >= rev):
+            return cur
+        values = {"text": text, "rev": rev, "updated_at": ts}
+        if question:
+            values["question"] = question
+        if limit_n is not None:
+            values.update({"limit_n": limit_n, "limit_unit": limit_unit})
+        db.update("user_texts", values, "id = ?", (cur["id"],))
+        return db.fetchone("SELECT * FROM user_texts WHERE id = ?", (cur["id"],))
+    tid = db.insert("user_texts", {"job_id": job_id, "kind": kind, "key": key, "question": question, "text": text, "rev": rev, "limit_n": limit_n, "limit_unit": limit_unit, "scope": "job", "created_at": ts, "updated_at": ts})
+    return db.fetchone("SELECT * FROM user_texts WHERE id = ?", (tid,))
+
+
+def user_texts(db: Database, job_id: int, kind: str | None = None) -> list[dict]:
+    ensure_user_texts(db)
+    if kind:
+        return db.fetchall("SELECT * FROM user_texts WHERE job_id = ? AND kind = ? ORDER BY id", (job_id, kind))
+    return db.fetchall("SELECT * FROM user_texts WHERE job_id = ? ORDER BY id", (job_id,))
+
+
+def user_text(db: Database, job_id: int, kind: str, key: str) -> dict | None:
+    ensure_user_texts(db)
+    return db.fetchone("SELECT * FROM user_texts WHERE job_id = ? AND kind = ? AND key = ?", (job_id, kind, key))
+
+
+def add_questions(db: Database, job_id: int, questions: list[dict]) -> dict:
+    """Questions the person pasted from the application form, with their limits (words or characters). They are
+    theirs: they outlive every package version. Hunter drafts nothing for a personal or legal one."""
+    if not db.fetchone("SELECT id FROM jobs WHERE id = ?", (job_id,)):
+        raise WorkspaceError(f"Job {job_id} not found.")
+    ensure_user_texts(db)
+    existing = {r["key"] for r in user_texts(db, job_id, "question")}
+    added = 0
+    with db.tx():
+        for q in _clean_params("prepare", {"questions": questions}).get("questions", []):
+            key = answer_id(q["text"])
+            if key in existing or len(existing) >= MAX_QUESTIONS:
+                continue
+            _upsert_text(db, job_id, "question", key, question=q["text"], text=None, rev=0, limit_n=q.get("limit"), limit_unit=q.get("limit_unit") or ("characters" if q.get("limit") else None))
+            existing.add(key)
+            added += 1
+    return {"job_id": job_id, "added": added, "questions": len(existing)}
+
+
+def question_rows(db: Database, job_id: int) -> list[dict]:
+    """The form's own questions with how Hunter treats each: personal or legal ones are the person's alone;
+    pay, notice and start date are theirs to declare; the rest may get a draft from facts."""
+    out = []
+    for r in user_texts(db, job_id, "question"):
+        kind = drafts_svc.classify_question(r["question"] or "")
+        out.append({"id": r["key"], "text": r["question"], "limit": r.get("limit_n"), "limit_unit": r.get("limit_unit"), "class": kind, "needs_user": kind in {"personal", "declaration"}, "note": drafts_svc.QUESTION_NOTES[kind]})
+    return out
+
+
+def _question_for(db: Database, job_id: int, aid: str) -> str | None:
+    row = _any_package_row(db, job_id)
+    if row:
+        content = json.loads(row["content_json"])
+        for a in content.get("draft", {}).get("answers", []):
+            if answer_id(a["question"]) == aid:
+                return a["question"]
+    q = user_text(db, job_id, "question", aid)
+    return q["question"] if q else None
 
 
 def save_answer(db: Database, job_id: int, aid: str, text: str, rev: int | None = None, when: str | None = None) -> dict:
     """The person's own wording for one answer, by answer id. Their text is never validated against facts (it is
-    theirs), never overwritten by a regeneration, and kept with the package version it belongs to."""
-    row = _package_row(db, job_id) or db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (job_id,))
-    if not row:
-        raise WorkspaceError("There is no prepared application for this job yet.")
-    content = json.loads(row["content_json"])
-    question = next((a["question"] for a in content.get("draft", {}).get("answers", []) if answer_id(a["question"]) == aid), None)
-    if question is None:
-        question = next((q["text"] for q in content.get("custom_questions", []) if answer_id(q["text"]) == aid), None)
+    theirs), never overwritten by a regeneration, and never tied to one package version. An emptied answer is
+    kept as explicitly empty (rev goes up, text is ''), which is different from never answered."""
+    question = _question_for(db, job_id, aid)
     if question is None:
         raise WorkspaceError(f"No question with id {aid} in this application.")
-    edits = content.setdefault("user_answers", {})
     text = (text or "").strip()[:MAX_ANSWER_CHARS]
-    prev = edits.get(question) or {}
-    if text:
-        edits[question] = {"text": text, "saved_at": when or now_iso(), "rev": int(rev if rev is not None else (prev.get("rev") or 0) + 1)}
-    else:
-        edits.pop(question, None)
+    prev = user_text(db, job_id, "answer", aid)
+    new_rev = int(rev if rev is not None else int((prev or {}).get("rev") or 0) + 1)
     with db.tx():
-        db.update("drafts", {"content_json": json.dumps(content)}, "id = ?", (row["id"],))
-    return {"draft_id": row["id"], "answer_id": aid, "saved": bool(text)}
+        _upsert_text(db, job_id, "answer", aid, question=question, text=text, rev=new_rev, when=when)
+    return {"job_id": job_id, "answer_id": aid, "saved": bool(text), "rev": new_rev}
 
 
 def _facts_used(text: str, facts: list[Fact]) -> list[dict]:
@@ -608,16 +710,16 @@ def write_optional_text(db: Database, job: dict, kind: str) -> dict:
 
 
 def save_optional_text(db: Database, job_id: int, kind: str, text: str | None, rev: int | None = None, when: str | None = None) -> dict:
-    row = _package_row(db, job_id) or db.fetchone("SELECT * FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (job_id,))
-    if not row or kind not in {"intro", "letter"}:
-        raise WorkspaceError("There is no prepared application for this job yet.")
-    content = json.loads(row["content_json"])
-    slot = content.setdefault("optional", {}).setdefault(kind, {"versions": [], "user_text": None})
+    """The person's version of the introduction or letter: theirs, apart from Hunter's versions, kept through
+    every regeneration and package version."""
+    if kind not in {"intro", "letter"} or not db.fetchone("SELECT id FROM jobs WHERE id = ?", (job_id,)):
+        raise WorkspaceError("There is no application for this job yet.")
     text = (text or "").strip()[:MAX_ANSWER_CHARS * 2]
-    slot["user_text"] = {"text": text, "saved_at": when or now_iso(), "rev": int(rev if rev is not None else ((slot.get("user_text") or {}).get("rev") or 0) + 1)} if text else None
+    prev = user_text(db, job_id, kind, kind)
+    new_rev = int(rev if rev is not None else int((prev or {}).get("rev") or 0) + 1)
     with db.tx():
-        db.update("drafts", {"content_json": json.dumps(content)}, "id = ?", (row["id"],))
-    return {"draft_id": row["id"], "kind": kind, "saved": bool(text)}
+        _upsert_text(db, job_id, kind, kind, question=None, text=text, rev=new_rev, when=when)
+    return {"job_id": job_id, "kind": kind, "saved": bool(text), "rev": new_rev}
 
 
 # ---------------------------------------------------------------------------
@@ -862,26 +964,33 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
     pkg_view = None
     if package:
         draft = package.get("draft") or {}
-        user_answers = package.get("user_answers") or {}
+        mine = {r["key"]: r for r in user_texts(db, job_id, "answer")}
         answers = []
+        # The form's own questions first (pasted by the person), then Hunter's examples, which are never required.
+        for q in question_rows(db, job_id):
+            u = mine.get(q["id"])
+            answers.append({"id": q["id"], "question": q["text"], "suggested": "", "needs_user": q["needs_user"], "note": q["note"], "limit": q["limit"], "limit_unit": q.get("limit_unit"), "user": _user_view(u), "custom": True, "example": False})
         for a in draft.get("answers", []):
             q = a["question"]
-            answers.append({"id": answer_id(q), "question": q, "suggested": a.get("answer") or "", "needs_user": bool(a.get("needs_user")), "note": a.get("note"), "limit": None, "user": user_answers.get(q)})
-        for q in package.get("custom_questions", []):
-            answers.append({"id": answer_id(q["text"]), "question": q["text"], "suggested": "", "needs_user": True, "note": q.get("note"), "limit": q.get("limit"), "user": user_answers.get(q["text"]), "custom": True})
+            kind = drafts_svc.classify_question(q)
+            u = mine.get(answer_id(q))
+            answers.append({"id": answer_id(q), "question": q, "suggested": a.get("answer") or "", "needs_user": bool(a.get("needs_user")) or kind in {"personal", "declaration"}, "note": a.get("note") or drafts_svc.QUESTION_NOTES[kind], "limit": None, "limit_unit": None, "user": _user_view(u), "custom": False, "example": True})
         research = ensure_research(db, job)  # the current brief, remade when the posting or the reading rules changed
         try:
             cv_text = docs.cv_text(db, cv["revision_key"]) if cv and cv.get("revision_key") else ""
         except docs.DocumentError:
             cv_text = ""
-        case = strongest_case(db, job, facts, cv_text) if facts else {"items": [], "examples": [], "note": None}
+        case = strongest_case(db, job, facts, cv_text, years_relevant=(profile.get("targets") or {}).get("professional_years_relevant")) if facts else {"items": [], "examples": [], "note": None}
         optional = {}
         for kind in ("intro", "letter"):
             slot = (package.get("optional") or {}).get(kind)
-            if slot:
-                latest = slot["versions"][-1] if slot.get("versions") else None
-                optional[kind] = {"versions": len(slot.get("versions") or []), "latest": latest, "user_text": slot.get("user_text")}
-        confirmed = sum(1 for a in answers if a.get("user") and (a["user"] or {}).get("text"))
+            ut = user_text(db, job_id, kind, kind)
+            if slot or (ut and ut.get("text")):
+                latest = slot["versions"][-1] if slot and slot.get("versions") else None
+                optional[kind] = {"versions": len((slot or {}).get("versions") or []), "latest": latest, "user_text": _user_view(ut)}
+        form_qs = [a for a in answers if a["custom"]]
+        counted = form_qs or [a for a in answers if not a["needs_user"]]
+        confirmed = sum(1 for a in counted if a.get("user") and (a["user"] or {}).get("text"))
         pkg_view = {
             "draft_id": package["draft_id"],
             "version": package.get("version"),
@@ -895,7 +1004,7 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
             "project_links": package.get("project_links") or [],
             "checklist": [
                 {"id": "cv", "text": f"CV: {cv['label']} (version {cv['version']})" if cv else "Choose a CV", "done": bool(cv)},
-                {"id": "answers", "text": f"Answers in your own words: {confirmed} of {len(answers)}", "done": confirmed >= len([a for a in answers if not a['needs_user']]) and len(answers) > 0},
+                {"id": "answers", "text": (f"The form's questions in your own words: {confirmed} of {len(form_qs)}" if form_qs else f"Example answers in your own words: {confirmed} of {len(counted)} (the form's real questions come first; paste them)"), "done": bool(counted) and confirmed >= len(counted)},
                 {"id": "open", "text": "Open the application page and apply there yourself", "done": False},
                 {"id": "applied", "text": "Press 'I applied' so Hunter records the date and the CV you sent", "done": bool(app and app.get("applied_at"))},
             ],
@@ -926,6 +1035,12 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
     }
 
 
+def _user_view(u: dict | None) -> dict | None:
+    if not u:
+        return None
+    return {"text": u.get("text") or "", "saved_at": u.get("updated_at"), "rev": int(u.get("rev") or 0), "empty": not (u.get("text") or "")}
+
+
 def work_keys(db: Database) -> list[tuple[int, str]]:
     """Every job that has a workspace: an application record or a request."""
     from jobhunter.services.board import job_key
@@ -953,7 +1068,7 @@ def apply_pending(db: Database, jid: int, key: str) -> list[str]:
     after a restore) land once the package exists. Never lost, never applied twice."""
     pending = db.get_setting(PENDING_SETTING) or {}
     slot = pending.get(key)
-    if not slot or not _package_row(db, jid):
+    if not slot:
         return []
     changes: list[str] = []
     for aid, v in list((slot.get("answers") or {}).items()):
@@ -962,7 +1077,7 @@ def apply_pending(db: Database, jid: int, key: str) -> list[str]:
             changes.append("answer")
             slot["answers"].pop(aid, None)
         except WorkspaceError:
-            slot["answers"].pop(aid, None)  # the question is gone: nothing to keep
+            continue  # the question is not known here yet (no package, no pasted question): keep waiting
     for kind, v in list((slot.get("texts") or {}).items()):
         try:
             save_optional_text(db, jid, kind, v.get("text"), rev=v.get("rev"), when=v.get("updated_at") or None)
@@ -1006,9 +1121,7 @@ def apply_action(db: Database, jid: int, a: dict, key: str) -> list[str]:
     # Edited answers and optional texts: the person's wording, by revision.
     answers = a.get("answers")
     if isinstance(answers, dict):
-        pkg = db.fetchone("SELECT content_json FROM drafts WHERE job_id = ? AND kind = 'package' ORDER BY id DESC LIMIT 1", (jid,))
-        current = (json.loads(pkg["content_json"]).get("user_answers") or {}) if pkg else {}
-        by_id = {answer_id(q): v for q, v in current.items()}
+        by_id = {r["key"]: r for r in user_texts(db, jid, "answer")}
         for aid, v in list(answers.items())[:MAX_QUESTIONS + 10]:
             if not isinstance(v, dict) or not re.fullmatch(r"a[0-9a-f]{8}", str(aid)):
                 continue
@@ -1027,8 +1140,7 @@ def apply_action(db: Database, jid: int, a: dict, key: str) -> list[str]:
             v = texts.get(kind)
             if isinstance(v, dict):
                 try:
-                    pkg = _package_row(db, jid)
-                    cur = ((json.loads(pkg["content_json"]).get("optional") or {}).get(kind) or {}).get("user_text") if pkg else None
+                    cur = user_text(db, jid, kind, kind)
                     rev = int(v.get("rev") or 0)
                     if rev > int((cur or {}).get("rev") or 0):
                         save_optional_text(db, jid, kind, v.get("text"), rev=rev, when=str(v.get("updated_at") or "")[:25] or None)

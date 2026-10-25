@@ -49,5 +49,5 @@ found is matched. When you have the Artifact tools and the dashboard is linked, 
 results before the search ends: `uv run jobhunter hunt start --json` starts the search as its own process
 and returns at once; poll `uv run jobhunter hunt status --json` every minute or so; as soon as
 `jobs_relevant_new` is at least 1, do the Sync in board.md (read the actions, `board export`, write the
-files): the page then says "Searching now: 12 of 72 sites, 3 new matches so far". When `running` is false,
+files, `board published`): the page then says "Searching now: 12 of 72 sites, 3 new matches so far". When `running` is false,
 sync once more for the final result. Never claim the search is finished while `running` is true.
