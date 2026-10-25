@@ -1,4 +1,4 @@
-# Status: what is implemented, fixture-tested, live-tested, or not available (2026-10-22)
+# Status: what is implemented, fixture-tested, live-tested, or not available (2026-10-25, release candidate 0.2.0rc1)
 
 | Capability | Implemented | Fixture-tested | Live-tested in this build | Notes |
 |---|---|---|---|---|

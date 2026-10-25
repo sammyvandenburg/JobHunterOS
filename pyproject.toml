@@ -1,6 +1,6 @@
 [project]
 name = "jobhunteros"
-version = "0.1.0"
+version = "0.2.0rc1"
 description = "JobHunterOS: Hunter, a private job-hunt companion for KubeCraft students and graduates."
 readme = "README.md"
 requires-python = ">=3.11"

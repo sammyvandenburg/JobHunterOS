@@ -59,6 +59,12 @@ uv run jobhunter jobs show <id>
 uv run jobhunter apply prepare <id>   # application package (nothing is submitted); `jobhunter work run` does what the dashboard asked
 uv run jobhunter cv list              # My CVs: several finished presentations, kept byte for byte
 uv run jobhunter act applied <id>     # you applied; Hunter records it
+uv run jobhunter today                # what waits for you: ready to review, needs your answer, follow-up due, something changed, needs attention
+uv run jobhunter automation mode prepare_best   # after each search, prepare the best matches (3 a day, 5 unopened); default: on request
+uv run jobhunter intake --text "<a link, a description, an alert email, a recruiter message or a referral>"
+uv run jobhunter assisted capability <id>       # what Hunter may do on that application form; `assisted run <id>` fills it on your computer
+uv run jobhunter email policy         # what an email may change by itself (receipts, by default); `email review` shows what waits
+uv run jobhunter watches list         # changes on the jobs you follow, companies you watch, one weekly observation
 uv run jobhunter prefs set remote "remote preferred, hybrid ok, no office"   # or: prefs set work_modes remote,hybrid
 uv run jobhunter act favorite <id>    # star a job (act save <id> bookmarks it; act note <id> your words here keeps a private note)
 uv run jobhunter dashboard            # local dashboard (no Claude needed)
@@ -72,6 +78,8 @@ uv run jobhunter --help               # everything else; add --json to any comma
 ```
 
 ## Documentation
+- [docs/capability-matrix.md](docs/capability-matrix.md): what Hunter does by itself, what you approve, and what was verified in this build (release candidate 0.2.0rc1).
+- [docs/handoff-2026-10-25-competitive.md](docs/handoff-2026-10-25-competitive.md): the founder report for the competitive-upgrade round, the phased checklist to resume from, the acceptance journeys and the exact tests, and the approvals still needed.
 - [docs/assisted-apply.md](docs/assisted-apply.md): what Hunter may do on an application form (per site), and the one lane that fills and, with your one-time approval, submits.
 
 - [docs/setup.md](docs/setup.md): environment checks, platforms, first run, updating.
