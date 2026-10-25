@@ -744,7 +744,10 @@ def cmd_cloud(args):
             cloudstate.tag_latest_run(db, args.tag)
             emit(args, {"tagged": args.tag})
         elif c == "link":
-            emit(args, cloudstate.link_repo(db, args.repo))
+            res = cloudstate.link_repo(db, args.repo)
+            if getattr(args, "confirm_private", False):
+                res["trust"] = cloudstate.confirm_private(db, cloudstate.repo_dir(db, args.repo))
+            emit(args, res)
         elif c == "update":
             if args.rollback:
                 emit(args, cloudstate.rollback_update(args.repo))
@@ -1400,6 +1403,7 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("tag")
     x = cls.add_parser("link", help="use another clone for the state (default: this checkout's own state/ folder)")
     x.add_argument("--repo", required=True)
+    x.add_argument("--confirm-private", action="store_true", help="record your own confirmation that this destination is private (used only when Hunter cannot check with a token)")
     x = cls.add_parser("update", help="bring KubeCraft's newer Hunter into your own copy (merge, or a patch for a template-made copy); state/ and protected paths are never touched; --rollback returns to the backup tag")
     x.add_argument("--repo")
     x.add_argument("--upstream")

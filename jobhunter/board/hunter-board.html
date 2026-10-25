@@ -289,7 +289,8 @@ const Core = (() => {
   }
   /* ----- workspace: requests, CV choice, answers, texts, follow-ups (pure) ----- */
   const REQUEST_KINDS = ["prepare", "research", "contact", "message", "intro", "letter", "followup_draft", "handoff", "cv_file"];
-  const requestId = (kind) => kind + ":" + new Date().toISOString().replace(/[^0-9TZ]/g, "").slice(0, 15) + ":" + Math.random().toString(36).slice(2, 6);
+  const randomId = (n) => { const a = new Uint8Array(n); (self.crypto || window.crypto).getRandomValues(a); return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join(""); };
+  const requestId = (kind) => kind + ":" + new Date().toISOString().replace(/[^0-9TZ]/g, "").slice(0, 15) + ":" + randomId(6);
   const setFields = (jobKey, fields, seen) => (cur) => ({ doc: Object.assign(blankAction(jobKey), seenToAction(seen), cur, fields) });
   const setRequest = (jobKey, kind, id, params, seen) => (cur) => {
     const d = Object.assign(blankAction(jobKey), seenToAction(seen), cur);
@@ -746,14 +747,14 @@ const Core = (() => {
     const pendingNew = (a.contacts_new || []).filter((c) => !contacts.some((x) => x.type === "connection" && x.name === c.name));
     for (const c of pendingNew) parts.push(el("div", { class: "contact" }, el("div", { class: "q" }, c.name, el("span", { class: "pill p-pending", style: "margin-left:6px" }, "Your connection · Hunter keeps it on its next run")), c.role ? el("div", { class: "s" }, c.role) : null));
     for (const c of contacts) {
-      const done = c.contacted_at || ((a.contacted || {})[c.id] || {}).at;
+      const cref = c.key || String(c.id); const done = c.contacted_at || ((a.contacted || {})[cref] || (a.contacted || {})[String(c.id)] || {}).at;
       parts.push(el("div", { class: "contact" },
         el("div", { class: "q" }, c.name || "Unnamed", el("span", { class: "pill " + (c.type === "connection" ? "p-fresh" : "g-worth_a_shot"), style: "margin-left:6px" }, c.type_label || c.type)),
         c.role ? el("div", { class: "s" }, c.role) : null,
         el("div", { class: "foot" }, c.relevance || "", c.source_url && safeUrl(c.source_url) ? [" · ", el("a", { href: safeUrl(c.source_url), target: "_blank", rel: "noopener noreferrer" }, "source")] : null, c.checked_at ? " · checked " + fmtDay(c.checked_at) : null),
         c.route ? el("div", { class: "s" }, "Public route: " + c.route) : el("div", { class: "foot" }, "No public contact route was given; Hunter does not guess one."),
         c.message ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (you send it, if you want to):"), el("div", { style: "white-space:pre-wrap" }, c.message), el("div", { class: "actions", style: "grid-template-columns:auto 1fr" }, copyBtn(c.message, "Copy message"))) : null,
-        done ? el("div", { class: "save ok", role: "status" }, "You contacted them " + fmtDay(done) + ".") : el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "message", { contact: c.id }) }, c.message ? "New draft message" : "Draft a short message"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doContacted(k, c.id) }, "I contacted them")),
+        done ? el("div", { class: "save ok", role: "status" }, "You contacted them " + fmtDay(done) + ".") : el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "message", { contact: cref }) }, c.message ? "New draft message" : "Draft a short message"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doContacted(k, cref) }, "I contacted them")),
         requestLine(k, "message", { ready: "" })));
     }
     if (!contacts.length && !pendingNew.length) {

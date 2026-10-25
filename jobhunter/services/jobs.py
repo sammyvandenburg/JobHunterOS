@@ -94,6 +94,7 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
             values.update({"availability": "open", "availability_note": None})
         if changed:
             values.update(_job_values(norm, raw, employer_id, codes_json, direct_url, direct_status, keep_first_seen=job))
+            values.pop("canonical_key", None)  # the job's identity is set once; a changed title or location never moves actions
         db.update("jobs", values, "id = ?", (job["id"],))
         return int(job["id"]), False, changed
 
@@ -115,6 +116,7 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
         # Prefer employer-hosted details over aggregator copies; keep the earliest first_seen.
         if (employer_hosted or raw.is_employer_hosted) and match.get("direct_url_status") != "verified":
             values.update(_job_values(norm, raw, employer_id, codes_json, direct_url, direct_status, keep_first_seen=match))
+            values.pop("canonical_key", None)
         elif not match.get("description_text") and norm.description_text:
             values["description_text"] = norm.description_text
         if not match.get("posted_at") and raw.posted_at:

@@ -194,24 +194,28 @@ def test_state_never_goes_to_a_public_or_shared_repository(ctx, db, tmp_path, gi
     assert not (a / "state" / "hunter-state.json").exists()
     # A public repository on GitHub: refused.
     _git(a, "remote", "set-url", "origin", "git@github.com:someone/my-hunter.git")
-    monkeypatch.setattr(cloudstate, "_github_visibility", lambda slug: "public")
+    monkeypatch.setattr(cloudstate, "verify_destination_slug", lambda slug, token=None: {"slug": slug, "visibility": "public", "how": "test", "push_allowed": None, "identity": None})
     with pytest.raises(cloudstate.RepoError, match="public repository"):
         cloudstate.save_to_repo(ctx, db, a)
-    # A private one (anonymous GitHub answers 404): allowed, and the state goes to the named branch even
-    # when the checkout sits on a session branch.
-    monkeypatch.setattr(cloudstate, "_github_visibility", lambda slug: "private_or_missing")
+    # Anonymous GitHub answers 404: that alone is not proof of privacy. Nothing is pushed until a token proves it or
+    # the person confirms it; then the state goes to the named branch even when the checkout sits on a session branch.
+    monkeypatch.setattr(cloudstate, "verify_destination_slug", lambda slug, token=None: {"slug": slug, "visibility": "private_or_missing", "how": "anonymous 404", "push_allowed": None, "identity": None})
     _git(a, "remote", "set-url", "origin", str(github))
     monkeypatch.setattr(cloudstate, "_origin_slug", lambda d: "someone/my-hunter")
+    monkeypatch.setattr(cloudstate, "_slug_of", lambda url: "someone/my-hunter")
     _git(a, "checkout", "-q", "-b", "claude/session-xyz")
+    with pytest.raises(cloudstate.RepoError, match="Could not establish"):
+        cloudstate.save_to_repo(ctx, db, a, branch="main")
+    assert "state" not in _git(a, "log", "--oneline", "-1")
+    monkeypatch.setattr(cloudstate, "verify_destination_slug", lambda slug, token=None: {"slug": slug, "visibility": "private", "how": "GitHub API with a token", "push_allowed": True, "identity": "someone"})
     res = cloudstate.save_to_repo(ctx, db, a, branch="main")
-    assert res["pushed"] and res["branch"] == "main" and res["destination"]["visibility"] == "private_or_missing"
+    assert res["pushed"] and res["branch"] == "main" and res["destination"]["visibility"] == "private" and res["destination"]["verified"]
     peek = _clone(github, tmp_path / "peek")
     assert (peek / "state" / "hunter-state.json").exists() and _git(peek, "rev-parse", "--abbrev-ref", "HEAD") == "main"
     # The next load on another machine reads that branch regardless of its own checkout branch.
     c, d = _fresh(tmp_path, "cloud")
     other = _clone(github, tmp_path / "other")
     _git(other, "checkout", "-q", "-b", "claude/another-session")
-    monkeypatch.setattr(cloudstate, "_origin_slug", lambda d: "someone/my-hunter")
     loaded = cloudstate.load_from_repo(c, d, other, restore=True, branch="main")
     assert loaded["loaded"] and loaded["branch"] == "main" and loaded["inputs"]["profile"]
     d.close()

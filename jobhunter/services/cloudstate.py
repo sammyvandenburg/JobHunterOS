@@ -87,7 +87,52 @@ def _export_inputs(db: Database) -> dict:
             "applied": _keys(db, "SELECT j.canonical_key AS k FROM jobs j JOIN applications a ON a.job_id = j.id WHERE a.stage != 'prepared'")}
     from jobhunter.services import board
 
-    return {"profile": profile, "preferences": prefs_svc.get(db).model_dump(mode="json"), "consents": consents, "exclusions": excl, "digest_transport": "claude", "board": board.export_sync_state(db), "cvs": _export_cvs(db)}
+    return {"profile": profile, "preferences": prefs_svc.get(db).model_dump(mode="json"), "preferences_changed_at": _prefs_changed_at(db), "consents": consents, "exclusions": excl, "digest_transport": "claude", "board": board.export_sync_state(db), "cvs": _export_cvs(db)}
+
+
+def _prefs_changed_at(db: Database) -> dict:
+    """When each preference field last changed here (from the confirmed change history)."""
+    out: dict = {}
+    # The person's own edits only: a restore writing the file's values is not a decision made here.
+    for r in db.fetchall("SELECT key, MAX(created_at) AS at FROM preference_changes WHERE reverted_at IS NULL AND COALESCE(reason, '') NOT LIKE 'cloud restore%' GROUP BY key"):
+        out[r["key"]] = r["at"]
+    return out
+
+
+PREFS_CONFLICTS_SETTING = "preferences.conflicts"
+
+
+def _merge_preferences(db: Database, incoming: dict, incoming_at: dict) -> dict:
+    """Field by field: the side that changed a field later wins; a field only one side changed keeps that change; a
+    field both sides changed since they last agreed is a conflict the person decides (kept as the local value and
+    listed under `preferences.conflicts`). Git moved the file; this is the merge."""
+    local = prefs_svc.get(db).model_dump(mode="json")
+    local_at = _prefs_changed_at(db)
+    last_sync = max((db.get_setting("cloud.last_import") or {}).get("at") or "", (db.get_setting("cloud.last_export") or {}).get("at") or "")  # the last exchange with the file
+    merged = dict(local)
+    conflicts = db.get_setting(PREFS_CONFLICTS_SETTING) or {}
+    changed_fields: list[str] = []
+    for key in sorted(set(local) | set(incoming)):
+        lv, rv = local.get(key), incoming.get(key)
+        if lv == rv:
+            conflicts.pop(key, None)
+            continue
+        la, ra = local_at.get(key) or "", (incoming_at or {}).get(key) or ""
+        # Timestamps carry whole seconds: an edit in the same second as the last exchange counts as after it,
+        # so a doubt becomes a visible conflict rather than a silent overwrite.
+        local_changed = bool(la) and la >= last_sync
+        remote_changed = bool(ra) and ra >= last_sync
+        if local_changed and remote_changed:
+            conflicts[key] = {"local": lv, "remote": rv, "local_at": la, "remote_at": ra, "seen_at": now_iso()}
+            continue  # keep the local value; the person decides
+        if remote_changed or (not local_changed and ra >= la):
+            merged[key] = rv
+            changed_fields.append(key)
+        # else: only this side changed it, or it is newer here: keep local
+    if changed_fields:
+        prefs_svc.save(db, Preferences.model_validate(merged), reason="cloud restore (field merge)")
+    db.set_setting(PREFS_CONFLICTS_SETTING, conflicts)
+    return {"changed": changed_fields, "conflicts": sorted(conflicts)}
 
 
 def _export_cvs(db: Database) -> list[dict]:
@@ -203,6 +248,12 @@ def _export_results(db: Database) -> dict:
     emp_by_id = {e["id"]: e["canonical_name"] for e in employers}
     prof = profile_svc.approved(db)
     matches = {m["job_id"]: m for m in db.fetchall("SELECT * FROM matches WHERE profile_version_id = ? AND policy_version = ?", (prof["id"], _policy_version()))} if prof else {}
+    if prof:
+        from jobhunter.services.matching import engine
+
+        pkey, phash = engine.profile_fingerprint(prof), engine._prefs_hash(db)
+        for m in matches.values():
+            m["_profile_key"], m["_prefs_hash"] = pkey, phash
     runs = []
     for r in db.fetchall("SELECT * FROM hunt_runs WHERE trigger IN ('scheduled','cloud') AND status != 'running' ORDER BY id DESC LIMIT 20"):
         runs.append({"tag": r.get("owner") if str(r.get("owner") or "").startswith("cloud:") else f"run:{r['started_at']}", "trigger": r["trigger"], "status": r["status"], "started_at": r["started_at"], "finished_at": r.get("finished_at"), "stats": json.loads(r.get("stats_json") or "{}"), "error": r.get("error")})
@@ -223,7 +274,7 @@ def _job_row(j: dict, emp_by_id: dict, match: dict | None, snippet: bool, state:
     cap = ACTED_DESCRIPTION_CAP if state else DESCRIPTION_CAP
     row["description_text"] = (text[:cap] + (" …" if len(text) > cap else "")) if (snippet or state) else None
     row["employer_canonical_name"] = emp_by_id.get(j.get("employer_id"))
-    row["match"] = {k: match.get(k) for k in MATCH_COLUMNS} if match else None
+    row["match"] = ({k: match.get(k) for k in MATCH_COLUMNS} | {"fingerprint": {"profile": match.get("_profile_key"), "prefs": match.get("_prefs_hash"), "policy": match.get("policy_version"), "job": match.get("cache_key")}, "computed_at": match.get("computed_at")}) if match else None
     if state:
         row["state"] = state
     return row
@@ -295,7 +346,8 @@ def _import_inputs(db: Database, inputs: dict) -> dict:
     prof = inputs["profile"]
     cur = profile_svc.approved(db)
     changed = {"profile": False, "preferences": False, "consents": []}
-    if not cur or (cur.get("approved_at"), cur.get("version")) != (prof.get("approved_at"), prof.get("version")):
+    # The newer approval wins; an older snapshot never replaces a profile approved later on this side.
+    if not cur or ((prof.get("approved_at") or "") > (cur.get("approved_at") or "") and (cur.get("approved_at"), cur.get("version")) != (prof.get("approved_at"), prof.get("version"))):
         prev = db.fetchone("SELECT MAX(version) AS v FROM profile_versions")
         with db.tx():
             db.execute("UPDATE profile_versions SET status = 'superseded' WHERE status IN ('approved', 'draft')")
@@ -303,8 +355,13 @@ def _import_inputs(db: Database, inputs: dict) -> dict:
         changed["profile"] = True
     new_prefs = Preferences.model_validate(inputs.get("preferences") or {})
     if new_prefs.model_dump(mode="json") != prefs_svc.get(db).model_dump(mode="json"):
-        prefs_svc.save(db, new_prefs, reason="cloud restore")
-        changed["preferences"] = True
+        if db.get_setting("preferences") is None:
+            prefs_svc.save(db, new_prefs, reason="cloud restore")  # an empty database simply takes the file
+            changed["preferences"] = True
+        else:
+            merge = _merge_preferences(db, new_prefs.model_dump(mode="json"), inputs.get("preferences_changed_at") or {})
+            changed["preferences"] = bool(merge["changed"])
+            changed["preference_conflicts"] = merge["conflicts"]
     for kind, details in (inputs.get("consents") or {}).items():
         if kind in CONSENTS and (not consent.is_granted(db, kind) or consent.details(db, kind) != details):
             consent.grant(db, kind, details)
@@ -356,12 +413,43 @@ def _import_results(db: Database, results: dict) -> dict:
         states_applied = _import_states(db, results.get("jobs") or [], key_to_id)
         notes_added = 0
         for n in results.get("notifications") or []:
-            if not n.get("delivery_key") or db.fetchone("SELECT id FROM notifications WHERE delivery_key = ?", (n["delivery_key"],)):
+            if not n.get("delivery_key"):
+                continue
+            existing = db.fetchone("SELECT * FROM notifications WHERE delivery_key = ?", (n["delivery_key"],))
+            if existing:
+                _merge_notification(db, existing, n)
                 continue
             ids = [key_to_id[k] for k in n.get("job_keys") or [] if k in key_to_id]
             db.insert("notifications", {k: n.get(k) for k in ("kind", "channel", "recipient", "subject", "content_hash", "status", "attempts", "provider_message_id", "error", "created_at", "sent_at", "delivery_key", "claimed_at", "resolved_at", "resolution")} | {"job_ids_json": json.dumps(ids), "body_path": None})
             notes_added += 1
     return {"jobs_added": added, "jobs_refreshed": refreshed, "matches_added": matches_added, "states_applied": states_applied, "hunt_runs_added": runs_added, "notifications_added": notes_added}
+
+
+NOTIFICATION_RANK = {"queued": 0, "sending": 1, "failed": 2, "uncertain": 3, "sent": 4}
+
+
+def _merge_notification(db: Database, existing: dict, incoming: dict) -> bool:
+    """Lifecycle evidence only moves forward: sent never becomes sending again, a provider message id is never erased,
+    and a resolution recorded anywhere is kept. Whatever side knows more wins, field by field."""
+    values: dict = {}
+    cur_rank = NOTIFICATION_RANK.get(existing.get("status") or "", -1)
+    new_rank = NOTIFICATION_RANK.get(incoming.get("status") or "", -1)
+    if new_rank > cur_rank:
+        values["status"] = incoming["status"]
+        if incoming.get("error"):
+            values["error"] = incoming["error"]
+    if incoming.get("provider_message_id") and not existing.get("provider_message_id"):
+        values["provider_message_id"] = incoming["provider_message_id"]
+    if incoming.get("sent_at") and not existing.get("sent_at"):
+        values["sent_at"] = incoming["sent_at"]
+    if incoming.get("resolved_at") and not existing.get("resolved_at"):
+        values["resolved_at"] = incoming["resolved_at"]
+        values["resolution"] = incoming.get("resolution")
+    if int(incoming.get("attempts") or 0) > int(existing.get("attempts") or 0):
+        values["attempts"] = int(incoming["attempts"])
+    if values:
+        db.update("notifications", values, "id = ?", (existing["id"],))
+    return bool(values)
 
 
 def _state_at(db: Database, job_id: int) -> str:
@@ -461,8 +549,16 @@ def _import_matches(db: Database, jobs: list[dict], key_to_id: dict[str, int]) -
         jid = key_to_id.get(j["canonical_key"])
         if not m or not jid or not m.get("match_group"):
             continue
+        fp = m.get("fingerprint") or {}
+        # Only a match computed for this exact profile, these preferences and this policy is current here; anything
+        # else is an old opinion and is left out rather than relabelled.
+        if fp and (fp.get("profile") != pkey or fp.get("prefs") != phash or fp.get("policy") != engine.POLICY_VERSION):
+            continue
         row = db.fetchone("SELECT * FROM jobs WHERE id = ?", (jid,))
-        values = {k: m.get(k) for k in MATCH_COLUMNS} | {"job_id": jid, "profile_version_id": prof["id"], "policy_version": engine.POLICY_VERSION, "cache_key": engine.cache_key(row, pkey, phash), "computed_at": now_iso()}
+        key = engine.cache_key(row, pkey, phash)
+        if fp and fp.get("job") and fp["job"] != key:
+            continue  # the job's material fields differ from what was scored
+        values = {k: m.get(k) for k in MATCH_COLUMNS} | {"job_id": jid, "profile_version_id": prof["id"], "policy_version": engine.POLICY_VERSION, "cache_key": key, "computed_at": m.get("computed_at") or now_iso()}
         values["explanation_source"] = values.get("explanation_source") or "rules"
         existing = db.fetchone("SELECT id FROM matches WHERE job_id = ? AND profile_version_id = ? AND policy_version = ?", (jid, prof["id"], engine.POLICY_VERSION))
         if existing:
@@ -582,41 +678,128 @@ def state_dir(repo):
     return d
 
 
-def _origin_slug(repo_dir) -> str | None:
-    url = _git(repo_dir, "remote", "get-url", "origin", check=False)
+def _slug_of(url: str | None) -> str | None:
     m = re.search(r"github\.com[:/]+([^/]+)/([^/\s]+?)(?:\.git)?/?$", url or "")
     return f"{m.group(1)}/{m.group(2)}".lower() if m else None
 
 
-def _github_visibility(slug: str) -> str:
-    """'public', 'private_or_missing', or 'unknown' (no network). No token: a public repository answers an
-    anonymous request, a private one looks like it does not exist. That is exactly the distinction needed."""
+def _origin_slug(repo_dir) -> str | None:
+    return _slug_of(_git(repo_dir, "remote", "get-url", "origin", check=False))
+
+
+def _push_url(repo_dir, branch: str | None = None) -> str:
+    """Where a push really goes: a push URL, a pushRemote or a pushDefault can differ from the fetch URL."""
+    remote = "origin"
+    if branch:
+        remote = _git(repo_dir, "config", "--get", f"branch.{branch}.pushRemote", check=False) or _git(repo_dir, "config", "--get", "remote.pushDefault", check=False) or "origin"
+    return _git(repo_dir, "remote", "get-url", "--push", remote, check=False)
+
+
+def _github_token() -> str | None:
+    import os
+
+    return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or None
+
+
+def _github_repo(slug: str, token: str | None) -> tuple[int | None, dict | None, dict]:
+    """(status, body, headers) for GET /repos/{slug}; (None, None, {}) when the network did not answer."""
     try:
         import httpx
 
-        r = httpx.get(f"https://api.github.com/repos/{slug}", timeout=8, headers={"Accept": "application/vnd.github+json", "User-Agent": "jobhunteros"})
+        headers = {"Accept": "application/vnd.github+json", "User-Agent": "jobhunteros"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        r = httpx.get(f"https://api.github.com/repos/{slug}", timeout=8, headers=headers)
     except Exception:
-        return "unknown"
-    if r.status_code == 200:
-        try:
-            return "public" if not r.json().get("private") else "private_or_missing"
-        except ValueError:
-            return "public"
-    return "private_or_missing" if r.status_code in {404, 403} else "unknown"
+        return None, None, {}
+    try:
+        body = r.json() if r.content else None
+    except ValueError:
+        body = None
+    return r.status_code, body if isinstance(body, dict) else None, {k.lower(): v for k, v in r.headers.items()}
 
 
-def check_destination(repo_dir) -> dict:
-    """Personal state only ever goes to the student's own private copy: never to a public repository and never
-    to KubeCraft's shared one. Raises RepoError otherwise."""
-    slug = _origin_slug(repo_dir)
+def _github_visibility(slug: str) -> str:
+    """Kept for callers: 'public', 'private' (positively, with a token), 'private_or_missing' (anonymous 404) or 'unknown'."""
+    return verify_destination_slug(slug)["visibility"]
+
+
+TRUST_SETTING = "cloud.destination_trust"  # the person's own confirmation that a destination is private, when no token can prove it
+
+
+def verify_destination_slug(slug: str, token: str | None = None) -> dict:
+    """What can be positively established about a GitHub destination. With a token: the repository's own `private`
+    flag and whether this identity may push. Without one: an anonymous 404 only says "not visible anonymously";
+    that is proof of privacy only together with a push that succeeded (the repository exists and we may write).
+    Rate limits, network errors and 403s prove nothing."""
+    token = token if token is not None else _github_token()
+    status, body, headers = _github_repo(slug, token)
+    if status is None:
+        return {"slug": slug, "visibility": "unknown", "how": "no answer from api.github.com", "push_allowed": None, "identity": None}
+    if token and status == 200 and body is not None:
+        private = bool(body.get("private"))
+        perms = body.get("permissions") or {}
+        return {"slug": slug, "visibility": "private" if private else "public", "how": "GitHub API with a token", "push_allowed": bool(perms.get("push")) if perms else None, "identity": body.get("owner", {}).get("login")}
+    if status == 200 and body is not None:
+        return {"slug": slug, "visibility": "public" if not body.get("private") else "private_or_missing", "how": "anonymous GitHub API", "push_allowed": None, "identity": None}
+    if status in {403, 429} or headers.get("x-ratelimit-remaining") == "0":
+        return {"slug": slug, "visibility": "unknown", "how": f"GitHub answered {status} (rate limit or refusal), which proves nothing", "push_allowed": None, "identity": None}
+    if status == 404:
+        return {"slug": slug, "visibility": "private_or_missing", "how": "anonymous GitHub API: not visible without a token", "push_allowed": None, "identity": None}
+    return {"slug": slug, "visibility": "unknown", "how": f"GitHub answered {status}", "push_allowed": None, "identity": None}
+
+
+def check_destination(repo_dir, db: Database | None = None, branch: str | None = None) -> dict:
+    """Personal state only ever goes to the student's own private copy: never to a public repository, never to
+    KubeCraft's shared one, and never to a destination whose privacy could not be established. The push URL is
+    what is checked (it can differ from the fetch URL). Raises RepoError otherwise.
+
+    Positive proof is one of: the GitHub API with a token says private and pushable; an anonymous 404 for the
+    push destination plus an earlier push that succeeded to that same destination (recorded by `save_to_repo`);
+    or the person's own recorded confirmation for that slug (`cloud link --confirm-private`)."""
+    push_url = _push_url(repo_dir, branch)
+    fetch_slug = _origin_slug(repo_dir)
+    slug = _slug_of(push_url) or fetch_slug
+    if slug == UPSTREAM_SLUG or fetch_slug == UPSTREAM_SLUG:
+        raise RepoError("This checkout pushes to KubeCraft's shared repository. Personal state never goes there: use your own private copy of Hunter (see docs/cloud-routine.md).")
+    if not slug:
+        if push_url and not push_url.startswith(("file://", "/")) and "github.com" not in push_url:
+            return {"origin": None, "push_url": push_url, "visibility": "unverified-host", "how": "not GitHub; no check possible", "verified": False}
+        return {"origin": None, "push_url": push_url or None, "visibility": "local", "verified": True}
+    v = verify_destination_slug(slug)
+    out = {"origin": fetch_slug, "push_slug": slug, "push_url": push_url, **v, "verified": False}
+    if fetch_slug and fetch_slug != slug:
+        out["note"] = f"The push destination ({slug}) differs from the fetch origin ({fetch_slug}); the push destination was checked."
+    if v["visibility"] == "public":
+        raise RepoError(f"{slug} is a public repository. Personal state only goes to a private one; make it private on GitHub, then save again.")
+    if v["visibility"] == "private":
+        if v.get("push_allowed") is False:
+            raise RepoError(f"{slug} is private but this identity ({v.get('identity') or 'token'}) may not push to it.")
+        out["verified"] = True
+        return out
+    trusted = (db.get_setting(TRUST_SETTING) or {}) if db is not None else {}
+    if v["visibility"] == "private_or_missing":
+        pushed_before = (db.get_setting("cloud.last_export") or {}).get("pushed_to") == slug if db is not None else False
+        if pushed_before:
+            out.update({"verified": True, "how": v["how"] + " + an earlier push to this destination succeeded"})
+            return out
+    if trusted.get(slug):
+        out.update({"verified": True, "how": f"confirmed private by you on {trusted[slug].get('at', '')[:10]}"})
+        return out
+    raise RepoError(f"Could not establish that {slug} is private ({v['how']}). Nothing was pushed. Set GITHUB_TOKEN (or GH_TOKEN) so Hunter can check, or confirm it yourself once: `jobhunter cloud link <repo> --confirm-private`.")
+
+
+def confirm_private(db: Database, repo_dir) -> dict:
+    """The person's own statement that the push destination is private, recorded with the slug and the time."""
+    slug = _slug_of(_push_url(repo_dir)) or _origin_slug(repo_dir)
+    if not slug:
+        raise RepoError("This checkout has no GitHub destination to confirm.")
     if slug == UPSTREAM_SLUG:
-        raise RepoError("This checkout's origin is KubeCraft's shared repository. Personal state never goes there: use your own private copy of Hunter (see docs/cloud-routine.md).")
-    if slug:
-        vis = _github_visibility(slug)
-        if vis == "public":
-            raise RepoError(f"{slug} is a public repository. Personal state only goes to a private one; make it private on GitHub, then save again.")
-        return {"origin": slug, "visibility": vis}
-    return {"origin": None, "visibility": "local"}
+        raise RepoError("That is KubeCraft's shared repository; it can never hold personal state.")
+    trusted = db.get_setting(TRUST_SETTING) or {}
+    trusted[slug] = {"at": now_iso(), "by": "owner"}
+    db.set_setting(TRUST_SETTING, trusted)
+    return {"confirmed_private": slug, "at": trusted[slug]["at"]}
 
 
 def state_branch(db: Database, override: str | None = None, repo_dir=None) -> str:
@@ -634,24 +817,41 @@ def _same_state(old: dict, new: dict) -> bool:
     return {k: v for k, v in old.items() if k not in volatile} == {k: v for k, v in new.items() if k not in volatile}
 
 
+STATE_FILES = (f"{STATE_DIR}/{STATE_FILE}", f"{STATE_DIR}/{SEEN_FILE}")  # the only paths Hunter ever commits
+
+
+def _refuse_symlink(path: Path) -> None:
+    import os
+
+    if os.path.islink(path):
+        raise RepoError(f"{path} is a symbolic link. Hunter writes its state only to ordinary files; remove the link first.")
+    parent = path.parent
+    if os.path.islink(parent):
+        raise RepoError(f"{parent} is a symbolic link. The state folder must be an ordinary folder inside the copy.")
+
+
 def save_to_repo(ctx: AppContext, db: Database, repo=None, branch: str | None = None) -> dict:
-    """Export the bundle into the state repository, commit, push (pull --rebase first when a remote exists).
-    The file is pretty JSON so a diff on GitHub stays readable; `seen_jobs.json` is the human-readable
-    list of emailed jobs, the one thing the original tiny Hunter kept."""
+    """Export the bundle into the state repository, commit exactly the two state files, push (pull --rebase first when a
+    remote exists). The person's own index and working changes are left alone (`git commit --only` on the two paths),
+    and the outgoing commit is checked to touch nothing else before it is pushed. The file is pretty JSON so a diff on
+    GitHub stays readable; `seen_jobs.json` is the human-readable list of emailed jobs."""
     d = repo_dir(db, repo)
     br = state_branch(db, branch, d)
-    dest = check_destination(d) if _has_remote(d) else {"origin": None, "visibility": "local"}
+    dest = check_destination(d, db, br) if _has_remote(d) else {"origin": None, "visibility": "local", "verified": True}
+    pull_ok = None
     if _has_remote(d):
-        _git(d, "pull", "--rebase", "--quiet", "origin", br, check=False)
+        pull_ok = _git_ok(d, "pull", "--rebase", "--quiet", "origin", br)
     bundle = export_bundle(ctx, db)
     leaks = check_bundle_privacy(bundle)
     if leaks:
         raise BundleError(f"Refusing to save: forbidden content {leaks}")
     sd = state_dir(d)
     previous = sd / STATE_FILE
+    for f in (sd / STATE_FILE, sd / SEEN_FILE):
+        _refuse_symlink(f)
     if previous.exists():
         try:
-            if _same_state(json.loads(previous.read_text(encoding="utf-8")), bundle) and not _git(d, "status", "--porcelain", "--", STATE_DIR):
+            if _same_state(json.loads(previous.read_text(encoding="utf-8")), bundle) and not _git(d, "status", "--porcelain", "--", *STATE_FILES):
                 return {"saved": False, "note": "Nothing changed since the last save.", "path": str(previous), "branch": br}
         except (ValueError, OSError):
             pass
@@ -662,13 +862,19 @@ def save_to_repo(ctx: AppContext, db: Database, repo=None, branch: str | None = 
             if n.get("status") in {"sent", "uncertain", "sending"}:
                 seen[k] = {"emailed_at": n.get("sent_at") or n.get("created_at"), "status": n.get("status")}
     (sd / SEEN_FILE).write_text(json.dumps(seen, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
-    # Only the state directory is ever staged: a stray CV or database next to the code never gets committed.
-    _git(d, "add", "--", STATE_DIR)
-    if not _git(d, "status", "--porcelain", "--", STATE_DIR):
+    if not _git(d, "status", "--porcelain", "--", *STATE_FILES):
         return {"saved": False, "note": "Nothing changed since the last save.", "path": str(sd)}
     from jobhunter.util import hostname
 
-    _git(d, "-c", "user.name=Hunter", "-c", "user.email=hunter@jobhunteros.local", "commit", "-q", "-m", f"Hunter state {bundle['exported_at']} ({bundle['exported_by']} on {hostname()})")
+    before = _git(d, "rev-parse", "HEAD", check=False)
+    # Only the two state files, whatever else is staged or lying around (a CV next to the code, a stray file in state/):
+    # `add` names them exactly and `commit --only` takes just those paths, leaving the person's own index as it was.
+    _git(d, "add", "--", *STATE_FILES)
+    _git(d, "-c", "user.name=Hunter", "-c", "user.email=hunter@jobhunteros.local", "commit", "-q", "--only", "-m", f"Hunter state {bundle['exported_at']} ({bundle['exported_by']} on {hostname()})", "--", *STATE_FILES)
+    touched = [ln for ln in _git(d, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").splitlines() if ln]
+    if set(touched) - set(STATE_FILES):
+        _git(d, "reset", "-q", "--soft", before or "HEAD~1")
+        raise RepoError(f"The state commit would have carried {sorted(set(touched) - set(STATE_FILES))}. Nothing was committed or pushed.")
     pushed = None
     if _has_remote(d):
         last = ""
@@ -683,8 +889,8 @@ def save_to_repo(ctx: AppContext, db: Database, repo=None, branch: str | None = 
         if not pushed:
             raise RepoError(f"Could not push the state to {br}: {last}")
     db.set_setting(BRANCH_SETTING, br)
-    db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(sd / STATE_FILE), "pushed": pushed, "branch": br})
-    return {"saved": True, "pushed": pushed, "branch": br, "destination": dest, "commit": _git(d, "rev-parse", "--short", "HEAD"), "path": str(sd / STATE_FILE), "jobs": len(bundle["results"]["jobs"]), "notifications": len(bundle["results"]["notifications"])}
+    db.set_setting("cloud.last_export", {"at": bundle["exported_at"], "path": str(sd / STATE_FILE), "pushed": pushed, "pushed_to": dest.get("push_slug") if pushed else None, "branch": br, "pull_ok": pull_ok})
+    return {"saved": True, "pushed": pushed, "pull_ok": pull_ok, "branch": br, "destination": dest, "commit": _git(d, "rev-parse", "--short", "HEAD"), "files": list(STATE_FILES), "path": str(sd / STATE_FILE), "jobs": len(bundle["results"]["jobs"]), "notifications": len(bundle["results"]["notifications"])}
 
 
 def load_from_repo(ctx: AppContext, db: Database, repo=None, restore: bool = False, branch: str | None = None) -> dict:
@@ -692,15 +898,19 @@ def load_from_repo(ctx: AppContext, db: Database, repo=None, restore: bool = Fal
     `restore=False` on the laptop (results only; notes, favorites, applications are never touched)."""
     d = repo_dir(db, repo)
     br = state_branch(db, branch, d)
+    pull_ok = None
     if _has_remote(d):
-        _git(d, "pull", "--rebase", "--quiet", "origin", br, check=False)
+        pull_ok = _git_ok(d, "pull", "--rebase", "--quiet", "origin", br)
+        if not pull_ok:
+            # Whatever is on disk may be old. A restore must say so, never pass it off as current.
+            return {"loaded": False, "current": False, "note": f"Could not pull the state branch {br} from the remote, so the copy on disk may be out of date. Nothing was restored. Check the network or the repository and try again.", "branch": br}
     db.set_setting(BRANCH_SETTING, br)
     f = d / STATE_DIR / STATE_FILE
     if not f.exists():
         return {"loaded": False, "note": "There is no state/hunter-state.json yet. Save from the computer that has the profile first (`jobhunter cloud save`)."}
     bundle = json.loads(f.read_text(encoding="utf-8"))
     res = import_bundle(ctx, db, bundle, inputs=restore, results=True)
-    return {"loaded": True, "branch": br, "commit": _git(d, "rev-parse", "--short", "HEAD", check=False), "exported_at": bundle.get("exported_at"), "exported_by": bundle.get("exported_by"), **res}
+    return {"loaded": True, "current": pull_ok is not False, "pull_ok": pull_ok, "branch": br, "commit": _git(d, "rev-parse", "--short", "HEAD", check=False), "exported_at": bundle.get("exported_at"), "exported_by": bundle.get("exported_by"), **res}
 
 
 BACKUP_PREFIX = "hunter-update-backup-"

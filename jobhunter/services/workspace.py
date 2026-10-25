@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import secrets
 from datetime import timedelta
 from urllib.parse import urlparse
 
@@ -62,7 +63,7 @@ def request(db: Database, job_id: int | None, kind: str, params: dict | None = N
     """Record one request once. The same id again returns the existing row (the page may write it twice)."""
     if kind not in REQUEST_KINDS:
         raise WorkspaceError(f"Unknown request kind '{kind}'.")
-    rid = _clean_request_id(request_id or f"{kind}:{now_iso()}")
+    rid = _clean_request_id(request_id or f"{kind}:{now_iso()}:{secrets.token_hex(5)}")
     row = db.fetchone("SELECT * FROM requests WHERE request_id = ?", (rid,))
     if row:
         return _request_view(row)
@@ -100,10 +101,14 @@ def _clean_params(kind: str, params: dict) -> dict:
     if kind == "followup_draft" and params.get("contact"):
         out["contact"] = str(params["contact"]).strip()[:MAX_CONTACT_FIELD]
     if kind == "message" and params.get("contact") is not None:
-        try:
-            out["contact"] = int(params["contact"])
-        except (TypeError, ValueError):
-            pass
+        ref = params["contact"]
+        if isinstance(ref, str) and re.fullmatch(r"ct[0-9a-f]{10}", ref):
+            out["contact"] = ref
+        else:
+            try:
+                out["contact"] = int(ref)
+            except (TypeError, ValueError):
+                pass
     if kind == "cv_file" and params.get("cv"):
         out["cv"] = str(params["cv"])[:40]
     return out
@@ -129,22 +134,73 @@ def list_requests(db: Database, state: str | None = "requested", job_id: int | N
 
 def _finish(db: Database, rid: str, state: str, message: str | None, result: dict | None = None) -> dict:
     with db.tx():
-        db.update("requests", {"state": state, "message": message, "result_json": json.dumps(result) if result is not None else None, "finished_at": now_iso()}, "request_id = ?", (rid,))
+        db.update("requests", {"state": state, "message": message, "result_json": json.dumps(result) if result is not None else None, "finished_at": now_iso(), "claimed_by": None, "lease_until": None}, "request_id = ?", (rid,))
     return _request_view(db.fetchone("SELECT * FROM requests WHERE request_id = ?", (rid,)))
 
 
-def run_request(ctx: AppContext, db: Database, request_id: str, use_model: bool = False) -> dict:
+LEASE_SECONDS = 15 * 60  # a running request past its lease is stale: the run that held it died
+MAX_ATTEMPTS = 3
+
+
+def claim_request(db: Database, request_id: str, holder: str) -> dict | None:
+    """Take the request atomically: only one run can move it to running (or re-take a lease that expired).
+    Returns the claimed row, or None when another run holds it or it is finished."""
+    from datetime import timedelta
+
+    ts = now_iso()
+    until = (now() + timedelta(seconds=LEASE_SECONDS)).isoformat()
+    with db.tx():
+        cur = db.execute(
+            "UPDATE requests SET state = 'running', claimed_by = ?, lease_until = ?, heartbeat_at = ?, started_at = COALESCE(started_at, ?), attempts = attempts + 1 "
+            "WHERE request_id = ? AND (state = 'requested' OR (state = 'running' AND (lease_until IS NULL OR lease_until < ?))) AND attempts < ?",
+            (holder, until, ts, ts, request_id, ts, MAX_ATTEMPTS),
+        )
+        if cur.rowcount != 1:
+            return None
+    return db.fetchone("SELECT * FROM requests WHERE request_id = ?", (request_id,))
+
+
+def heartbeat(db: Database, request_id: str) -> None:
+    from datetime import timedelta
+
+    db.update("requests", {"heartbeat_at": now_iso(), "lease_until": (now() + timedelta(seconds=LEASE_SECONDS)).isoformat()}, "request_id = ?", (request_id,))
+
+
+def recover_stale(db: Database) -> list[dict]:
+    """Requests left 'running' by a run that died: back to requested while attempts remain, else failed with the
+    reason. Nothing runs forever, and nothing is retried blindly beyond the bound."""
+    ts = now_iso()
+    out = []
+    for r in db.fetchall("SELECT * FROM requests WHERE state = 'running' AND (lease_until IS NULL OR lease_until < ?)", (ts,)):
+        if int(r.get("attempts") or 0) >= MAX_ATTEMPTS:
+            db.update("requests", {"state": "failed", "message": "Hunter was interrupted while working on this, three times. Ask again to try once more.", "finished_at": ts, "claimed_by": None}, "request_id = ?", (r["request_id"],))
+            out.append({"request_id": r["request_id"], "state": "failed"})
+        else:
+            db.update("requests", {"state": "requested", "claimed_by": None, "lease_until": None, "message": "Interrupted; Hunter will try again."}, "request_id = ?", (r["request_id"],))
+            out.append({"request_id": r["request_id"], "state": "requested"})
+    return out
+
+
+def run_request(ctx: AppContext, db: Database, request_id: str, use_model: bool = False, holder: str | None = None) -> dict:
     """Do the work one request asks for. Every outcome is recorded: ready, needs_input (what the person must
-    add), or failed (what happened). A request is never left silently in 'requested'."""
+    add), or failed (what happened). A request is never left silently in 'requested' or 'running': it is claimed
+    with a lease, and a run that dies leaves it recoverable (`recover_stale`)."""
     row = db.fetchone("SELECT * FROM requests WHERE request_id = ?", (request_id,))
     if not row:
         raise WorkspaceError(f"Request {request_id} not found.")
     if row["state"] in {"ready", "failed", "needs_input"}:
         return _request_view(row)
+    from jobhunter.util import hostname
+
+    claimed = claim_request(db, request_id, holder or f"{hostname()}:{secrets.token_hex(3)}")
+    if not claimed:
+        row = db.fetchone("SELECT * FROM requests WHERE request_id = ?", (request_id,))
+        if row["state"] == "running":
+            return _request_view(row)  # another run holds it; its lease decides
+        return _finish(db, request_id, "failed", "Hunter was interrupted while working on this, three times. Ask again to try once more.")
+    row = claimed
     rid = row["request_id"]
     params = json.loads(row.get("params_json") or "{}")
-    with db.tx():
-        db.update("requests", {"state": "running", "started_at": now_iso()}, "request_id = ?", (rid,))
     job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (row["job_id"],)) if row.get("job_id") else None
     kind = row["kind"]
     try:
@@ -171,8 +227,8 @@ def run_request(ctx: AppContext, db: Database, request_id: str, use_model: bool 
         if kind == "message":
             if params.get("contact") is None:
                 return _finish(db, rid, "needs_input", "Which contact? Pick one under People & notes first.")
-            d = contact_message(db, job["id"], int(params["contact"]))
-            return _finish(db, rid, "ready", "Message drafted. Read it, change it, and send it yourself if you want to.", {"draft_id": d["draft_id"], "contact": int(params["contact"])})
+            d = contact_message(db, job["id"], params["contact"])
+            return _finish(db, rid, "ready", "Message drafted. Read it, change it, and send it yourself if you want to.", {"draft_id": d["draft_id"], "contact": params["contact"]})
         if kind == "followup_draft":
             d = drafts_svc.outreach(db, job["id"], params.get("contact"), purpose="followup")
             return _finish(db, rid, "ready", "Follow-up message drafted. Hunter never sends it.", {"draft_id": d["draft_id"]})
@@ -195,10 +251,13 @@ def run_request(ctx: AppContext, db: Database, request_id: str, use_model: bool 
         return _finish(db, rid, "needs_input", str(exc))
     except (docs.DocumentError, actions.ActionError, WorkspaceError) as exc:
         return _finish(db, rid, "failed", str(exc))
+    except Exception as exc:  # a bug is still a recorded failure, never a request stuck in 'running'
+        return _finish(db, rid, "failed", f"Something went wrong inside Hunter ({type(exc).__name__}). Ask again; if it repeats, tell KubeCraft.")
     return _finish(db, rid, "failed", f"Hunter does not know how to do '{kind}'.")
 
 
 def run_pending(ctx: AppContext, db: Database, use_model: bool = False) -> list[dict]:
+    recover_stale(db)
     return [run_request(ctx, db, r["request_id"], use_model=use_model) for r in list_requests(db, "requested")]
 
 
@@ -599,7 +658,7 @@ def _add_contact(db: Database, job_id: int, ctype: str, name: str, role: str | N
     ts = now_iso()
     conf = {"listed": "confirmed", "connection": "confirmed", "team": "likely"}[ctype]
     with db.tx():
-        cid = db.insert("contacts", {"job_id": job_id, "name": truncate(name, MAX_CONTACT_FIELD), "role": truncate(role or "", MAX_CONTACT_FIELD) or None, "organization": None, "route": truncate(route or "", 400) or None, "provenance": provenance if provenance == "user" else f"public_page:{source_url or ''}", "confidence": conf, "created_at": ts, "contact_type": ctype, "relevance": truncate(relevance, 300), "source_url": (source_url or "")[:500] or None, "checked_at": ts, "status": "found"})
+        cid = db.insert("contacts", {"job_id": job_id, "contact_key": "ct" + secrets.token_hex(5), "name": truncate(name, MAX_CONTACT_FIELD), "role": truncate(role or "", MAX_CONTACT_FIELD) or None, "organization": None, "route": truncate(route or "", 400) or None, "provenance": provenance if provenance == "user" else f"public_page:{source_url or ''}", "confidence": conf, "created_at": ts, "contact_type": ctype, "relevance": truncate(relevance, 300), "source_url": (source_url or "")[:500] or None, "checked_at": ts, "status": "found"})
         if note:
             db.update("contacts", {"relevance": truncate(f"{relevance} Note: {note}", 300)}, "id = ?", (cid,))
     return contact_view(db.fetchone("SELECT * FROM contacts WHERE id = ?", (cid,)))
@@ -619,8 +678,36 @@ def add_contact(db: Database, job_id: int, ctype: str, name: str, role: str | No
     return _add_contact(db, job_id, ctype, name, role, relevance or {"listed": "Named in the posting.", "team": "Works on a team the posting describes (public page).", "connection": "Someone you know there."}[ctype], source_url, "user" if ctype == "connection" else "public_page", route=route)
 
 
+def contact_key(db: Database, c: dict) -> str:
+    """The contact's portable identity ("ct" + 10 hex), minted once; old rows without one get theirs on first use."""
+    if c.get("contact_key"):
+        return c["contact_key"]
+    key = "ct" + secrets.token_hex(5)
+    db.update("contacts", {"contact_key": key}, "id = ?", (c["id"],))
+    c["contact_key"] = key
+    return key
+
+
+def ensure_contact_keys(db: Database) -> int:
+    n = 0
+    for c in db.fetchall("SELECT id, contact_key FROM contacts WHERE contact_key IS NULL"):
+        contact_key(db, c)
+        n += 1
+    return n
+
+
+def _contact_by_ref(db: Database, job_id: int, ref) -> dict | None:
+    """A contact named by its stable key, or (older pages) by its row number on this machine."""
+    if isinstance(ref, str) and re.fullmatch(r"ct[0-9a-f]{10}", ref):
+        return db.fetchone("SELECT * FROM contacts WHERE contact_key = ? AND job_id = ?", (ref, job_id))
+    try:
+        return db.fetchone("SELECT * FROM contacts WHERE id = ? AND job_id = ?", (int(ref), job_id))
+    except (TypeError, ValueError):
+        return None
+
+
 def contact_view(c: dict) -> dict:
-    return {"id": c["id"], "type": c.get("contact_type") or "listed", "type_label": CONTACT_TYPES.get(c.get("contact_type") or "listed"), "name": c.get("name"), "role": c.get("role"), "relevance": c.get("relevance"), "source_url": c.get("source_url"), "checked_at": c.get("checked_at") or c.get("created_at"), "route": c.get("route"), "status": c.get("status") or "found", "contacted_at": c.get("contacted_at")}
+    return {"id": c["id"], "key": c.get("contact_key"), "type": c.get("contact_type") or "listed", "type_label": CONTACT_TYPES.get(c.get("contact_type") or "listed"), "name": c.get("name"), "role": c.get("role"), "relevance": c.get("relevance"), "source_url": c.get("source_url"), "checked_at": c.get("checked_at") or c.get("created_at"), "route": c.get("route"), "status": c.get("status") or "found", "contacted_at": c.get("contacted_at")}
 
 
 def list_contacts(db: Database, job_id: int) -> list[dict]:
@@ -628,6 +715,7 @@ def list_contacts(db: Database, job_id: int) -> list[dict]:
     out = []
     drafts = db.fetchall("SELECT content_json, created_at FROM drafts WHERE job_id = ? AND kind = 'outreach' ORDER BY id DESC", (job_id,))
     for c in db.fetchall("SELECT * FROM contacts WHERE job_id = ? AND COALESCE(status,'found') != 'dismissed' ORDER BY id", (job_id,)):
+        contact_key(db, c)
         v = contact_view(c)
         greeting = f"Hi {c.get('name')}," if c.get("name") else "Hello,"
         for d in drafts:
@@ -640,25 +728,25 @@ def list_contacts(db: Database, job_id: int) -> list[dict]:
     return out
 
 
-def contact_message(db: Database, job_id: int, contact_id: int) -> dict:
-    c = db.fetchone("SELECT * FROM contacts WHERE id = ? AND job_id = ?", (contact_id, job_id))
+def contact_message(db: Database, job_id: int, contact_id) -> dict:
+    c = _contact_by_ref(db, job_id, contact_id)
     if not c:
         raise WorkspaceError("Contact not found.")
     return drafts_svc.outreach(db, job_id, c.get("name"), purpose="outreach")
 
 
-def mark_contacted(db: Database, job_id: int, contact_id: int, when: str | None = None, channel: str = "message") -> dict:
+def mark_contacted(db: Database, job_id: int, contact_id, when: str | None = None, channel: str = "message") -> dict:
     """Only the person's confirmation records "contacted". Preparing or copying a message never does."""
-    c = db.fetchone("SELECT * FROM contacts WHERE id = ? AND job_id = ?", (contact_id, job_id))
+    c = _contact_by_ref(db, job_id, contact_id)
     if not c:
         raise WorkspaceError("Contact not found.")
     if c.get("contacted_at"):
         return contact_view(c)
     ts = when or now_iso()
     with db.tx():
-        db.update("contacts", {"status": "contacted", "contacted_at": ts}, "id = ?", (contact_id,))
+        db.update("contacts", {"status": "contacted", "contacted_at": ts}, "id = ?", (c["id"],))
     actions.mark_contacted(db, job_id, who=c.get("name") or "a contact", channel=channel, occurred_at=ts)
-    return contact_view(db.fetchone("SELECT * FROM contacts WHERE id = ?", (contact_id,)))
+    return contact_view(db.fetchone("SELECT * FROM contacts WHERE id = ?", (c["id"],)))
 
 
 STOP_STAGES = {"replied", "interview", "offer", "rejected", "withdrawn"}
@@ -962,14 +1050,10 @@ def apply_action(db: Database, jid: int, a: dict, key: str) -> list[str]:
     contacted = a.get("contacted")
     if isinstance(contacted, dict):
         for cid, v in list(contacted.items())[:20]:
-            try:
-                cid_i = int(cid)
-            except (TypeError, ValueError):
-                continue
             if isinstance(v, dict) and v.get("at"):
-                c = db.fetchone("SELECT contacted_at FROM contacts WHERE id = ? AND job_id = ?", (cid_i, jid))
+                c = _contact_by_ref(db, jid, cid)
                 if c and not c.get("contacted_at"):
-                    mark_contacted(db, jid, cid_i, when=str(v["at"])[:25], channel=str(v.get("channel") or "message")[:30])
+                    mark_contacted(db, jid, c["id"], when=str(v["at"])[:25], channel=str(v.get("channel") or "message")[:30])
                     changes.append("contacted")
     # Follow-up changes.
     fu = a.get("followup")
