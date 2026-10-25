@@ -24,12 +24,43 @@ COUNTRY_ALIASES = {
     "greece": "GR", "gr": "GR", "estonia": "EE", "ee": "EE", "latvia": "LV", "lv": "LV", "lithuania": "LT", "lt": "LT",
     "luxembourg": "LU", "lu": "LU", "bulgaria": "BG", "bg": "BG", "croatia": "HR", "hr": "HR", "slovakia": "SK", "sk": "SK",
     "slovenia": "SI", "si": "SI", "serbia": "RS", "rs": "RS", "ukraine": "UA", "ua": "UA", "turkey": "TR", "tr": "TR",
-    "mexico": "MX", "mx": "MX", "iceland": "IS", "is": "IS",
+    "mexico": "MX", "méxico": "MX", "mx": "MX", "iceland": "IS", "is": "IS",
+    "cyprus": "CY", "malta": "MT", "liechtenstein": "LI", "bosnia": "BA", "bosnia and herzegovina": "BA", "montenegro": "ME",
+    "north macedonia": "MK", "macedonia": "MK", "albania": "AL", "moldova": "MD", "türkiye": "TR", "turkiye": "TR",
+    # Latin America. Two-letter codes (CR, AR, BR, ...) are accepted by country_code() directly.
+    "costa rica": "CR", "argentina": "AR", "brazil": "BR", "brasil": "BR", "chile": "CL", "colombia": "CO",
+    "peru": "PE", "perú": "PE", "uruguay": "UY", "paraguay": "PY", "bolivia": "BO", "ecuador": "EC", "venezuela": "VE",
+    "guyana": "GY", "suriname": "SR", "panama": "PA", "panamá": "PA", "guatemala": "GT", "honduras": "HN",
+    "el salvador": "SV", "nicaragua": "NI", "belize": "BZ", "dominican republic": "DO", "puerto rico": "PR", "cuba": "CU",
+    # Other common countries. ("Georgia" is left out on purpose: it is also a US state.)
+    "india": "IN", "australia": "AU", "new zealand": "NZ", "south africa": "ZA", "singapore": "SG", "japan": "JP",
+    "south korea": "KR", "korea": "KR", "china": "CN", "hong kong": "HK", "taiwan": "TW", "philippines": "PH",
+    "malaysia": "MY", "indonesia": "ID", "thailand": "TH", "vietnam": "VN", "viet nam": "VN", "pakistan": "PK",
+    "bangladesh": "BD", "sri lanka": "LK", "israel": "IL", "united arab emirates": "AE", "uae": "AE",
+    "saudi arabia": "SA", "qatar": "QA", "egypt": "EG", "nigeria": "NG", "kenya": "KE", "morocco": "MA", "ghana": "GH",
+    "armenia": "AM",
 }
 
 EU_EEA = {"AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "IS", "LI", "NO"}
 EUROPE = EU_EEA | {"GB", "CH", "RS", "UA", "TR", "BA", "ME", "MK", "AL", "MD", "GE"}
 NORTH_AMERICA = {"US", "CA", "MX"}
+SOUTH_AMERICA = {"AR", "BO", "BR", "CL", "CO", "EC", "GY", "PE", "PY", "SR", "UY", "VE"}
+CENTRAL_AMERICA = {"BZ", "CR", "GT", "HN", "NI", "PA", "SV"}
+LATAM = SOUTH_AMERICA | CENTRAL_AMERICA | {"MX", "CU", "DO", "PR"}
+AMERICAS = NORTH_AMERICA | LATAM
+ASIA = {"CN", "HK", "TW", "JP", "KR", "SG", "MY", "ID", "TH", "VN", "PH", "IN", "PK", "BD", "LK"}
+APAC = ASIA | {"AU", "NZ"}
+
+# Region names a person can type instead of a list of countries.
+REGION_INPUTS = {
+    "eu": EU_EEA, "european union": EU_EEA, "eea": EU_EEA,
+    "europe": EUROPE,
+    "north america": NORTH_AMERICA, "na": NORTH_AMERICA,
+    "latam": LATAM, "latin america": LATAM,
+    "south america": SOUTH_AMERICA, "central america": CENTRAL_AMERICA,
+    "americas": AMERICAS, "the americas": AMERICAS,
+    "apac": APAC, "asia pacific": APAC, "asia-pacific": APAC, "asia": ASIA,
+}
 
 
 def country_code(text: str) -> str | None:
@@ -49,14 +80,8 @@ def parse_country_list(text: str) -> tuple[list[str], list[str]]:
         if not p:
             continue
         low = p.lower()
-        if low in {"eu", "european union", "eea"}:
-            codes.extend(sorted(EU_EEA))
-            continue
-        if low in {"europe"}:
-            codes.extend(sorted(EUROPE))
-            continue
-        if low in {"north america", "na"}:
-            codes.extend(sorted(NORTH_AMERICA))
+        if low in REGION_INPUTS:
+            codes.extend(sorted(REGION_INPUTS[low]))
             continue
         c = country_code(p)
         if c:

@@ -136,3 +136,44 @@ def test_explanations_validate_fact_ids_and_numbers(ctx, db):
     ]})
     ok, problems = engine.validate_explanations(db, batch)
     assert not ok and len(problems) == 2
+
+
+def test_latin_american_countries_parse_and_display(db):
+    from jobhunter.services import onboarding
+    from jobhunter.services.normalize import country_names
+
+    assert prefs_svc.parse_country_list("Costa Rica") == (["CR"], [])
+    assert country_names(["CR"]) == "Costa Rica"
+    codes, unknown = prefs_svc.parse_country_list("Argentina, Brazil, Chile, Colombia, Peru, Uruguay, Panama, Guatemala, India, Australia, South Africa")
+    assert codes == ["AR", "BR", "CL", "CO", "PE", "UY", "PA", "GT", "IN", "AU", "ZA"] and not unknown
+    assert "CR" not in country_names(codes)
+    for region in ("latam", "Latin America"):
+        codes, unknown = prefs_svc.parse_country_list(region)
+        assert {"CR", "AR", "BR", "MX"} <= set(codes) and "US" not in codes and not unknown
+        assert country_names(codes) == "Latin America"
+    # The CLI path (`jobhunter setup basics --countries "Costa Rica"`) stores the code and shows the name.
+    onboarding.basics(db, location="San José, Costa Rica", countries="Costa Rica")
+    p = prefs_svc.get(db)
+    assert p.work_countries == ["CR"]
+    assert "Countries where you can work: Costa Rica" in prefs_svc.describe(p)
+
+
+def test_latam_text_is_a_region_not_the_usa():
+    codes, tags = countries_from_text("Remote - Latin America")
+    assert tags == ["LATAM"] and "US" not in codes
+    codes, tags = countries_from_text("San Jose, Costa Rica")
+    assert codes == ["CR"]
+    codes, tags = countries_from_text("San Jose, CA")
+    assert codes == ["US"]
+
+
+def test_latam_remote_job_is_open_to_costa_rica(ctx, db):
+    approve_profile(db, ctx, countries="Costa Rica")
+    latam = _job(db, _import(ctx, db, external_id="l1", location_text="Remote, LATAM", remote_type="remote"))
+    assert "CR" in json.loads(latam["country_codes_json"])
+    assert latam["match_group"] in {"good", "worth_a_shot", "backup"}, latam
+    assert latam["remote_restriction"] == "Remote, but only in Latin America"
+    americas = _job(db, _import(ctx, db, external_id="l2", employer_name="Beta", url="https://job-boards.greenhouse.io/beta/jobs/2", location_text="Remote - Americas", remote_type="remote"))
+    assert americas["match_group"] in {"good", "worth_a_shot", "backup"}, americas
+    us_only = _job(db, _import(ctx, db, external_id="l3", employer_name="Gamma", url="https://job-boards.greenhouse.io/gamma/jobs/3", location_text="Remote - US only", remote_type="remote"))
+    assert us_only["match_group"] == "excluded" and "Costa Rica" in us_only["exclusion_reason"]

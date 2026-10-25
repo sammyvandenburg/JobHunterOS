@@ -11,7 +11,18 @@ import re
 from dataclasses import dataclass, field
 
 from jobhunter.models import RawPosting
-from jobhunter.services.preferences import COUNTRY_ALIASES, EU_EEA, EUROPE, NORTH_AMERICA
+from jobhunter.services.preferences import (
+    AMERICAS,
+    APAC,
+    ASIA,
+    CENTRAL_AMERICA,
+    COUNTRY_ALIASES,
+    EU_EEA,
+    EUROPE,
+    LATAM,
+    NORTH_AMERICA,
+    SOUTH_AMERICA,
+)
 from jobhunter.util import sha256_text, strip_html, truncate
 
 CITY_COUNTRY = {
@@ -40,14 +51,17 @@ CA_PROVINCES = {"ontario", "quebec", "british columbia", "alberta", "manitoba", 
 REGION_WORDS = {
     "worldwide": "WORLD", "anywhere": "WORLD", "global": "WORLD", "international": "WORLD",
     "emea": "EMEA", "europe": "EUROPE", "european union": "EU", "eu": "EU", "eea": "EU", "eu/uk": "EU_UK", "uk/eu": "EU_UK", "dach": "DACH", "nordics": "NORDICS", "benelux": "BENELUX", "cet": "EUROPE", "cest": "EUROPE", "european time zones": "EUROPE", "european timezones": "EUROPE",
-    "north america": "NA", "americas": "AMERICAS", "latam": "LATAM", "apac": "APAC", "asia": "APAC", "usa": "US", "u.s.": "US", "us": "US", "united states": "US", "us only": "US", "canada": "CA", "uk": "GB", "united kingdom": "GB",
+    "north america": "NA", "americas": "AMERICAS", "latam": "LATAM", "latin america": "LATAM", "south america": "SOUTH_AMERICA", "central america": "CENTRAL_AMERICA",
+    "apac": "APAC", "asia pacific": "APAC", "asia": "ASIA", "usa": "US", "u.s.": "US", "us": "US", "united states": "US", "us only": "US", "canada": "CA", "uk": "GB", "united kingdom": "GB",
     "us timezones": "US", "usa timezones": "US", "est": "US", "pst": "US",
 }
 REGION_SETS = {
     "EU": set(EU_EEA), "EU_UK": set(EU_EEA) | {"GB"}, "EUROPE": set(EUROPE), "EMEA": set(EUROPE),
     "DACH": {"DE", "AT", "CH"}, "NORDICS": {"SE", "NO", "DK", "FI", "IS"}, "BENELUX": {"BE", "NL", "LU"},
-    "NA": set(NORTH_AMERICA), "AMERICAS": set(NORTH_AMERICA), "US": {"US"}, "CA": {"CA"}, "GB": {"GB"},
+    "NA": set(NORTH_AMERICA), "AMERICAS": set(AMERICAS), "LATAM": set(LATAM), "SOUTH_AMERICA": set(SOUTH_AMERICA), "CENTRAL_AMERICA": set(CENTRAL_AMERICA),
+    "APAC": set(APAC), "ASIA": set(ASIA), "US": {"US"}, "CA": {"CA"}, "GB": {"GB"},
 }
+REGION_LABELS = {"NA": "North America", "LATAM": "Latin America", "SOUTH_AMERICA": "South America", "CENTRAL_AMERICA": "Central America", "AMERICAS": "the Americas", "APAC": "Asia-Pacific", "ASIA": "Asia"}
 
 REMOTE_WORDS = re.compile(r"\b(remote|work from home|wfh|home ?office|distributed|anywhere)\b", re.I)
 HYBRID_WORDS = re.compile(r"\bhybrid\b", re.I)
@@ -140,10 +154,12 @@ def countries_from_text(text: str | None) -> tuple[list[str], list[str]]:
                 tags.append("WORLD")
             elif tag in REGION_SETS:
                 tags.append(tag)
+    # "Latin America" is a region, not the USA (the "america" alias).
+    alias_text = re.sub(r"(?<![a-z])(latin|south|central) america(?![a-z])", " ", low_compact)
     for alias, code in sorted(COUNTRY_ALIASES.items(), key=lambda kv: -len(kv[0])):
         if len(alias) <= 2:
             continue  # two-letter aliases are handled below
-        if re.search(rf"(?<![a-z]){re.escape(alias)}(?![a-z])", low_compact):
+        if re.search(rf"(?<![a-z]){re.escape(alias)}(?![a-z])", alias_text):
             codes.append(code)
     for part in re.split(r"[,;/|()·•]| - ", low_compact):
         p = part.strip()
@@ -166,6 +182,9 @@ def countries_from_text(text: str | None) -> tuple[list[str], list[str]]:
     # "San Francisco, CA" -> state, not Canada
     if "US" in codes and "CA" in codes and re.search(r",\s*ca\b", low_compact) and "canada" not in low_compact:
         codes = [c for c in codes if c != "CA"]
+    # "San Jose, Costa Rica" -> Costa Rica, not California
+    if "CR" in codes and "US" in codes and re.search(r"san jos[eé]", low_compact) and not re.search(r"(?<![a-z])(usa|us|united states|california)(?![a-z])", low_compact):
+        codes = [c for c in codes if c != "US"]
     for tag in tags:
         if tag in {"US", "CA", "GB"}:
             codes.append(tag)
@@ -531,6 +550,15 @@ COUNTRY_NAMES = {
     "NO": "Norway", "DK": "Denmark", "FI": "Finland", "CZ": "Czechia", "RO": "Romania", "HU": "Hungary", "GR": "Greece", "EE": "Estonia",
     "LV": "Latvia", "LT": "Lithuania", "LU": "Luxembourg", "BG": "Bulgaria", "HR": "Croatia", "SK": "Slovakia", "SI": "Slovenia", "RS": "Serbia",
     "UA": "Ukraine", "TR": "Turkey", "IS": "Iceland", "CY": "Cyprus", "MT": "Malta", "LI": "Liechtenstein",
+    "BA": "Bosnia and Herzegovina", "ME": "Montenegro", "MK": "North Macedonia", "AL": "Albania", "MD": "Moldova", "GE": "Georgia",
+    "CR": "Costa Rica", "AR": "Argentina", "BR": "Brazil", "CL": "Chile", "CO": "Colombia", "PE": "Peru", "UY": "Uruguay",
+    "PY": "Paraguay", "BO": "Bolivia", "EC": "Ecuador", "VE": "Venezuela", "GY": "Guyana", "SR": "Suriname", "PA": "Panama",
+    "GT": "Guatemala", "HN": "Honduras", "SV": "El Salvador", "NI": "Nicaragua", "BZ": "Belize", "DO": "the Dominican Republic",
+    "PR": "Puerto Rico", "CU": "Cuba",
+    "IN": "India", "AU": "Australia", "NZ": "New Zealand", "ZA": "South Africa", "SG": "Singapore", "JP": "Japan", "KR": "South Korea",
+    "CN": "China", "HK": "Hong Kong", "TW": "Taiwan", "PH": "the Philippines", "MY": "Malaysia", "ID": "Indonesia", "TH": "Thailand",
+    "VN": "Vietnam", "PK": "Pakistan", "BD": "Bangladesh", "LK": "Sri Lanka", "IL": "Israel", "AE": "the United Arab Emirates",
+    "SA": "Saudi Arabia", "QA": "Qatar", "EG": "Egypt", "NG": "Nigeria", "KE": "Kenya", "MA": "Morocco", "GH": "Ghana", "AM": "Armenia",
 }
 
 
@@ -544,8 +572,10 @@ def country_names(codes: list[str], tags: list[str] | None = None) -> str:
         return "the EU/EEA"
     if "EUROPE" in tags or "EMEA" in tags or (cs and cs >= set(EUROPE)):
         return "Europe"
-    if "NA" in tags or (cs and cs == set(NORTH_AMERICA)):
-        return "North America"
+    # A region tag names the list only when every country is inside that region ("US or LATAM" is not "Latin America").
+    for tag in ("AMERICAS", "NA", "LATAM", "SOUTH_AMERICA", "CENTRAL_AMERICA", "APAC", "ASIA"):
+        if (tag in tags and cs <= REGION_SETS[tag]) or (cs and cs == REGION_SETS[tag]):
+            return REGION_LABELS[tag]
     pretty = [COUNTRY_NAMES.get(c, c) for c in codes[:4]]
     more = f" and {len(codes) - 4} more" if len(codes) > 4 else ""
     return ", ".join(pretty) + more
