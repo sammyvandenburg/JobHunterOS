@@ -319,3 +319,35 @@ def test_the_same_page_works_at_phone_and_desktop_widths(site, ctx, db):
             assert not errors, (width, errors)
             context.close()
         browser.close()
+
+
+def test_today_shows_what_hunter_prepared_and_opening_it_counts_as_seen(site, ctx, db):
+    """Simulated runtime: the Today block on the real page, one action per item, and the opened marker."""
+    from playwright.sync_api import sync_playwright
+
+    from jobhunter.services import today as today_svc
+
+    fake = site["fake"]
+    today_svc.set_mode(db, "prepare_best")
+    today_svc.set_limits(db, preparations_per_day=1)
+    pid = today_svc.auto_prepare(ctx, db)["prepared"][0]["job_id"]
+    key = board.job_key(db.fetchone("SELECT canonical_key FROM jobs WHERE id = ?", (pid,))["canonical_key"])
+    fake.load_export(board.export(ctx, db, site["tmp"] / "out2", require_actions=False))
+    with sync_playwright() as p:
+        browser = _browser(p)
+        context, page, errors = _open(browser, site["url"])
+        sec = page.locator("#today")
+        assert _wait(lambda: not sec.is_hidden() and "Ready to review (1)" in sec.inner_text())
+        text = sec.inner_text()
+        assert "Hunter prepares your best matches: 1 today" in text and "1 waiting for you" in text and "Hunter prepared" in text
+        assert sec.get_by_role("button", name="Open").count() == 1
+        sec.get_by_role("button", name="Open").click()
+        dialog = page.get_by_role("dialog")
+        assert _wait(lambda: "Hunter prepared this for you after a search; nothing was sent." in dialog.inner_text())
+        assert "Ready to submit" in dialog.inner_text() or "Ready for review" in dialog.inner_text()
+        assert _wait(lambda: bool((fake.doc(f"actions/{key}") or {}).get("opened_at")))
+        res, _, _ = _sync(ctx, db, site, 7)
+        assert "opened" in res["applied"][0]["changes"] and today_svc.unopened_ready(db) == []
+        assert not errors, errors
+        context.close()
+        browser.close()

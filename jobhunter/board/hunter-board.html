@@ -88,6 +88,9 @@ section.block h2 small{text-transform:none;letter-spacing:0;font-weight:400}
 .btn.sm{padding:5px 9px;font-size:12.5px}
 .btn:disabled{opacity:.55;cursor:default}
 .btn:focus-visible,.row:focus-visible,.metric:focus-visible,.fchip:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.today .grp{margin:0 0 10px}.today .grp h3{font-size:13px;margin:0 0 4px;color:var(--muted);font-weight:600}
+.today .item{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-sm);padding:8px 12px;font-size:13.5px;margin-bottom:6px}
+.today .item.attn-i{border-left-color:var(--warn)}.today .item.ready-i{border-left-color:var(--good)}.today .item button{margin-left:auto;white-space:nowrap}.today .empty{padding:8px 0;color:var(--muted)}
 .attn{display:grid;gap:6px}
 .attn .item{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:var(--r-sm);padding:8px 12px;font-size:13.5px}
 .attn .item.good{border-left-color:var(--good)}.attn .item.bad{border-left-color:var(--bad)}
@@ -177,6 +180,7 @@ input[type=date]{border:1px solid var(--line);background:var(--bg);border-radius
 <main>
   <section id="notice" hidden></section>
   <section class="who" id="who" hidden></section>
+  <section class="block today" id="today" hidden><h2>Today <small id="todayNote"></small></h2><div id="todayList"></div></section>
   <section class="metrics" id="metrics" aria-label="Your numbers"></section>
   <section class="block" id="picks" hidden><h2>Top picks for you <small id="picksNote"></small></h2><div class="picks" id="picksList"></div></section>
   <section class="block" id="attn" hidden><h2>Needs your attention</h2><div class="attn" id="attnList"></div></section>
@@ -356,7 +360,7 @@ const Core = (() => {
   const GROUPS = [["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"]];
   const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null,
     tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, drafts: {}, prefsDraft: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false, work: false }, dbError: null, prefsOpen: false, prefsStatus: null,
-    work: new Map(), mcp: null, section: "overview", wide: false, askApplied: null, addContact: null, cvsOpen: false, cvsArchived: false, reqStatus: {}, answerDrafts: {}, answerStatus: {}, textDrafts: {}, textStatus: {} };
+    work: new Map(), today: null, mcp: null, section: "overview", wide: false, askApplied: null, addContact: null, cvsOpen: false, cvsArchived: false, reqStatus: {}, answerDrafts: {}, answerStatus: {}, textDrafts: {}, textStatus: {} };
   try { st.wide = !!localStorage.getItem("hunter.wide"); } catch {}
   try { const t = localStorage.getItem("hunter.tab"); if (t && CHIPS.some((x) => x[0] === t)) st.tab = t; } catch {}
 
@@ -435,6 +439,35 @@ const Core = (() => {
         el("div", { class: "foot" }, "Every fact comes from your CV, your LinkedIn PDF or your own words. To correct it, tell Hunter in Claude Code: /jobhunter profile." + (p.approved_at ? " Approved " + rel(p.approved_at) + "." : "")))));
   }
   /* ---------- metrics ---------- */
+  /* ---------- Today: five groups, one action each, straight from Hunter's document ---------- */
+  function renderToday() {
+    const sec = $("today"); const t = st.today;
+    if (!t || !st.run) { sec.hidden = true; return; }
+    sec.hidden = false;
+    const a = t.automation || {};
+    $("todayNote").textContent = a.mode === "prepare_best" ? "Hunter prepares your best matches: " + (a.prepared_today || 0) + " today (max " + ((a.limits || {}).preparations_per_day || 0) + "), " + (a.unopened_ready || 0) + " waiting for you" : "Hunter prepares what you ask for";
+    const out = [];
+    for (const g of (t.groups || [])) {
+      if (!g.items || !g.items.length) continue;
+      const cls = g.id === "attention" ? "attn-i" : (g.id === "ready" ? "ready-i" : "");
+      out.push(el("div", { class: "grp" }, el("h3", {}, g.title + " (" + g.items.length + ")"), ...g.items.map((it) => {
+        const key = it.action && it.action.key && st.jobs.has(it.action.key) ? it.action.key : null;
+        const cmd = it.action && it.action.command;
+        const btn = key ? el("button", { class: "btn sm primary", onclick: () => { select(key); if (g.id === "ready" || g.id === "needs_answer" || g.id === "changed") { st.section = "app"; renderOverlay(); } } }, it.action.label || "Open")
+          : (cmd ? el("button", { class: "btn sm", title: "In Claude: " + cmd, onclick: (ev) => { copyText("/jobhunter " + cmd.replace(/^jobhunter /, "")); ev.target.textContent = "Copied for Claude"; setTimeout(() => { ev.target.textContent = it.action.label || "Open"; }, 1500); } }, it.action.label || "Open") : null);
+        return el("div", { class: "item " + cls }, el("span", {}, it.text), btn);
+      })));
+    }
+    if (!out.length) out.push(el("div", { class: "empty" }, t.empty_text || "Nothing waiting for you today."));
+    $("todayList").replaceChildren(...out);
+  }
+  function markOpened(k) {
+    const w = work(k); const e = act(k) || {};
+    // Seen means the person went to My application (from Today, "Continue application" or the section tab), not that the job page was glanced at.
+    if (st.section !== "app" || !w || !w.package || w.state !== "prepared" || e.opened_at || !can() || (st.openedSent && st.openedSent[k])) return;
+    (st.openedSent = st.openedSent || {})[k] = true;
+    doField(k, "opened_at", new Date().toISOString());
+  }
   function renderMetrics() {
     const t = Core.tabsFor(st.jobs, st.actions, st.run);
     const m = [["recommended", "Recommended", t.recommended.length], ["favorites", "Favorites", t.favorites.length], ["saved", "Saved", t.saved.length], ["applied", "Applied", t.applied.length]];
@@ -610,6 +643,9 @@ const Core = (() => {
       out.push(renderApplied(k, w, e));
       return out;
     }
+    markOpened(k);
+    const rd = pkg.readiness || null;
+    if (rd) out.push(el("div", { class: "save " + (rd.state === "ready_to_submit" ? "ok" : ""), role: "status" }, el("b", {}, rd.label + ". "), pkg.origin === "auto" ? "Hunter prepared this for you after a search; nothing was sent. " : "", rd.state === "ready_to_submit" ? "Everything on the checklist is in place. You apply on the employer’s page yourself." : (rd.missing || []).join(" ")));
     if (pkg.needs_review && pkg.needs_review.length) out.push(el("div", { class: "conflict", role: "status" }, el("b", {}, "Needs review. "), pkg.needs_review.join(" "), el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "prepare") }, "Prepare again (keeps your wording)"))));
     out.push(requestLine(k, "prepare", { ready: "Prepared " + rel(pkg.created_at) + " (version " + pkg.version + ")." }));
     out.push(renderCvChoice(k, w));
@@ -673,6 +709,7 @@ const Core = (() => {
         el("div", { class: "q" }, a.question, a.needs_user ? el("span", { class: "pill p-pending", style: "margin-left:6px" }, a.custom ? "your words" : "only you can answer") : null),
         a.suggested ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (from your facts only):"), el("div", {}, a.suggested), el("div", { class: "actions", style: "grid-template-columns:auto auto;justify-content:start;margin-top:4px" }, copyBtn(a.suggested, "Copy draft"), el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.suggested; renderOverlay(); } }, "Use as my starting point"))) : null,
         a.note ? el("div", { class: "foot" }, a.note) : null,
+        a.library && !val ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Your earlier answer, from " + a.library.from + " (" + fmtDay(a.library.saved_at) + "). Check it still fits before you use it:"), el("div", {}, a.library.text), el("div", { class: "actions", style: "grid-template-columns:auto;justify-content:start;margin-top:4px" }, el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.library.text; renderOverlay(); } }, "Use my earlier answer"))) : null,
         el("textarea", { id: "ans-" + a.id, "aria-label": "Your answer: " + a.question, placeholder: a.needs_user ? "Only you can answer this. Write it here so it is saved with the application." : "Your own wording", oninput: (ev) => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = ev.target.value; const c = $("cnt-" + a.id); if (c) c.textContent = ev.target.value.length + (limit ? " / " + limit : "") + " characters"; } }, val),
         el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr;align-items:center" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doAnswer(k, a.id, $("ans-" + a.id).value) }, "Save my wording"), copyBtn(val, "Copy"), el("span", { class: "foot", id: "cnt-" + a.id, style: limit && n > limit ? "color:var(--bad)" : "" }, n + (limit ? " / " + limit : "") + " characters")),
         st_ ? el("div", { class: "save " + (st_.ok ? "ok" : "err"), role: "status" }, st_.text) : (saved && saved.rev > Number((a.user && a.user.rev) || 0) ? el("div", { class: "save warn", role: "status" }, "Saved here; Hunter keeps it on its next run.") : null)));
@@ -846,7 +883,7 @@ const Core = (() => {
       || Object.values(st.answerDrafts).some((d) => Object.keys(d).length) || Object.values(st.textDrafts).some((d) => Object.keys(d).length);
     if (dirty) { ev.preventDefault(); ev.returnValue = "You have unsaved text."; }
   });
-  function render() { renderBar(); renderNotice(); renderWho(); renderMetrics(); renderPicks(); renderAttention(); renderTools(); renderList(); renderOverlay(); }
+  function render() { renderBar(); renderNotice(); renderWho(); renderToday(); renderMetrics(); renderPicks(); renderAttention(); renderTools(); renderList(); renderOverlay(); }
   function select(k) { st.sel = k; st.prefsOpen = false; st.cvsOpen = false; st.askApplied = null; st.addContact = null; st.section = "overview"; render(); }
   async function copyText(text) { try { await navigator.clipboard.writeText(text); } catch {} }
 
@@ -972,6 +1009,7 @@ const Core = (() => {
     const fail = (e) => { st.dbError = (e && e.code) || "unavailable"; render(); };
     db.doc("meta/run").onSnapshot((d) => { st.run = d.exists ? d.data() : null; st.loaded.run = true; rebuildJobs(); render(); }, fail);
     db.doc("meta/profile").onSnapshot((d) => { st.profile = d.exists ? d.data() : null; render(); }, fail);
+    db.doc("meta/today").onSnapshot((d) => { st.today = d.exists ? d.data() : null; render(); }, fail);
     db.collection("board").limit(40).onSnapshot((s) => { st.shards = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.board = true; rebuildJobs(); render(); }, fail);
     db.collection("actions").limit(1000).onSnapshot((s) => { st.actions = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.actions = true; render(); }, fail);
     db.collection("work").limit(300).onSnapshot((s) => { st.work = new Map(s.docs.filter((d) => d.exists).map((d) => [d.id, d.data()])); st.loaded.work = true; render(); }, fail);

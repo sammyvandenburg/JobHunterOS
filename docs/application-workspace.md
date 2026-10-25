@@ -46,6 +46,20 @@ Routine or a session (`board channel`); the page then calls it with `/jobhunter 
 viewer, with the viewer's own credentials. A refused or missing line falls back to **Continue in Claude now**.
 Nothing is ever claimed as running when no worker is.
 
+## Today and automation modes
+The page opens with **Today**: Ready to review, Needs your answer, Follow-up due, Something changed, Needs
+attention, one action each, computed by Hunter (`jobhunter today`) and written as `meta/today`. Modes
+(`jobhunter automation mode`): **on request** (default), **prepare my best matches** (after a search, the best
+unprepared good matches are prepared through the same request chain as the page's button, at most 3 a day and 5
+unopened, one digest a day; nothing is submitted or sent), **assisted apply** (refused until the assisted lane
+exists). Opening a prepared application on the page writes `opened_at` into its action document; Hunter
+records it once, and the queue limit counts only unopened preparations. Each prepared application carries a
+readiness label: *Ready for review* (something open: form questions without your wording, a CV file not on this
+computer, no known place to apply, a change since) or *Ready to submit*. The label never gates anything.
+Earlier answers you wrote for another job are offered for the same question when they name no employer and have
+not expired (90 days for pay, notice and start answers; never for personal or legal ones), as a suggestion with
+its origin; nothing is filled in by itself.
+
 ## Needs review
 A package is tied to the job text, the approved profile, the chosen CV version and the policy version. When any
 of those changes, the page says **Needs review** and names what changed; **Prepare again** makes a new version

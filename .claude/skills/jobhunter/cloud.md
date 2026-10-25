@@ -62,6 +62,7 @@ is done and which comes next from the evidence in the database, so check it when
 6. **Save.** `uv run jobhunter cloud save --branch main --json` (commits `state/` and pushes it to their copy's
    `main`; pulls and rebases first if they saved meanwhile). If the push fails, say so plainly: the email may
    have gone out but the history did not reach the repository.
+6b. In the "prepare my best matches" mode the search already prepared the best unprepared good matches (its stats say `auto_prepared`); say how many are ready to review, never that anything was sent.
 7. **Publish.** If the dashboard is linked, step 2 of the Sync in [board.md](board.md) (`board export`, the
    batch of writes, then `board published` once the batch result shows every write done). "Synced" in the
    report means that confirmation ran; a batch that was refused or never sent is "written, not published".

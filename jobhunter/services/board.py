@@ -394,7 +394,11 @@ def _hunter_status(db: Database) -> dict:
     last_digest = db.fetchone("SELECT status, sent_at, created_at FROM notifications WHERE kind = 'digest' AND channel = 'email' ORDER BY id DESC LIMIT 1")
     work = {r["state"]: r["n"] for r in db.fetchall("SELECT state, COUNT(*) AS n FROM requests GROUP BY state")}
     last_cloud = db.fetchone("SELECT status, finished_at, started_at FROM hunt_runs WHERE trigger = 'cloud' ORDER BY id DESC LIMIT 1")
+    from jobhunter.services import today as today_svc
+
+    auto = today_svc.settings(db)
     return {
+        "automation": {"mode": auto["mode"], "mode_label": auto["mode_label"], "limits": auto["limits"], "prepared_today": today_svc.prepared_today(db), "unopened_ready": len(today_svc.unopened_ready(db))},
         "channel": db.get_setting(CHANNEL_SETTING),
         "dashboard_url": db.get_setting(URL_SETTING),
         "publish": publish_state(db),
@@ -498,6 +502,10 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
         writes.append({"collection": "work", "doc_id": key, "file": str(out / "work" / f"{key}.json")})
         work_written += 1
     run["work"] = work_written
+    from jobhunter.services import today as today_svc
+
+    _write(out / "meta" / "today.json", today_svc.today(ctx, db))
+    writes.append({"collection": "meta", "doc_id": "today", "file": str(out / "meta" / "today.json")})
     _write(out / "meta" / "run.json", run)
     writes.append({"collection": "meta", "doc_id": "run", "file": str(out / "meta" / "run.json")})
     manifest = {

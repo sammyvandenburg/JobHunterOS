@@ -81,6 +81,26 @@ Never guess an address, never imply a referral, never message anyone.
 show on the dashboard; the email lists them only after `digest followups on`. A reply, an interview, a
 rejection or a withdrawal stops them. `work request <job> followup_draft` drafts the message; they send it.
 
+## Today and automation
+`uv run jobhunter today --json` is the queue the page shows first: **Ready to review** (prepared applications,
+newest and unopened first, each labelled *Ready for review* or *Ready to submit*), **Needs your answer** (a
+request that needs input, form questions only they can answer, preference conflicts), **Follow-up due**,
+**Something changed** (the posting changed since the preparation; no longer listed where Hunter found it),
+**Needs attention** (a stopped search, sites that couldn't be checked, a failed request, an email that failed or
+may not have arrived, a page write never confirmed, page actions unread). One action per item; say the items,
+never the mechanics.
+Modes (`uv run jobhunter automation mode on_request|prepare_best`, default on request): in **prepare_best** every
+search ends by preparing the best unprepared good matches through the same requests the page makes (origin
+"auto"), after the person's own requests, within the limits (`automation limits --per-day 3 --unopened 5`;
+one digest a day is fixed). A prepared application is never an application: nothing is submitted, nothing is
+sent, and the digest names them under "Ready to review". `assisted_apply` is refused until that lane exists.
+**Ready to submit** means: every form question has their wording, the chosen CV's file is at hand (a file that
+left this computer says "add it again"), a place to apply is known, nothing changed since. It is a label for
+them, never a gate. When they open a prepared application on the page (or `work open <job>`) it counts as seen.
+**Earlier answers**: an answer they wrote for another job is offered again for the same question when it names
+no employer and has not expired (pay, notice and start answers expire after 90 days; personal and legal ones
+are never offered). It is a suggestion with its origin ("from X, date"); they press *Use my earlier answer*.
+
 ## Interview hand-off
 `uv run jobhunter apply handoff <job> --json` (also the page's "Prepare for interview") writes a Markdown
 snapshot for InterviewOS: the vacancy as seen, the brief with sources, the exact CV version sent (or "unknown"),

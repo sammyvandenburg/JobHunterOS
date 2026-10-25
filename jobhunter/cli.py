@@ -114,6 +114,32 @@ def cmd_plan(args):
     emit(args, workflow.plan(ctx, db, nightly=bool(args.nightly)))
 
 
+def cmd_today(args):
+    from jobhunter.services import today as today_svc
+
+    ctx, db = _open(args)
+    t = today_svc.today(ctx, db)
+    emit(args, t, text=today_svc.text_view(t))
+
+
+def cmd_automation(args):
+    from jobhunter.services import today as today_svc
+
+    ctx, db = _open(args)
+    try:
+        c = args.automation_cmd
+        if c == "show":
+            emit(args, today_svc.settings(db))
+        elif c == "mode":
+            emit(args, today_svc.set_mode(db, args.mode))
+        elif c == "limits":
+            emit(args, today_svc.set_limits(db, preparations_per_day=args.per_day, unopened_ready=args.unopened))
+        elif c == "prepare":
+            emit(args, today_svc.auto_prepare(ctx, db))
+    except today_svc.TodayError as exc:
+        raise CliError(str(exc)) from exc
+
+
 def cmd_doctor(args):
     from jobhunter.services import doctor
 
@@ -262,7 +288,15 @@ def cmd_work(args):
             if args.request_id:
                 emit(args, workspace.run_request(ctx, db, args.request_id, use_model=args.model))
             else:
-                emit(args, workspace.run_pending(ctx, db, use_model=args.model))
+                from jobhunter.services import today as today_svc
+
+                done = workspace.run_pending(ctx, db, use_model=args.model)
+                auto = today_svc.auto_prepare(ctx, db)  # requested work first, then the bounded automatic preparation
+                emit(args, {"requests": done, "auto": auto})
+        elif c == "open":
+            from jobhunter.services import today as today_svc
+
+            emit(args, {"job_id": args.id, "opened": today_svc.mark_opened(db, args.id)})
         elif c == "request":
             params = json.loads(args.params) if args.params else {}
             row = workspace.request(db, args.id, args.kind, params)
@@ -1159,9 +1193,11 @@ def build_parser() -> argparse.ArgumentParser:
     wks = wk.add_subparsers(dest="work_cmd", required=True)
     x = wks.add_parser("requests", help="what the dashboard asked Hunter for")
     x.add_argument("--all", action="store_true")
-    x = wks.add_parser("run", help="do the pending requests (or one by id)")
+    x = wks.add_parser("run", help="do the pending requests (or one by id); without an id also the bounded automatic preparation when that mode is on")
     x.add_argument("request_id", nargs="?")
     x.add_argument("--model", action="store_true")
+    x = wks.add_parser("open", help="the person opened this prepared application (counts it as seen in Today)")
+    x.add_argument("id", type=job_ref)
     x = wks.add_parser("request", help="ask for work on one job from the command line")
     x.add_argument("id", type=job_ref)
     x.add_argument("kind", choices=["prepare", "research", "contact", "intro", "letter", "followup_draft", "handoff", "cv_file"])
@@ -1427,6 +1463,19 @@ def build_parser() -> argparse.ArgumentParser:
     pl = sub.add_parser("plan", help="the run contract: which step is done, which comes next, judged from evidence (read dashboard, hunt, digest, save, publish)")
     pl.add_argument("--nightly", action="store_true", help="a nightly run starts by restoring the state from the private copy")
     pl.set_defaults(fn=cmd_plan)
+
+    td = sub.add_parser("today", help="what waits for you today: ready to review, needs your answer, follow-up due, something changed, needs attention")
+    td.set_defaults(fn=cmd_today)
+    au = sub.add_parser("automation", help="how much Hunter does on its own: on request, prepare my best matches (bounded), assisted apply (when available)")
+    aus = au.add_subparsers(dest="automation_cmd", required=True)
+    aus.add_parser("show")
+    x = aus.add_parser("mode", help="on_request | prepare_best | assisted_apply")
+    x.add_argument("mode", choices=["on_request", "prepare_best", "assisted_apply"])
+    x = aus.add_parser("limits", help="workload limits: preparations per day, prepared-and-unopened queue")
+    x.add_argument("--per-day", type=int, dest="per_day")
+    x.add_argument("--unopened", type=int)
+    aus.add_parser("prepare", help="run the bounded automatic preparation now (same requests as the page)")
+    au.set_defaults(fn=cmd_automation)
 
     bd = sub.add_parser("board", help="your personal dashboard: a private Claude artifact page Claude publishes and keeps in sync")
     bds = bd.add_subparsers(dest="board_cmd", required=True)

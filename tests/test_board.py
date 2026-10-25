@@ -41,7 +41,7 @@ def test_export_writes_private_documents_and_a_manifest(ctx, db, tmp_path):
     _seed_jobs(ctx, db)
     manifest = board.export(ctx, db, tmp_path / "out")
     files = {w["doc_id"]: json.loads(Path(w["file"]).read_text()) for w in manifest["writes"]}
-    assert set(files) == {"profile", "jobs-0", "run"}
+    assert set(files) == {"profile", "jobs-0", "today", "run"}
     assert manifest["shards"] == 1 and manifest["jobs"] >= 2 and manifest["recommended"] >= 2
     run = files["run"]
     assert run["schema"] == board.SCHEMA and run["shards"] == 1 and run["recommended"]

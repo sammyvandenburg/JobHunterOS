@@ -59,8 +59,9 @@ def _clean_request_id(value) -> str:
     return rid
 
 
-def request(db: Database, job_id: int | None, kind: str, params: dict | None = None, request_id: str | None = None, job_key: str | None = None) -> dict:
-    """Record one request once. The same id again returns the existing row (the page may write it twice)."""
+def request(db: Database, job_id: int | None, kind: str, params: dict | None = None, request_id: str | None = None, job_key: str | None = None, origin: str = "user") -> dict:
+    """Record one request once. The same id again returns the existing row (the page may write it twice).
+    `origin` says who asked: the person (page or command line) or Hunter's bounded auto-preparation."""
     if kind not in REQUEST_KINDS:
         raise WorkspaceError(f"Unknown request kind '{kind}'.")
     rid = _clean_request_id(request_id or f"{kind}:{now_iso()}:{secrets.token_hex(5)}")
@@ -68,7 +69,7 @@ def request(db: Database, job_id: int | None, kind: str, params: dict | None = N
     if row:
         return _request_view(row)
     with db.tx():
-        db.insert("requests", {"request_id": rid, "job_id": job_id, "job_key": job_key, "kind": kind, "params_json": json.dumps(_clean_params(kind, params or {})), "state": "requested", "requested_at": now_iso()})
+        db.insert("requests", {"request_id": rid, "job_id": job_id, "job_key": job_key, "kind": kind, "params_json": json.dumps(_clean_params(kind, params or {})), "state": "requested", "requested_at": now_iso(), "origin": "auto" if origin == "auto" else "user"})
     return _request_view(db.fetchone("SELECT * FROM requests WHERE request_id = ?", (rid,)))
 
 
@@ -116,6 +117,8 @@ def _clean_params(kind: str, params: dict) -> dict:
 
 
 def _request_view(row: dict) -> dict:
+    row = dict(row)
+    row.setdefault("origin", "user")
     return {"request_id": row["request_id"], "job_id": row.get("job_id"), "job_key": row.get("job_key"), "kind": row["kind"], "state": row["state"], "message": row.get("message"), "params": json.loads(row.get("params_json") or "{}"), "result": json.loads(row["result_json"]) if row.get("result_json") else None, "requested_at": row["requested_at"], "started_at": row.get("started_at"), "finished_at": row.get("finished_at")}
 
 
@@ -146,8 +149,6 @@ MAX_ATTEMPTS = 3
 def claim_request(db: Database, request_id: str, holder: str) -> dict | None:
     """Take the request atomically: only one run can move it to running (or re-take a lease that expired).
     Returns the claimed row, or None when another run holds it or it is finished."""
-    from datetime import timedelta
-
     ts = now_iso()
     until = (now() + timedelta(seconds=LEASE_SECONDS)).isoformat()
     with db.tx():
@@ -162,8 +163,6 @@ def claim_request(db: Database, request_id: str, holder: str) -> dict | None:
 
 
 def heartbeat(db: Database, request_id: str) -> None:
-    from datetime import timedelta
-
     db.update("requests", {"heartbeat_at": now_iso(), "lease_until": (now() + timedelta(seconds=LEASE_SECONDS)).isoformat()}, "request_id = ?", (request_id,))
 
 
@@ -515,13 +514,19 @@ def strongest_case(db: Database, job: dict, facts: list[Fact], cv_text: str, yea
         items.append({"requirement": f"About {years_required}+ years of experience", "profile_supports": enough, "evidence_type": "a paid role" if enough else None, "evidence": f"About {have:g} years of relevant paid work in your profile." if paid else None, "cv_communicates": enough and bool(low_cv), "gap": None if enough else (f"They ask for about {years_required} years; your profile shows about {have:g} years of relevant paid work. Say so plainly and show what those years covered." if paid else "Your profile has no paid experience yet. Be open about that and show your projects."), "note": None})
     if req.preferred:
         items.append({"requirement": "Nice to have: " + ", ".join(tool_label(t) for t in sorted(req.preferred, key=position)[:3]), "profile_supports": any(t in kinds for t in req.preferred), "evidence_type": next((EVIDENCE_WORDS.get(kinds[t][0], kinds[t][0]) for t in sorted(req.preferred, key=position) if t in kinds), None), "evidence": next((truncate(kinds[t][1].text, 120) for t in sorted(req.preferred, key=position) if t in kinds), None), "cv_communicates": any(t in kinds and tool_label(t).lower() in low_cv for t in req.preferred), "gap": None, "note": "Not required: a plus when you have it, never a gap when you do not.", "optional": True})
+    # Proof selection: the two or three examples that touch what this job asks for, never the first facts on file.
+    # A guided project stays labelled as one, a paid role as one: the label is the truth of the evidence.
+    asked = set(tools)
+    def overlap(f: Fact) -> int:
+        words = (f.text or "").lower()
+        return sum(1 for t in asked if tool_label(t).lower() in words or t.lower() in words)
+    projects = sorted([f for f in facts if f.category == "project"], key=lambda f: (-overlap(f), f.experience_kind == "guided"))
+    roles = sorted([f for f in facts if f.category == "role" and f.experience_kind == "professional"], key=lambda f: -overlap(f))
     examples = []
-    for f in facts:
-        if f.category == "project" and len(examples) < 2:
-            examples.append({"kind": "project" if f.experience_kind != "guided" else "guided course project", "text": truncate(f.text, 200)})
-    for f in facts:
-        if f.category == "role" and f.experience_kind == "professional" and len(examples) < 3:
-            examples.append({"kind": "paid role", "text": truncate(f.text, 200)})
+    for f in projects[:2]:
+        examples.append({"kind": "project" if f.experience_kind != "guided" else "guided course project", "text": truncate(f.text, 200), "touches": [tool_label(t) for t in sorted(asked, key=position) if tool_label(t).lower() in (f.text or "").lower() or t.lower() in (f.text or "").lower()][:3]})
+    for f in roles[:1]:
+        examples.append({"kind": "paid role", "text": truncate(f.text, 200), "touches": [tool_label(t) for t in sorted(asked, key=position) if tool_label(t).lower() in (f.text or "").lower() or t.lower() in (f.text or "").lower()][:3]})
     return {"items": items[:5], "examples": examples[:3], "negated": sorted(tool_label(t) for t in req.negated), "note": "Two columns on purpose: what your profile proves, and whether the CV you picked says it. Neither column is a rating."}
 
 
@@ -643,9 +648,83 @@ def save_answer(db: Database, job_id: int, aid: str, text: str, rev: int | None 
     text = (text or "").strip()[:MAX_ANSWER_CHARS]
     prev = user_text(db, job_id, "answer", aid)
     new_rev = int(rev if rev is not None else int((prev or {}).get("rev") or 0) + 1)
+    scope, expires = _answer_scope(db, job_id, question, text)
     with db.tx():
         _upsert_text(db, job_id, "answer", aid, question=question, text=text, rev=new_rev, when=when)
-    return {"job_id": job_id, "answer_id": aid, "saved": bool(text), "rev": new_rev}
+        db.execute("UPDATE user_texts SET scope = ?, expires_at = ? WHERE job_id = ? AND kind = 'answer' AND key = ?", (scope, expires, job_id, aid))
+    return {"job_id": job_id, "answer_id": aid, "saved": bool(text), "rev": new_rev, "scope": scope}
+
+
+REUSE_DAYS = {"declaration": 90, "open": 365}  # a notice period or start date goes stale fast; a story about a migration does not
+
+
+def _answer_scope(db: Database, job_id: int, question: str, text: str) -> tuple[str, str | None]:
+    """Where this wording may be offered again. Naming the employer makes it this job's alone; a personal or legal
+    answer is never offered elsewhere; a declaration (pay, notice, start) expires after 90 days, an open answer
+    after a year. Offered means suggested on the page, never filled in by itself."""
+    kind = drafts_svc.classify_question(question)
+    if not text or kind == "personal":
+        return "job", None
+    job = db.fetchone("SELECT employer_name FROM jobs WHERE id = ?", (job_id,))
+    emp = ((job or {}).get("employer_name") or "").strip()
+    low = text.lower()
+    if emp and len(emp) >= 3 and emp.lower() in low:
+        return "job", None
+    for other in db.fetchall("SELECT DISTINCT employer_name FROM jobs WHERE employer_name IS NOT NULL AND LENGTH(employer_name) >= 3"):
+        if other["employer_name"].lower() in low:
+            return "job", None
+    days = REUSE_DAYS.get(kind, 365)
+    return "reusable", (now() + timedelta(days=days)).isoformat()
+
+
+def library_suggestions(db: Database, job_id: int, answers: list[dict]) -> dict[str, dict]:
+    """For each unanswered question here: the person's newest reusable wording for the same question from another
+    application, with where and when it was written. A suggestion only; the page never saves it by itself."""
+    out: dict[str, dict] = {}
+    ts = now_iso()
+    for a in answers:
+        if a.get("user") and (a["user"] or {}).get("text"):
+            continue
+        row = db.fetchone(
+            "SELECT t.text, t.updated_at, t.job_id, j.employer_name, j.title FROM user_texts t JOIN jobs j ON j.id = t.job_id "
+            "WHERE t.kind = 'answer' AND t.key = ? AND t.job_id != ? AND t.scope = 'reusable' AND t.text != '' AND (t.expires_at IS NULL OR t.expires_at > ?) ORDER BY t.updated_at DESC LIMIT 1",
+            (a["id"], job_id, ts),
+        )
+        if row:
+            out[a["id"]] = {"text": row["text"], "from": f"{row['title']} at {row['employer_name'] or 'an employer'}", "saved_at": row["updated_at"], "job_id": row["job_id"]}
+    return out
+
+
+def readiness(db: Database, job_id: int) -> dict:
+    """"Ready for review" (prepared, something still open) or "Ready to submit" (every form question answered in the
+    person's words, a CV chosen whose file is at hand, a place to apply, nothing changed since). A label for the
+    person, never a gate: they apply when they decide."""
+    pkg = drafts_svc.current_package(db, job_id)
+    if not pkg:
+        return {"state": "none", "label": "Not prepared", "missing": []}
+    job = db.fetchone("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    profile = profile_svc.approved(db)
+    cv = drafts_svc.selected_cv(db, job_id)
+    missing: list[str] = []
+    for why in _needs_review(db, job, pkg, profile, cv):
+        missing.append(why)
+    if not cv:
+        missing.append("Choose a CV.")
+    else:
+        rev = docs.cv_revision(db, cv["revision_key"]) if cv.get("revision_key") else None
+        if rev and not rev.get("file_available"):
+            missing.append(f"The file of '{cv['label']}' is not on this computer: add it again before you apply.")
+    mine = {t["key"]: t for t in user_texts(db, job_id, "answer")}
+    qs = question_rows(db, job_id)
+    unanswered = [q for q in qs if not (mine.get(q["id"]) or {}).get("text")]
+    if unanswered:
+        missing.append(f"{len(unanswered)} of {len(qs)} form question{'s' if len(qs) != 1 else ''} still without your wording.")
+    if not (job.get("apply_url") or job.get("direct_url") or job.get("discovery_url")):
+        missing.append("No place to apply is known.")
+    if job.get("availability") in {"closed", "gone", "missing"}:
+        missing.append("The listing is no longer where Hunter found it; check it still accepts applications.")
+    state = "ready_to_submit" if not missing else "ready_for_review"
+    return {"state": state, "label": "Ready to submit" if state == "ready_to_submit" else "Ready for review", "missing": missing, "form_questions": len(qs), "answered": len(qs) - len(unanswered)}
 
 
 def _facts_used(text: str, facts: list[Fact]) -> list[dict]:
@@ -988,6 +1067,9 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
             if slot or (ut and ut.get("text")):
                 latest = slot["versions"][-1] if slot and slot.get("versions") else None
                 optional[kind] = {"versions": len((slot or {}).get("versions") or []), "latest": latest, "user_text": _user_view(ut)}
+        library = library_suggestions(db, job_id, answers)
+        for a in answers:
+            a["library"] = library.get(a["id"])
         form_qs = [a for a in answers if a["custom"]]
         counted = form_qs or [a for a in answers if not a["needs_user"]]
         confirmed = sum(1 for a in counted if a.get("user") and (a["user"] or {}).get("text"))
@@ -1009,6 +1091,8 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
                 {"id": "applied", "text": "Press 'I applied' so Hunter records the date and the CV you sent", "done": bool(app and app.get("applied_at"))},
             ],
             "reminder": package.get("reminder"),
+            "readiness": readiness(db, job_id),
+            "origin": next((r["origin"] for r in reqs if r["kind"] == "prepare" and r.get("origin")), "user"),
         }
     submitted = None
     if app and app.get("applied_at"):
@@ -1023,8 +1107,8 @@ def work_doc(db: Database, job_id: int, key: str) -> dict | None:
         "job_id": job_id,
         "at": now_iso(),
         "state": "applied" if app and app.get("applied_at") else ("prepared" if package else "none"),
-        "application": {"stage": app["stage"], "stage_label": {"prepared": "Ready to apply", "applied": "Applied", "replied": "Reply received", "interview": "Interview", "offer": "Offer", "rejected": "Rejected", "withdrawn": "Withdrawn"}.get(app["stage"], app["stage"]), "applied_at": app.get("applied_at"), "submitted_cv": submitted, "prepared_at": package.get("created_at") if package else None} if app else None,
-        "cv": {"selected": {"key": cv["key"], "label": cv["label"], "version": cv["version"], "choice": cv.get("choice") or "default"} if cv else None, "suggestion": suggestion, "options": [{"key": c["key"], "label": c["label"], "version": c["version"], "default": c["default"]} for c in cvs]},
+        "application": {"opened_at": app.get("opened_at"), "stage": app["stage"], "stage_label": {"prepared": "Ready to apply", "applied": "Applied", "replied": "Reply received", "interview": "Interview", "offer": "Offer", "rejected": "Rejected", "withdrawn": "Withdrawn"}.get(app["stage"], app["stage"]), "applied_at": app.get("applied_at"), "submitted_cv": submitted, "prepared_at": package.get("created_at") if package else None} if app else None,
+        "cv": {"selected": {"key": cv["key"], "label": cv["label"], "version": cv["version"], "choice": cv.get("choice") or "default", "file_available": bool((docs.cv_revision(db, cv["revision_key"]) or {}).get("file_available")) if cv.get("revision_key") else None} if cv else None, "suggestion": suggestion, "options": [{"key": c["key"], "label": c["label"], "version": c["version"], "default": c["default"]} for c in cvs]},
         "requests": requests_state,
         "package": pkg_view,
         "contacts": list_contacts(db, job_id),
@@ -1108,6 +1192,13 @@ def apply_action(db: Database, jid: int, a: dict, key: str) -> list[str]:
                         changes.append(f"request:{kind}")
                 except WorkspaceError:
                     continue
+    # The person opened the prepared application (Today's "unopened" count and the queue limit depend on it).
+    opened = a.get("opened_at")
+    if isinstance(opened, str) and opened[:4].isdigit():
+        from jobhunter.services import today as today_svc
+
+        if today_svc.mark_opened(db, jid, opened[:25]):
+            changes.append("opened")
     # CV choice for this job only.
     cvk = a.get("cv_variant")
     if isinstance(cvk, str) and cvk:

@@ -158,6 +158,17 @@ def run_hunt(ctx: AppContext, db: Database, trigger: str = "manual", source_ids:
 
             stats["seq"] = _board._next_seq(db)  # orders this hunt against dashboard reads and writes in the same second
             stats["unresolved_applied"] = len(_board.apply_unresolved(db))  # page actions for jobs this hunt just found
+            try:
+                # Bounded auto-preparation (mode "prepare_best"): the best unprepared good matches, through the same
+                # requests the page makes, within the day's limits. Rules only here: never the model, never a send.
+                from jobhunter.services import today as today_svc
+
+                ap = today_svc.auto_prepare(ctx, db)
+                stats["auto_prepared"] = ap["count"]
+                stats["auto_prepare_note"] = ap.get("note")
+            except Exception as exc:  # a preparation problem never fails the search
+                stats["auto_prepared"] = 0
+                stats["auto_prepare_note"] = f"Automatic preparation did not run ({type(exc).__name__})."
             status = "completed" if not stats["sources_failed"] and not stats["sources_partial"] else "partial"
             if stats.get("deadline_hit") and status == "completed":
                 status = "partial"
