@@ -201,6 +201,17 @@ def today(ctx: AppContext, db: Database) -> dict:
             changed.append(_item("job_changed", f"{b['title']} at {b['employer']}: the posting changed since Hunter prepared it. Your wording is kept.", "Prepare again", key=b["key"], command=f"jobhunter work request {a['job_id']} prepare"))
         elif job.get("availability") in {"closed", "gone", "missing"}:
             changed.append(_item("job_gone", f"{b['title']} at {b['employer']}: no longer listed where Hunter found it (last checked {(job.get('last_checked_at') or '')[:10]}). Not the same as closed.", "Open", key=b["key"]))
+    from jobhunter.services import watches
+
+    seen_jobs: set[int] = set()
+    for c in watches.changes(db, days=7):
+        if c["job_id"] in seen_jobs:
+            continue
+        seen_jobs.add(c["job_id"])
+        n = sum(1 for x in watches.changes(db, days=7) if x["job_id"] == c["job_id"])
+        changed.append(_item("watch_change", watches.change_line(c) + (f" And {n - 1} more change{'s' if n > 2 else ''}." if n > 1 else ""), "Open", key=c["key"], command=f"jobhunter watches ack {c['job_id']}", change_id=c["id"]))
+    for nj in watches.new_at_watched_companies(db)[:5]:
+        changed.append(_item("company_new", f"New at a company you watch: {nj['job']} (first seen {nj['first_seen_at'][:10]}).", "Open", key=nj["key"]))
     for a in queue["applied_by_itself"][:5]:
         changed.append(_item("email_applied", f"{a['job']}: marked {a['stage']} from an email ({a['subject'] or a['from']}, {(a['received_at'] or '')[:10]}). Undo if that is wrong.", "Undo", key=_job_bits(db, a["job_id"])["key"], command=f"jobhunter email unlink {a['email_id']}", email_id=a["email_id"]))
     attention: list[dict] = []
@@ -238,7 +249,13 @@ def today(ctx: AppContext, db: Database) -> dict:
         {"id": "attention", "title": "Needs attention", "items": attention[:8]},
     ]
     total = sum(len(g["items"]) for g in groups)
-    return {"schema": 1, "at": now_iso(), "groups": groups, "total": total, "automation": auto, "empty_text": "Nothing waiting for you today." if not total else None, "since": (now() - timedelta(days=1)).isoformat()}
+    from jobhunter.services import watches as watches_svc
+
+    weekly = None
+    if watches_svc.observation_due(db):
+        obs = watches_svc.weekly_observation(ctx, db, mark=False)
+        weekly = {"text": obs["text"], "kind": obs["kind"], "rule": obs["rule"]} if obs["text"] else None
+    return {"schema": 1, "at": now_iso(), "groups": groups, "total": total, "automation": auto, "weekly": weekly, "empty_text": "Nothing waiting for you today." if not total else None, "since": (now() - timedelta(days=1)).isoformat()}
 
 
 def text_view(t: dict) -> str:

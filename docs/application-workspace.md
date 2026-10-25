@@ -82,6 +82,13 @@ with their provenance; the message joins the timeline and the hand-off says how 
 `jobhunter email policy` decides what an email may change by itself (receipts only, by default); everything else
 is a suggestion on Today with confirm, dismiss and undo (`email review`, `email confirm|reject|unlink`).
 
+## Watches and change intelligence
+Every refresh compares what a source lists now with what Hunter stored (`job_changes`): pay, location, remote
+rule, title, posting text, closing date, contract type, availability, application link. A source that could not
+be checked records nothing. Changes on jobs the student follows show on Today and in the digest with the old and
+new value; `jobhunter watches` lists, acknowledges and adds company watches. Once a week Today carries one
+observation from the student's own records with a sample-size guard (no causal claims).
+
 ## Assisted Apply
 See [assisted-apply.md](assisted-apply.md): the capability per site is shown on the job page under "The vacancy
 and where to apply"; the lane itself runs on the student's computer (`jobhunter assisted run`).

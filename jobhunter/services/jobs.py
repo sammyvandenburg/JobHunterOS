@@ -96,6 +96,9 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
             fresh = _job_values(norm, raw, employer_id, codes_json, direct_url, direct_status, keep_first_seen=job)
             fresh.pop("canonical_key", None)  # the job's identity is set once; a changed title or location never moves actions
             values.update(_by_authority(job, fresh, employer_hosted or raw.is_employer_hosted))
+        from jobhunter.services import watches
+
+        watches.record_changes(db, job, values, raw.source_id, ts)
         db.update("jobs", values, "id = ?", (job["id"],))
         return int(job["id"]), False, changed
 
@@ -123,6 +126,9 @@ def upsert_from_posting(db: Database, raw: RawPosting, hunt_run_id: int | None, 
         if not match.get("posted_at") and raw.posted_at:
             values["posted_at"] = raw.posted_at
             values["posted_at_provenance"] = raw.posted_at_provenance
+        from jobhunter.services import watches
+
+        watches.record_changes(db, match, values, raw.source_id, ts)
         db.update("jobs", values, "id = ?", (job_id,))
         is_new = False
     else:
@@ -238,6 +244,9 @@ def mark_missing_as_closed(db: Database, source_id: str, seen_external_ids: set[
         )
         if others and others["c"]:
             continue
+        from jobhunter.services import watches
+
+        watches.record_changes(db, {"id": r["job_id"], "availability": "open"}, {"availability": "closed"}, source_id, ts)
         db.update(
             "jobs",
             {"availability": "closed", "availability_note": f"No longer listed on {source_id} on {ts[:10]}", "last_checked_at": ts, "updated_at": ts},

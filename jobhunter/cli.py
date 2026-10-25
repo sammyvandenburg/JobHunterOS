@@ -114,6 +114,26 @@ def cmd_plan(args):
     emit(args, workflow.plan(ctx, db, nightly=bool(args.nightly)))
 
 
+def cmd_watches(args):
+    from jobhunter.services import watches
+
+    ctx, db = _open(args)
+    try:
+        c = args.watches_cmd
+        if c == "list":
+            emit(args, watches.summary(db))
+        elif c == "changes":
+            emit(args, [{**x, "line": watches.change_line(x)} for x in watches.changes(db, days=args.days, only_watched=not args.all, unacknowledged=not args.seen)])
+        elif c == "ack":
+            emit(args, watches.acknowledge(db, args.id))
+        elif c == "company":
+            emit(args, watches.watch_company(db, args.name, on=args.action == "add"))
+        elif c == "weekly":
+            emit(args, watches.weekly_observation(ctx, db, mark=not args.peek))
+    except ValueError as exc:
+        raise CliError(str(exc)) from exc
+
+
 def cmd_intake(args):
     from jobhunter.services import intake as intake_svc
 
@@ -1665,6 +1685,22 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("value", nargs="?", choices=["receipts", "suggest", "all"])
     els.add_parser("review", help="what the mailbox suggested (waiting for you) and what it changed by itself lately (undoable)")
     el.set_defaults(fn=cmd_email)
+
+    wt = sub.add_parser("watches", help="what changed on the jobs you follow (saved, starred, prepared, applied) and companies you named; one weekly observation")
+    wts = wt.add_subparsers(dest="watches_cmd", required=True)
+    wts.add_parser("list")
+    x = wts.add_parser("changes", help="material changes seen by the ordinary refresh; never from a failed check")
+    x.add_argument("--days", type=int, default=7)
+    x.add_argument("--all", action="store_true", help="every job, not only the ones you follow")
+    x.add_argument("--seen", action="store_true", help="include acknowledged changes")
+    x = wts.add_parser("ack", help="you have seen this job's changes")
+    x.add_argument("id", type=job_ref)
+    x = wts.add_parser("company", help="watch a company by name: new relevant jobs there show on Today")
+    x.add_argument("action", choices=["add", "remove"])
+    x.add_argument("name")
+    x = wts.add_parser("weekly", help="one observation from your own records (sample-size guarded)")
+    x.add_argument("--peek", action="store_true", help="show it without counting it as this week's")
+    wt.set_defaults(fn=cmd_watches)
 
     ik = sub.add_parser("intake", help="one entry for a link, a pasted description, a job-alert email, a recruiter message or a referral: the same vacancy record the hunt makes")
     iks = ik.add_subparsers(dest="intake_cmd")

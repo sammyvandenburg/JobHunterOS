@@ -100,9 +100,17 @@ def _prepared_lines(db: Database) -> list[str]:
     return out
 
 
+def _changed_lines(db: Database) -> list[str]:
+    """Material changes on jobs the person saved, starred, prepared or applied to, seen in the last day."""
+    from jobhunter.services import watches
+
+    return [watches.change_line(c) for c in watches.changes(db, days=1)[:5]]
+
+
 def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) -> Digest:
     reminders = _followup_lines(db)
     prepared = _prepared_lines(db)
+    changed = _changed_lines(db)
     opener = f"Hunter found {len(jobs)} job(s) worth a look." if jobs else ("No new jobs today. Your reminders:" if reminders else "No new jobs today.")
     lines = ["Hi,", "", opener, ""]
     html_items = []
@@ -112,6 +120,9 @@ def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) ->
     if reminders:
         lines += reminders + [""]
         html_items.append("<p><b>Reminders</b><br>" + "<br>".join(html_mod.escape(r) for r in reminders) + "</p>")
+    if changed:
+        lines += ["Something changed on a job you follow:"] + changed + [""]
+        html_items.append("<p><b>Something changed</b><br>" + "<br>".join(html_mod.escape(r) for r in changed) + "</p>")
     for j in jobs:
         link = j.get("direct_url") if j.get("direct_url_status") == "verified" else (j.get("apply_url") or j.get("discovery_url"))
         b, flabel = freshness.bucket(j)
@@ -141,8 +152,8 @@ def compose(db: Database, jobs: list[dict], include_closed_note: bool = True) ->
     text = "\n".join(lines)
     html = "<p>Hi,</p><p>{}</p><ul>{}</ul><p>Open your dashboard on the computer where Hunter runs to act on these.</p><p>Hunter, your JobHunterOS assistant by KubeCraft</p>".format(html_mod.escape(opener), "".join(html_items))
     ids = [int(j["id"]) for j in jobs]
-    subject = f"JobHunterOS: {len(jobs)} job(s) worth a look" if jobs else ("JobHunterOS: your follow-up reminders" if reminders else f"JobHunterOS: {len(prepared)} application{'s' if len(prepared) != 1 else ''} ready to review")
-    seed = json.dumps(sorted(ids)) if ids else "reminders|" + now_iso()[:10] + "|" + "|".join(reminders + prepared)
+    subject = f"JobHunterOS: {len(jobs)} job(s) worth a look" if jobs else ("JobHunterOS: your follow-up reminders" if reminders else (f"JobHunterOS: {len(prepared)} application{'s' if len(prepared) != 1 else ''} ready to review" if prepared else "JobHunterOS: something changed on a job you follow"))
+    seed = json.dumps(sorted(ids)) if ids else "reminders|" + now_iso()[:10] + "|" + "|".join(reminders + prepared + changed)
     return Digest(subject=subject, text=text, html=html, job_ids=ids, content_hash=sha256_text(seed))
 
 
@@ -369,7 +380,7 @@ def prepare_handoff(ctx: AppContext, db: Database) -> dict:
 
     _board.apply_unresolved(db)  # a page action whose job arrived with this hunt counts before anything is emailed
     jobs = pending_jobs(db)
-    if not jobs and not _followup_lines(db) and not _prepared_lines(db):
+    if not jobs and not _followup_lines(db) and not _prepared_lines(db) and not _changed_lines(db):
         return _prepared(db, {"status": "skipped", "note": "Nothing new worth emailing."})
     digest = compose(db, jobs)
     path = ctx.paths.exports_dir / "digests" / f"digest-{now_iso().replace(':', '')}.txt"

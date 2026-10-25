@@ -118,6 +118,16 @@ everything wait; `all` lets confident matches change the pipeline reversibly. `u
 with Undo = `email unlink <id>`). Never confirm an email link for them; ask one question and use their answer
 (`email confirm <id> <job>` or `email reject <id>`). A newsletter or an automated message is never a reply.
 
+## Watches and the weekly observation
+`uv run jobhunter watches list` shows the jobs they follow (saved, starred, prepared, applied) with when each
+was last checked and which of its sites couldn't be checked, the companies they named (`watches company add
+<name>`), and new relevant jobs there. Material changes (pay, place or remote rule, title, posting text, closing
+date, contract type, application link, no longer listed / listed again) are recorded by the ordinary search,
+never by a failed check, and show on Today under "Something changed" and in the digest; `watches ack <job>`
+once they have seen them. "No longer listed where Hunter found it" is never "closed". Once a week Today carries
+one observation from their own records (`watches weekly`): a count with a next step, never a causal claim from
+a small sample; say it once and move on.
+
 ## Assisted Apply (on their computer only)
 `uv run jobhunter assisted capability <job>` says what Hunter may do for that application page: prepare only
 (default), assisted fill (Greenhouse-style forms: fill and read back, they press submit), reviewed submit (only on

@@ -459,6 +459,7 @@ const Core = (() => {
       })));
     }
     if (!out.length) out.push(el("div", { class: "empty" }, t.empty_text || "Nothing waiting for you today."));
+    if (t.weekly && t.weekly.text) out.push(el("div", { class: "grp" }, el("h3", {}, "This week"), el("div", { class: "item" }, el("span", {}, t.weekly.text), el("span", { class: "foot", title: t.weekly.rule || "" }, "from your own records"))));
     $("todayList").replaceChildren(...out);
   }
   function markOpened(k) {
