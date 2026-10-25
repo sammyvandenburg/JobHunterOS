@@ -1,150 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>JobHunterOS by KubeCraft</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
-/* Layout: a personal career workspace. Compact bar, one-line profile, four small counters, top picks,
-   what needs attention, then the full list with chips. A job opens in a drawer with a section menu.
-   Dark-first; light theme mirrored. The KubeCraft mark is the supplied file (see docs/brand.md), never drawn here. */
+/* A personal job-hunting workspace: a narrow dark navigation rail, the job list, and the selected job beside it.
+   Light first (the design reference), dark mirrored. The KubeCraft mark is the supplied file, never drawn here.
+   Orange is for the one primary action and the selected destination; green only means a good or reliable state. */
 :root{
-  color-scheme:dark;
-  --bg:#0e0f12;--panel:#17191e;--panel-2:#1f2229;--line:#2c3039;--ink:#f3f4f6;--ink-2:#c7cbd3;--muted:#8d939e;
-  --accent:#ff7a00;--accent-ink:#121316;--accent-dim:rgba(255,122,0,.14);
-  --good:#45d07a;--good-dim:rgba(69,208,122,.14);--warn:#f2b63f;--warn-dim:rgba(242,182,63,.16);--bad:#ff6565;--bad-dim:rgba(255,101,101,.14);--info:#7fa6ff;--info-dim:rgba(127,166,255,.14);
-  --bar:#0a0a0c;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;--shadow:0 12px 40px rgba(0,0,0,.45);
+  color-scheme:light;
+  --bg:#f3f4f6;--panel:#ffffff;--panel-2:#f6f7f9;--line:#e3e5ea;--line-2:#d2d6dd;--ink:#15171b;--ink-2:#3d424b;--muted:#6b717c;
+  --accent:#e8720c;--accent-hover:#d3660a;--accent-ink:#ffffff;--accent-dim:rgba(232,114,12,.1);
+  --good:#1e8e4c;--good-dim:#e6f5ec;--warn:#9a6500;--warn-dim:#fff4d6;--bad:#c23b3b;--bad-dim:#fdeaea;--info:#3458c7;--info-dim:#e8eefb;--tag:#5a2fbe;--tag-dim:#efe9fb;
+  --rail:#131417;--rail-ink:#f3f4f6;--rail-muted:#9aa0ab;--rail-sel:#2a1c0e;
+  --shadow:0 6px 24px rgba(20,22,30,.08);
   --display:"Manrope",ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
   --body:"Source Sans 3",ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
-  --r:12px;--r-sm:8px;
+  --r:12px;--r-sm:8px;--r-xs:6px;
 }
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
-  color-scheme:light;
-  --bg:#f4f3f0;--panel:#ffffff;--panel-2:#efeeea;--line:#dfddd7;--ink:#17181c;--ink-2:#3b3f47;--muted:#6a6f78;
-  --accent:#e06a00;--accent-ink:#ffffff;--accent-dim:rgba(224,106,0,.12);
-  --good:#1b8a48;--good-dim:rgba(27,138,72,.12);--warn:#9a6b00;--warn-dim:rgba(242,182,63,.2);--bad:#c43131;--bad-dim:rgba(196,49,49,.1);--info:#2f5bd3;--info-dim:rgba(47,91,211,.1);
-  --bar:#121316;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;--shadow:0 12px 40px rgba(20,20,30,.18);
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#0f1013;--panel:#17191e;--panel-2:#1f2228;--line:#2a2e37;--line-2:#363b46;--ink:#f1f2f4;--ink-2:#c4c8d0;--muted:#8c929d;
+  --accent:#ff7f1f;--accent-hover:#ff9240;--accent-ink:#141414;--accent-dim:rgba(255,127,31,.14);
+  --good:#4fd283;--good-dim:rgba(79,210,131,.14);--warn:#f1b84a;--warn-dim:rgba(241,184,74,.16);--bad:#ff6b6b;--bad-dim:rgba(255,107,107,.14);--info:#8aaeff;--info-dim:rgba(138,174,255,.14);--tag:#b79bff;--tag-dim:rgba(183,155,255,.14);
+  --rail:#0a0b0d;--rail-ink:#f3f4f6;--rail-muted:#9aa0ab;--rail-sel:#2b1a0a;
+  --shadow:0 10px 32px rgba(0,0,0,.45);
 }}
-:root[data-theme="light"]{
-  color-scheme:light;
-  --bg:#f4f3f0;--panel:#ffffff;--panel-2:#efeeea;--line:#dfddd7;--ink:#17181c;--ink-2:#3b3f47;--muted:#6a6f78;
-  --accent:#e06a00;--accent-ink:#ffffff;--accent-dim:rgba(224,106,0,.12);
-  --good:#1b8a48;--good-dim:rgba(27,138,72,.12);--warn:#9a6b00;--warn-dim:rgba(242,182,63,.2);--bad:#c43131;--bad-dim:rgba(196,49,49,.1);--info:#2f5bd3;--info-dim:rgba(47,91,211,.1);
-  --bar:#121316;--bar-ink:#f3f4f6;--bar-muted:#9aa0ab;--shadow:0 12px 40px rgba(20,20,30,.18);
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0f1013;--panel:#17191e;--panel-2:#1f2228;--line:#2a2e37;--line-2:#363b46;--ink:#f1f2f4;--ink-2:#c4c8d0;--muted:#8c929d;
+  --accent:#ff7f1f;--accent-hover:#ff9240;--accent-ink:#141414;--accent-dim:rgba(255,127,31,.14);
+  --good:#4fd283;--good-dim:rgba(79,210,131,.14);--warn:#f1b84a;--warn-dim:rgba(241,184,74,.16);--bad:#ff6b6b;--bad-dim:rgba(255,107,107,.14);--info:#8aaeff;--info-dim:rgba(138,174,255,.14);--tag:#b79bff;--tag-dim:rgba(183,155,255,.14);
+  --rail:#0a0b0d;--rail-ink:#f3f4f6;--rail-muted:#9aa0ab;--rail-sel:#2b1a0a;
+  --shadow:0 10px 32px rgba(0,0,0,.45);
 }
 *{box-sizing:border-box}
-html{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);min-height:100%}
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bar)}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.45 var(--body);overflow:hidden}
 button,textarea,input,select{font:inherit;color:inherit}
-h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1,h2,h3,h4{font-family:var(--display);margin:0;text-wrap:balance}
 a{color:var(--accent)}
-.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bar);color:var(--bar-ink);border-bottom:1px solid rgba(255,255,255,.07)}
-.bar .in{display:flex;align-items:center;gap:12px;max-width:1180px;margin:0 auto;padding-block:9px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:16px;letter-spacing:.2px}
-.brand .mark{width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:#000;color:#fff;font-size:11px;font-weight:800;letter-spacing:.5px;overflow:hidden}.brand .mark img{width:28px;height:28px;display:block}
-.brand small{display:block;font-weight:600;color:var(--bar-muted);font-size:10.5px;letter-spacing:.4px;text-transform:uppercase}
-.bar .title{font-family:var(--display);font-weight:700;color:var(--bar-ink);font-size:14px;opacity:.9}
-.bar .right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.stat{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--bar-muted);padding:4px 9px;border:1px solid rgba(255,255,255,.1);border-radius:999px;white-space:nowrap}
-.dot{width:7px;height:7px;border-radius:50%;background:#5d6470;flex:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* ---- shell ---- */
+.app{display:grid;grid-template-columns:88px minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100dvh;height:100vh}
+.side{background:var(--rail);color:var(--rail-ink);display:flex;flex-direction:column;align-items:stretch;padding:12px 8px calc(10px + env(safe-area-inset-bottom,0px));gap:4px;border-right:1px solid rgba(255,255,255,.06)}
+.brand-head{display:block;margin:0 0 10px;padding:4px 2px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand{display:flex;flex-direction:column;align-items:center;gap:6px;font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.2px;text-align:center;line-height:1.15}
+.brand .mark{width:40px;height:40px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:#000;color:#fff;font-size:12px;font-weight:800;letter-spacing:.5px;overflow:hidden}.brand .mark img{width:40px;height:40px;display:block}
+.brand small{display:block;font-weight:600;color:var(--rail-muted);font-size:8.5px;letter-spacing:.5px;text-transform:uppercase;margin-top:1px}
+.nav{display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;color:var(--rail-muted);border-radius:10px;padding:9px 4px 8px;cursor:pointer;font-size:11.5px;font-weight:600;line-height:1}
+.nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav:hover{color:var(--rail-ink);background:rgba(255,255,255,.06)}
+.nav[aria-current="page"]{color:var(--accent);background:var(--rail-sel);box-shadow:inset 3px 0 0 var(--accent)}
+.nav.settings{margin-top:auto}
+.nav .n{position:absolute;top:4px;right:10px;min-width:16px;height:16px;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+.nav{position:relative}
+main{display:grid;grid-template-columns:minmax(320px,38%) minmax(0,1fr);min-width:0;min-height:0;height:100%}
+.col{min-width:0;min-height:0;height:100%;overflow:auto;overscroll-behavior:contain}
+.list-col{border-right:1px solid var(--line);background:var(--bg);padding:16px 16px 40px}
+.detail-col{background:var(--bg);padding:16px 20px 48px}
+.colhead{display:flex;align-items:flex-start;gap:12px;margin:2px 0 12px}
+.colhead h1{font-size:19px;line-height:1.2}
+.colhead .sub{color:var(--muted);font-size:13px;margin-top:2px}
+.colhead .right{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.stat{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:3px 9px;border:1px solid var(--line);background:var(--panel);border-radius:999px;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:#9aa0ab;flex:none}
 .dot.ok{background:var(--good)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
-.bar .btn{padding:5px 10px;font-size:12.5px;background:transparent;border-color:rgba(255,255,255,.18);color:var(--bar-ink)}
-.bar .btn:hover{border-color:var(--accent)}
-main{max-width:1180px;margin:0 auto;padding-block:14px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
-.notice{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
-.notice h2{font-size:17px;margin-bottom:4px}.notice p{margin:0;color:var(--ink-2)}
-.who{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--r);padding:10px 14px}
-.who h1{font-size:17px}
-.who .line{color:var(--ink-2);font-size:13.5px}
-.who .acts{margin-left:auto;display:flex;gap:8px}
-.who details{flex-basis:100%;margin-top:4px}
-.who summary{display:none}
-.who .more{color:var(--ink-2);font-size:13.5px;border-top:1px solid var(--line);padding-top:10px;margin-top:6px;display:grid;gap:8px}
-.who .more p{margin:0;max-width:75ch}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;color:var(--ink-2);background:var(--panel-2)}
-.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.metric{display:flex;align-items:baseline;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;cursor:pointer;text-align:left}
-.metric:hover{border-color:var(--accent)}
-.metric b{font-family:var(--display);font-size:20px;line-height:1.1;font-variant-numeric:tabular-nums}
-.metric span{color:var(--muted);font-size:12.5px}
-section.block h2{font-size:13px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-family:var(--body);font-weight:600;margin-bottom:8px;display:flex;align-items:baseline;gap:10px}
-section.block h2 small{text-transform:none;letter-spacing:0;font-weight:400}
-.picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
-.pick{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:6px;min-width:0}
-.pick:hover{border-color:var(--accent)}
-.pick .t{font-family:var(--display);font-weight:700;font-size:15.5px;line-height:1.3}
-.pick .s,.row .s{color:var(--muted);font-size:13px}
-.pick .why,.row .why{font-size:13.5px;color:var(--ink-2)}
-.pick .why b,.row .why b{color:var(--ink);font-weight:600}
-.pick .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
-.pill{font-size:11.5px;border-radius:999px;padding:2px 8px;white-space:nowrap;border:1px solid transparent;font-weight:600}
+.notice{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.notice h2{font-size:16px;margin-bottom:4px}.notice p{margin:0;color:var(--ink-2)}
+section.block{margin-bottom:18px}
+section.block>h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-family:var(--body);font-weight:600;margin:0 0 8px;display:flex;align-items:baseline;gap:8px}
+section.block>h2 small{text-transform:none;letter-spacing:0;font-weight:400}
+.foot{color:var(--muted);font-size:12.5px}
+.empty{padding:22px 14px;color:var(--muted);text-align:center;background:var(--panel);border:1px dashed var(--line-2);border-radius:var(--r)}
+/* ---- buttons, pills, tags ---- */
+.btn{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:7px 12px;cursor:pointer;font-weight:600;font-size:13px;line-height:1.2;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:var(--ink)}
+.btn:hover{border-color:var(--ink-2)}
+.btn.on{background:var(--accent-dim);border-color:var(--accent);color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.sm{padding:5px 9px;font-size:12.5px}
+.btn.lg{padding:10px 16px;font-size:14px}
+.btn:disabled{opacity:.5;cursor:default}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn:focus-visible,.row:focus-visible,.nav:focus-visible,.fchip:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pill{font-size:11.5px;border-radius:999px;padding:2px 8px;white-space:nowrap;border:1px solid transparent;font-weight:600;display:inline-flex;align-items:center;gap:4px}
 .g-good{background:var(--good-dim);color:var(--good)}.g-worth_a_shot{background:var(--info-dim);color:var(--info)}
 .g-backup{background:var(--panel-2);color:var(--ink-2);border-color:var(--line)}.g-uncertain{background:var(--warn-dim);color:var(--warn)}.g-other{background:var(--panel-2);color:var(--muted);border-color:var(--line)}
 .p-applied{background:var(--good-dim);color:var(--good)}.p-dismissed{background:var(--bad-dim);color:var(--bad)}.p-pending{background:var(--warn-dim);color:var(--warn)}.p-fresh{background:var(--accent-dim);color:var(--accent)}
+.tag{font-size:11.5px;border-radius:var(--r-xs);padding:2px 7px;background:var(--info-dim);color:var(--info);font-weight:600;white-space:nowrap}
+.tag.role{background:var(--accent-dim);color:var(--accent)}
+.tags{display:flex;gap:4px;flex-wrap:wrap}
 .star{color:var(--accent)}
-.btn{border:1px solid var(--line);background:var(--panel-2);border-radius:var(--r-sm);padding:7px 11px;cursor:pointer;font-weight:600;font-size:13px;line-height:1.2}
-.btn:hover{border-color:var(--accent)}
-.btn.on{background:var(--accent-dim);border-color:var(--accent);color:var(--ink)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.btn.sm{padding:5px 9px;font-size:12.5px}
-.btn:disabled{opacity:.55;cursor:default}
-.btn:focus-visible,.row:focus-visible,.metric:focus-visible,.fchip:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.today .grp{margin:0 0 10px}.today .grp h3{font-size:13px;margin:0 0 4px;color:var(--muted);font-weight:600}
-.today .item{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-sm);padding:8px 12px;font-size:13.5px;margin-bottom:6px}
-.today .item.attn-i{border-left-color:var(--warn)}.today .item.ready-i{border-left-color:var(--good)}.today .item button{margin-left:auto;white-space:nowrap}.today .empty{padding:8px 0;color:var(--muted)}
-.attn{display:grid;gap:6px}
-.attn .item{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:var(--r-sm);padding:8px 12px;font-size:13.5px}
-.attn .item.good{border-left-color:var(--good)}.attn .item.bad{border-left-color:var(--bad)}
-.attn .item button{margin-left:auto}
-.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
-.tools input[type=search]{flex:1 1 220px;min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px}
-.fchips{display:flex;flex-wrap:wrap;gap:6px}
-.fchip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 11px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
-.fchip[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.fchip .n{opacity:.8;margin-left:4px;font-variant-numeric:tabular-nums}
-.fsel{display:none;border:1px solid var(--line);background:var(--panel);border-radius:var(--r-sm);padding:7px 10px}
-.list{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.grouph{padding:7px 12px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:var(--panel-2);border-bottom:1px solid var(--line)}
-.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:9px 12px;cursor:pointer}
-.row:last-child{border-bottom:0}
-.row:hover,.row[aria-current="true"]{background:var(--panel-2)}
-.row .t{font-weight:700;font-family:var(--display);font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.row .s,.row .why{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.marks{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:44%}
-.empty{padding:26px 16px;color:var(--muted);text-align:center}
-.foot{color:var(--muted);font-size:12.5px}
-/* drawer */
-.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40}
-.drawer{position:fixed;top:env(safe-area-inset-top,0px);right:0;bottom:0;width:min(600px,100%);background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:41;display:flex;flex-direction:column;min-width:0}
-.drawer header{display:flex;align-items:flex-start;gap:10px;padding:14px 16px 8px;padding-right:max(16px,env(safe-area-inset-right,0px))}
-.drawer header h2{font-size:18px;line-height:1.25}
-.drawer .sub{color:var(--muted);font-size:13px;margin:2px 0 0}
-.secnav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding:4px 16px 8px;border-bottom:1px solid var(--line)}
-.secnav button{border:0;background:none;color:var(--muted);font-weight:600;font-size:13px;padding:5px 8px;border-radius:999px;cursor:pointer;white-space:nowrap}
-.secnav button:hover{color:var(--ink)}
-.dbody{overflow:auto;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px;min-width:0}
-.sec h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 6px;font-family:var(--body)}
-.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:14px}
+/* ---- icons and logos ---- */
+.ricon{width:36px;height:36px;flex:none;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-2)}
+.ricon svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ricon.lg{width:48px;height:48px;border-radius:12px}.ricon.lg svg{width:26px;height:26px}
+.logo{width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line);background:var(--panel);display:inline-flex;align-items:center;justify-content:center;overflow:hidden;font-family:var(--display);font-weight:800;font-size:14px;color:var(--ink-2);letter-spacing:.3px}
+.logo img{width:28px;height:28px;object-fit:contain;display:block}
+.logo.sm{width:22px;height:22px;border-radius:6px;font-size:9px}.logo.sm img{width:16px;height:16px}
+/* ---- job rows ---- */
+.list{display:grid;gap:8px}
+.grouph{padding:6px 2px 0;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:start;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;cursor:pointer;color:var(--ink)}
+.row:hover{border-color:var(--line-2);box-shadow:var(--shadow)}
+.row[aria-current="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.row .t{font-weight:700;font-family:var(--display);font-size:15px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .s{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.row .tags{margin-top:7px}
+.row .rside{display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.row .rside .chev{color:var(--muted);font-size:16px;line-height:1}
+.row .marks{display:flex;gap:4px;align-items:center}
+.pickhead{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.viewall{margin-top:8px;display:flex;justify-content:flex-end}
+/* ---- filters ---- */
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.tools input[type=search]{flex:1 1 180px;min-width:0;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:7px 12px}
+.fsel{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:7px 10px;max-width:100%}
+/* ---- attention / today items ---- */
+.items{display:grid;gap:6px}
+.item{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-sm);padding:9px 12px;font-size:13.5px}
+.item.good{border-left-color:var(--good)}.item.warn{border-left-color:var(--warn)}.item.bad{border-left-color:var(--bad)}
+.item button,.item a.btn{margin-left:auto;white-space:nowrap}
+.activity{display:flex;gap:8px;flex-wrap:wrap}
+.activity .stat{background:var(--panel)}
+/* ---- detail ---- */
+.detail{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);min-height:60vh;display:flex;flex-direction:column;min-width:0}
+.detail.placeholder{align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px 24px;border-style:dashed;background:transparent}
+.dhead{padding:16px 18px 12px;border-bottom:1px solid var(--line);display:grid;gap:10px}
+.dhead .top{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.dhead .top>.ttl{min-width:0;flex:1 1 260px}
+.dhead h2{font-size:21px;line-height:1.2}
+.dhead .co{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--ink-2);font-size:13.5px;margin-top:4px}
+.dhead .co a{color:var(--ink-2);text-decoration:none;font-weight:600}.dhead .co a:hover{text-decoration:underline}
+.dhead .hacts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-self:flex-start}
+.facts{display:flex;gap:14px;flex-wrap:wrap;color:var(--ink-2);font-size:13px}
+.facts span{display:inline-flex;align-items:center;gap:5px}
+.facts svg{width:14px;height:14px;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dbody{padding:14px 18px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:14px;min-width:0}
+.help{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 18px;align-items:center}
+.help h3{font-size:15.5px;margin-bottom:2px}
+.help p{margin:0 0 8px;color:var(--ink-2);font-size:13.5px}
+.help ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 14px;font-size:13px;color:var(--ink-2)}
+.help li{display:flex;gap:6px;align-items:center}.help li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--good);flex:none}
+.help .cta{display:flex;flex-direction:column;gap:8px;min-width:200px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--panel);min-width:0}
+.card h3{font-size:14.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.card h3 svg{width:17px;height:17px;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.card.fit{background:var(--warn-dim);border-color:transparent}
+:root[data-theme="dark"] .card.fit,:root:not([data-theme="light"]) .card.fit{background:var(--panel-2);border-color:var(--line)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .card.fit{background:#fff8ee;border-color:#f3dfc0}}
+.kv{display:grid;grid-template-columns:minmax(110px,auto) minmax(0,1fr);gap:5px 12px;font-size:13.5px}
 .kv span:first-child{color:var(--muted)}
+.kv a{word-break:break-word}
 ul.r{margin:0;padding-left:18px}ul.r li{margin:3px 0}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ul.fitl{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13.5px}
+ul.fitl li{display:flex;gap:8px;align-items:flex-start}
+ul.fitl li::before{content:"✓";color:var(--good);font-weight:700;flex:none}
+ul.fitl.check li::before{content:"•";color:var(--warn)}
+.card h4{font-size:13px;margin:10px 0 5px;display:flex;align-items:center;gap:6px;color:var(--ink-2)}
+.card h4 svg{width:15px;height:15px;stroke:var(--warn);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.desc{white-space:pre-wrap;color:var(--ink-2);font-size:14px;max-width:76ch}
+.desc.lead{max-height:7.6em;overflow:hidden;position:relative}
+.links{display:flex;gap:10px;flex-wrap:wrap;font-size:13.5px;margin-top:8px}
+.sec h3{font-size:14.5px;margin-bottom:6px}
+.status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2)}
+.status b{font-family:var(--display)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .save{font-size:12.5px;min-height:18px;margin:4px 0 0;color:var(--muted)}
 .save.ok{color:var(--good)}.save.err{color:var(--bad)}.save.warn{color:var(--warn)}
-textarea{width:100%;min-height:90px;border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:8px;resize:vertical}
-input[type=text]{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:8px}
-select{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:8px}
+textarea{width:100%;min-height:90px;border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:8px;resize:vertical}
+input[type=text],input[type=date],select{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:8px;color:inherit}
+input[type=text],select{width:100%}
 label{display:grid;gap:4px;font-size:13px;color:var(--ink-2)}
-.desc{white-space:pre-wrap;color:var(--ink-2);font-size:14px;max-width:72ch}
-.links{display:flex;flex-direction:column;gap:4px;font-size:14px;word-break:break-word}
+label.radio{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}
 .conflict{border:1px solid var(--warn);background:var(--warn-dim);border-radius:var(--r-sm);padding:8px;margin:6px 0;font-size:13px}
 .conflict .theirs{white-space:pre-wrap;margin:6px 0;color:var(--ink)}
-.modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
-.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;width:min(480px,100%);display:grid;gap:10px;max-height:90vh;overflow:auto}
-.drawer.wide{width:min(960px,100%)}
-.drawer header .hacts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
-.secnav button[aria-current="true"]{color:var(--ink);background:var(--panel-2)}
-.part{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;margin:8px 0;background:var(--bg)}
-.part>summary{cursor:pointer;font-weight:700;font-family:var(--display);font-size:14px}
-.part>summary::marker{color:var(--muted)}
+/* ---- workspace ---- */
+.ws .step{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--panel)}
+.ws .step>h3{font-size:14.5px;display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.ws .step>h3 .num{width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:12.5px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.ws .step.done>h3 .num{background:var(--good)}
+.part{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;margin:8px 0;background:var(--panel-2)}
+.part>summary{cursor:pointer;font-weight:700;font-family:var(--display);font-size:13.5px}
 details.sub{margin-top:6px}details.sub>summary{cursor:pointer;font-size:13px;color:var(--ink-2);font-weight:600}
 .tier{margin:8px 0 2px;font-size:13.5px}
 table.case{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0}
@@ -152,44 +195,56 @@ table.case th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;
 table.case td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
 ul.check{list-style:none;margin:0;padding:0}ul.check li{margin:3px 0}ul.check li.done{color:var(--good)}
 .ans,.contact,.cvrow,.opt,.fu,.applied,.cvpick{border-top:1px solid var(--line);padding:8px 0;display:grid;gap:6px}
+.ans:first-child,.contact:first-child,.cvrow:first-child,.opt:first-child,.cvpick:first-child{border-top:0}
 .ans .q,.contact .q,.cvrow .q{font-weight:600}
 .sug{background:var(--panel-2);border-radius:var(--r-sm);padding:8px;font-size:14px}
 .cvrow.off{opacity:.65}
-label.radio{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}
-input[type=date]{border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:7px;color:inherit}
-@media (max-width:860px){
-  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .who .acts{margin-left:0}
-  .fchips{display:none}.fsel{display:block}
-  .marks{max-width:38%}
-  .drawer{width:100%;border-left:0}
+/* ---- applications / profile ---- */
+.approw{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;text-align:left;width:100%;cursor:pointer;color:var(--ink)}
+.approw:hover{border-color:var(--line-2)}
+.approw .t{font-weight:700;font-family:var(--display);font-size:14.5px}
+.approw .s{color:var(--muted);font-size:12.5px}
+.approw .next{font-size:12.5px;color:var(--ink-2);text-align:right;white-space:nowrap}
+.prof{display:grid;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;color:var(--ink-2);background:var(--panel-2)}
+/* ---- responsive ---- */
+@media (max-width:1100px){main{grid-template-columns:minmax(300px,42%) minmax(0,1fr)}.help{grid-template-columns:1fr}}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}
+  .side{flex-direction:row;align-items:center;order:2;padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));border-right:0;border-top:1px solid rgba(255,255,255,.08);gap:2px}
+  .brand-head{display:none}
+  .nav{flex:1;padding:6px 2px}.nav.settings{margin-top:0;flex:0 0 64px}
+  .nav[aria-current="page"]{box-shadow:inset 0 -3px 0 var(--accent)}
+  main{grid-template-columns:1fr;order:1;min-height:0}
+  .list-col{border-right:0;padding:14px 14px 28px}
+  .detail-col{display:none}
+  .app.has-sel .detail-col{display:block;position:fixed;inset:0;z-index:40;padding:0;background:var(--panel)}
+  .app.has-sel .detail{border:0;border-radius:0;min-height:100%}
+  .dhead{position:sticky;top:0;background:var(--panel);z-index:2;padding-top:calc(12px + env(safe-area-inset-top,0px))}
+  .dhead .hacts{margin-left:0;flex-basis:100%;justify-content:flex-start}
+  .dhead h2{font-size:18px}
+  .two{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:no-preference){.row,.btn,.fchip,.metric,.pick{transition:background .12s,border-color .12s}}
+@media (prefers-reduced-motion:no-preference){.row,.btn,.nav,.approw{transition:background .12s,border-color .12s,box-shadow .12s}}
 </style>
-
-<header class="bar">
-  <div class="in">
+</head>
+<body>
+<div class="app" id="app">
+<nav class="side" aria-label="Main">
+  <header class="brand-head">
     <div class="brand">
       <span class="mark" role="img" aria-label="KubeCraft"><!--KUBECRAFT-MARK-->KC</span>
       <div>JobHunterOS<small>by KubeCraft</small></div>
     </div>
-    <div class="title">Your job hunt</div>
-    <div class="right" id="barRight"></div>
-  </div>
-</header>
+  </header>
+  <div id="navList" style="display:contents"></div>
+</nav>
 <main>
-  <section id="notice" hidden></section>
-  <section class="who" id="who" hidden></section>
-  <section class="block today" id="today" hidden><h2>Today <small id="todayNote"></small></h2><div id="todayList"></div></section>
-  <section class="metrics" id="metrics" aria-label="Your numbers"></section>
-  <section class="block" id="picks" hidden><h2>Top picks for you <small id="picksNote"></small></h2><div class="picks" id="picksList"></div></section>
-  <section class="block" id="attn" hidden><h2>Needs your attention</h2><div class="attn" id="attnList"></div></section>
-  <section class="block" id="all"><h2>All recommended jobs <small id="allNote"></small></h2>
-    <div class="tools"><input type="search" id="q" placeholder="Search title, company or place" aria-label="Search jobs"><div class="fchips" id="chips" role="tablist"></div><select class="fsel" id="fsel" aria-label="Which jobs"></select></div>
-    <div class="list" id="list" role="list"><div class="empty">Loading your jobs…</div></div>
-  </section>
-  <p class="foot">Only you can see this page. Hunter keeps it in step with your computer and your nightly hunts; what you do here reaches Hunter on its next run. Open a job and press “Prepare application” to start; you apply yourself, Hunter never sends anything.</p>
+  <section class="col list-col" id="listCol" aria-live="polite"></section>
+  <section class="col detail-col" id="detailCol"></section>
 </main>
+</div>
 <div id="overlay"></div>
 
 <script>
@@ -272,11 +327,15 @@ const Core = (() => {
       applied: all.filter((k) => !!eff(k).applied_at), dismissed: all.filter((k) => eff(k).dismissed), all,
     };
   }
-  // Up to n picks, best first, one per employer before any employer repeats.
+  // Up to n picks, best first; a different employer is preferred over a repeat only among equals (same group).
   function topPicks(keys, jobs, n = 5) {
     const seen = new Set(); const first = []; const rest = [];
     for (const k of keys) { const e = ((jobs.get(k) || {}).employer || "").toLowerCase(); if (!seen.has(e)) { seen.add(e); first.push(k); } else rest.push(k); }
-    return first.concat(rest).slice(0, n);
+    const rank = (k) => ({ good: 0, worth_a_shot: 1, backup: 2 }[(jobs.get(k) || {}).group] ?? 3);
+    const out = first.concat(rest);
+    // A weaker job never jumps ahead of a stronger one from a repeated employer.
+    out.sort((a, b) => rank(a) - rank(b) || (first.includes(a) ? 0 : 1) - (first.includes(b) ? 0 : 1) || keys.indexOf(a) - keys.indexOf(b));
+    return out.slice(0, n);
   }
   function pendingCount(jobs, actions, profile) {
     let n = 0;
@@ -326,7 +385,7 @@ const Core = (() => {
     if (theirs) return { state: theirs.state, id: theirs.id, at: theirs.at, message: theirs.message, result: theirs.result || null, mine: false };
     return null;
   }
-  // One main action per job: Prepare application -> Continue application -> View application.
+  // One main action per job: Prepare my application -> Continue application -> View application.
   function mainAction(work, action) {
     const applied = !!(action && Number(action.rev) > 0 ? action.applied_at : (work && work.state === "applied"));
     const prep = requestState(work, action, "prepare");
@@ -334,7 +393,35 @@ const Core = (() => {
     if (work && work.package) return { kind: "continue", label: "Continue application" };
     if (prep && prep.state === "requested") return { kind: "continue", label: "Continue application" };
     if (prep && (prep.state === "running")) return { kind: "continue", label: "Continue application" };
-    return { kind: "prepare", label: "Prepare application" };
+    return { kind: "prepare", label: "Prepare my application" };
+  }
+  // The application's state in plain words: not started, preparing, needs your answer, ready for review, applied, needs review.
+  function appStatus(work, action) {
+    const applied = !!(action && Number(action.rev) > 0 ? action.applied_at : (work && work.state === "applied"));
+    if (applied) return { id: "applied", label: "Applied" };
+    const prep = requestState(work, action, "prepare");
+    const pkg = work && work.package;
+    if (pkg && pkg.needs_review && pkg.needs_review.length) return { id: "needs_review", label: "Needs review: the vacancy changed" };
+    if (prep && prep.state === "needs_input") return { id: "needs_answer", label: "Needs your answer" };
+    if (prep && (prep.state === "requested" || prep.state === "running")) return { id: "preparing", label: "Preparing" };
+    if (prep && prep.state === "failed") return { id: "failed", label: "Hunter could not prepare this" };
+    if (pkg) {
+      const rd = pkg.readiness || {};
+      if (rd.state === "ready_to_submit") return { id: "ready", label: "Ready to submit" };
+      if ((rd.form_questions || 0) > (rd.answered || 0)) return { id: "needs_answer", label: "Needs your answer" };
+      return { id: "ready", label: "Ready for review" };
+    }
+    return { id: "none", label: "Not started" };
+  }
+  // The pipeline column of the Applications page.
+  function pipelineStage(work, action) {
+    const stage = work && work.application && work.application.stage;
+    if (["rejected", "withdrawn"].includes(stage)) return "closed";
+    if (["replied", "interview", "offer"].includes(stage)) return "interview";
+    const s = appStatus(work, action);
+    if (s.id === "applied") return "applied";
+    if (s.id === "ready") return "ready";
+    return "preparing";
   }
   function parseQuestions(text) {
     const out = [];
@@ -348,7 +435,7 @@ const Core = (() => {
     return out;
   }
   return { commit, effective, setFlag, saveNote, setPrefs, tabsFor, topPicks, pendingCount, matches, blankAction, clone, sleep,
-    REQUEST_KINDS, requestId, setFields, setRequest, saveAnswer, saveText, setCv, setCvRequest, requestState, mainAction, parseQuestions };
+    REQUEST_KINDS, requestId, setFields, setRequest, saveAnswer, saveText, setCv, setCvRequest, requestState, mainAction, appStatus, pipelineStage, parseQuestions };
 })();
 /* ===CORE-END=== */
 
@@ -356,13 +443,16 @@ const Core = (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const TAB_ID = "tab-" + Math.random().toString(36).slice(2, 10);
-  const CHIPS = [["recommended", "All recommended"], ["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"], ["uncertain", "Needs checking"], ["old", "Older"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Not interested"], ["all", "Everything"]];
+  const VIEWS = ["today", "jobs", "applications", "profile"];
+  const FILTERS = [["recommended", "All recommended"], ["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"], ["uncertain", "Needs checking"], ["old", "Older"], ["favorites", "Favorites"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Not interested"], ["all", "Everything"]];
   const GROUPS = [["good", "Good matches"], ["worth_a_shot", "Worth a shot"], ["backup", "Backup options"]];
-  const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null,
-    tab: "recommended", q: "", sel: null, saving: {}, noteBase: {}, drafts: {}, prefsDraft: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false, work: false }, dbError: null, prefsOpen: false, prefsStatus: null,
-    work: new Map(), today: null, mcp: null, section: "overview", wide: false, askApplied: null, addContact: null, cvsOpen: false, cvsArchived: false, reqStatus: {}, answerDrafts: {}, answerStatus: {}, textDrafts: {}, textStatus: {} };
-  try { st.wide = !!localStorage.getItem("hunter.wide"); } catch {}
-  try { const t = localStorage.getItem("hunter.tab"); if (t && CHIPS.some((x) => x[0] === t)) st.tab = t; } catch {}
+  const st = { db: null, owner: null, jobs: new Map(), shards: new Map(), actions: new Map(), run: null, profile: null, today: null, work: new Map(), mcp: null,
+    view: "today", tab: "recommended", q: "", sel: null, ws: false, descOpen: false, lastRow: null,
+    saving: {}, noteBase: {}, drafts: {}, prefsDraft: {}, ops: {}, conflicts: {}, loaded: { board: false, actions: false, run: false, work: false }, dbError: null, prefsStatus: null,
+    askApplied: null, addContact: null, cvsArchived: false, reqStatus: {}, answerDrafts: {}, answerStatus: {}, textDrafts: {}, textStatus: {}, logoFail: new Set() };
+  try { const v = localStorage.getItem("hunter.view"); if (VIEWS.includes(v)) st.view = v; } catch {}
+  try { const t = localStorage.getItem("hunter.tab"); if (t && FILTERS.some((x) => x[0] === t)) st.tab = t; } catch {}
+  try { for (const d of JSON.parse(localStorage.getItem("hunter.logofail") || "[]")) st.logoFail.add(d); } catch {}
 
   const el = (tag, attrs = {}, ...kids) => {
     const n = document.createElement(tag);
@@ -373,6 +463,7 @@ const Core = (() => {
     for (const c of kids.flat()) if (c != null && c !== false) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
     return n;
   };
+  const svg = (paths, extra = {}) => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("aria-hidden", "true"); for (const [k, v] of Object.entries(extra)) s.setAttribute(k, v); s.innerHTML = paths; return s; };
   const rel = (iso) => {
     if (!iso) return "never";
     const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
@@ -385,167 +476,177 @@ const Core = (() => {
   const groupClass = (g) => ["good", "worth_a_shot", "backup", "uncertain"].includes(g) ? "g-" + g : "g-other";
   const eff = (k) => Core.effective(st.jobs.get(k), st.actions.get(k));
   const can = () => !!st.db && st.owner !== false;
-  const remoteWords = (j) => [j.remote_label, j.remote_restriction].filter(Boolean).join(", ");
+  const work = (k) => st.work.get(k) || null;
+  const act = (k) => st.actions.get(k) || null;
+  const remoteWords = (j) => { const r = (j.remote_restriction || "").replace(/\s*\(the posting says:.*?\)/, "").trim(); const l = j.remote_label || ""; return r ? (l && !r.toLowerCase().startsWith(l.toLowerCase()) ? l + ", " + r : r) : l; };
   const where = (j) => [j.location, remoteWords(j)].filter(Boolean).join(" · ");
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fmtDay = (iso) => { if (!iso) return ""; const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + "T12:00:00") : new Date(iso); return isFinite(d) ? d.getDate() + " " + MONTHS[d.getMonth()] + " " + d.getFullYear() : String(iso).slice(0, 10); };
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const plusDays = (iso, n) => { const d = new Date(iso || Date.now()); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const ageWords = (j) => { const f = j.freshness_label || ""; const m = /(\d+)\s*days?/i.exec(f); if (m) return m[1] + " days ago"; if (/today/i.test(f)) return "today"; if (/yesterday/i.test(f)) return "yesterday"; return f.replace(/^Posted /i, "").split(" (")[0] || ""; };
+  const isNew = (j) => /last 2 days|today|yesterday/i.test(j.freshness_label || "");
 
-  /* ---------- header ---------- */
-  function renderBar() {
-    const r = $("barRight"); const h = st.run && st.run.hunter;
-    const pending = Core.pendingCount(st.jobs, st.actions, st.profile);
-    const items = [];
+  /* ---------- the role icon library: twenty families, one visual language ---------- */
+  const ROLE_ICONS = {
+    devops: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+    sre: '<path d="M3 12h4l2-5 3 10 2-7 1.5 2H21"/><circle cx="18" cy="6" r="2.5"/>',
+    platform: '<rect x="4" y="14" width="16" height="5" rx="1"/><rect x="6" y="9" width="12" height="5" rx="1"/><rect x="8" y="4" width="8" height="5" rx="1"/>',
+    infrastructure: '<rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><circle cx="8" cy="7" r=".8" fill="currentColor"/><circle cx="8" cy="17" r=".8" fill="currentColor"/>',
+    cloud: '<path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 11.5 3.5 3.5 0 0 0 7 18z"/>',
+    kubernetes: '<path d="M12 3l7.5 4.5v9L12 21l-7.5-4.5v-9z"/><circle cx="12" cy="12" r="2"/><path d="M12 10V7.5M13.7 13l2.2 1.3M10.3 13l-2.2 1.3"/>',
+    systems: '<path d="M14.5 6.5a4 4 0 0 1 4.8 4.8L13 17.6a2 2 0 0 1-2.8 0l-3.6-3.6a2 2 0 0 1 0-2.8l6.3-6.3"/><path d="M3 21l5-5"/>',
+    network: '<circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5v4M12 11.5 6.5 17M12 11.5l5.5 5.5"/>',
+    security: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+    devsecops: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><circle cx="12" cy="12" r="2"/><path d="M12 8v1.5M12 14.5V16M8.5 12H10M14 12h1.5"/>',
+    software: '<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>',
+    backend: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
+    frontend: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/>',
+    data: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>',
+    datascience: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/><circle cx="19" cy="7" r="2"/>',
+    ml: '<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><path d="M8 6.8l2.3 3.6M8 17.2l2.3-3.6M14 12h2"/>',
+    architect: '<path d="M10 4h4v4h-4zM4 10h4v4H4zM16 10h4v4h-4zM10 16h4v4h-4z"/><path d="M12 8v2M8 12h2M14 12h2M12 14v2"/>',
+    manager: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15.5 15c2.5.3 4.5 2.4 4.5 5"/>',
+    consultant: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18"/>',
+    cloud_architect: '<path d="M7 15h9a3.5 3.5 0 0 0 .4-7A5 5 0 0 0 6.7 9.6 2.8 2.8 0 0 0 7 15z"/><rect x="5" y="17" width="4" height="4"/><rect x="10" y="17" width="4" height="4"/><rect x="15" y="17" width="4" height="4"/>',
+    engineering: '<path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><path d="M9 12h6M12 9v6"/>',
+  };
+  const ROLE_LABELS = { devops: "DevOps Engineer", sre: "Site Reliability Engineer", platform: "Platform Engineer", infrastructure: "Infrastructure Engineer", cloud: "Cloud Engineer", kubernetes: "Kubernetes Engineer", systems: "Systems Engineer", network: "Network Engineer", security: "Security Engineer", devsecops: "DevSecOps Engineer", software: "Software Engineer", backend: "Backend Engineer", frontend: "Frontend Engineer", data: "Data Engineer", datascience: "Data Scientist", ml: "Machine Learning Engineer", architect: "Solutions Architect", manager: "Engineering Manager", consultant: "Technical Consultant", cloud_architect: "Cloud/Platform Architect", engineering: "Engineering" };
+  // RoleIcon(role): the icon, its accessible label, and the family id. Unknown -> Engineering. Never an input to matching.
+  function RoleIcon(role, large) {
+    const id = role && ROLE_ICONS[role.id] ? role.id : "engineering";
+    const label = (role && role.label) || ROLE_LABELS[id];
+    return el("span", { class: "ricon" + (large ? " lg" : ""), role: "img", "aria-label": label + " role", title: label }, svg(ROLE_ICONS[id]));
+  }
+  // CompanyLogo(job): the employer's own favicon from its verified domain (cached by the browser, failures remembered),
+  // otherwise the initials. Never a guessed image, never another company's mark, never a blocker.
+  function CompanyLogo(j, small) {
+    const logo = j.logo || {}; const name = j.employer || "Unknown employer";
+    const box = el("span", { class: "logo" + (small ? " sm" : ""), title: name });
+    if (logo.domain && !st.logoFail.has(logo.domain)) {
+      const img = el("img", { src: "https://" + logo.domain + "/favicon.ico", alt: name + " logo", loading: "lazy", width: small ? "16" : "28", height: small ? "16" : "28" });
+      img.addEventListener("error", () => { st.logoFail.add(logo.domain); try { localStorage.setItem("hunter.logofail", JSON.stringify([...st.logoFail].slice(-200))); } catch {} box.replaceChildren(initialsNode()); });
+      box.append(img);
+    } else box.append(initialsNode());
+    function initialsNode() { return el("span", { role: "img", "aria-label": name }, logo.initials || (name.slice(0, 2).toUpperCase())); }
+    return box;
+  }
+  const NAV_ICONS = { today: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>', jobs: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/>', applications: '<path d="M9 3h6l4 4v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 12l2 2 4-4"/>', profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>', settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>' };
+  const I = { pin: '<path d="M12 21s7-6.5 7-11a7 7 0 1 0-14 0c0 4.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>', brief: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>', cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', check: '<path d="M20 6 9 17l-5-5"/>', coins: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>', bulb: '<path d="M9 18h6M10 21h4M8.5 14.5A6 6 0 1 1 15.5 14.5c-.6.6-1 1.5-1 2.5h-5c0-1-.4-1.9-1-2.5z"/>', doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>', star: '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>', bookmark: '<path d="M6 3h12v18l-6-4-6 4z"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>', back: '<path d="M15 6l-6 6 6 6"/>', ext: '<path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>', sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>', dot: '<circle cx="12" cy="12" r="4"/>', warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 18h.01"/>', people: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15.5 15c2.5.3 4.5 2.4 4.5 5"/>' };
+  const ico = (name) => svg(I[name]);
+
+  /* ---------- navigation ---------- */
+  function setView(v, scroll) { st.view = v; st.ws = false; try { localStorage.setItem("hunter.view", v); } catch {} if (scroll) $("listCol").scrollTop = 0; render(); }
+  function renderNav() {
+    const t = Core.tabsFor(st.jobs, st.actions, st.run);
+    const attention = st.today ? (st.today.total || 0) : 0;
+    const items = [["today", "Today", attention], ["jobs", "Jobs", null], ["applications", "Applications", null], ["profile", "Profile", null]];
+    const out = items.map(([id, label, n]) => el("button", { class: "nav", "aria-current": st.view === id ? "page" : "false", "aria-label": label + (n ? " (" + n + " to look at)" : ""), onclick: () => setView(id, true) }, svg(NAV_ICONS[id]), label, n ? el("span", { class: "n", "aria-hidden": "true" }, n) : null));
+    out.push(el("button", { class: "nav settings", "aria-current": "false", onclick: () => { setView("profile", true); const s = $("sec-settings"); if (s) s.scrollIntoView({ block: "start" }); } }, svg(NAV_ICONS.settings), "Settings"));
+    $("navList").replaceChildren(...out);
+    void t;
+  }
+  /* ---------- status line (only facts the data supports) ---------- */
+  function statusChips() {
+    const h = st.run && st.run.hunter; const pending = Core.pendingCount(st.jobs, st.actions, st.profile); const items = [];
     if (st.dbError) items.push(el("span", { class: "stat" }, el("span", { class: "dot bad" }), "Can’t reach your data"));
     else if (!st.db) items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), "Sign in to see your jobs"));
     else if (st.owner === false) items.push(el("span", { class: "stat" }, el("span", { class: "dot bad" }), "Not your dashboard"));
     else if (st.loaded.run && st.run) {
       const ip = st.run.hunt_in_progress;
-      if (ip && ip.running) items.push(el("span", { class: "stat", title: "A search is running now; this page shows what it has found so far" }, el("span", { class: "dot warn" }), "Searching now: " + (ip.sources_total ? ip.sources_done + " of " + ip.sources_total + " sites, " : "") + (ip.jobs_relevant_new || 0) + " new match" + (ip.jobs_relevant_new === 1 ? "" : "es") + " so far"));
-      const lastHunt = h && h.last_successful_hunt_at;
-      items.push(el("span", { class: "stat", title: "The last search that finished" }, el("span", { class: "dot " + (lastHunt ? "ok" : "warn") }), "Last search " + rel(lastHunt)));
-      items.push(el("span", { class: "stat", title: "When Hunter last updated this page" }, el("span", { class: "dot " + (pending ? "warn" : "ok") }), "Synced " + rel(st.run.at) + (pending ? " · " + pending + " waiting" : "")));
+      if (ip && ip.running) items.push(el("span", { class: "stat", title: "A search is running now; this page shows what it has found so far" }, el("span", { class: "dot warn" }), "Searching now: " + (ip.jobs_relevant_new || 0) + " new match" + (ip.jobs_relevant_new === 1 ? "" : "es") + " so far"));
+      items.push(el("span", { class: "stat", title: "When Hunter last updated this page" }, el("span", { class: "dot " + (pending ? "warn" : "ok") }), "Synced " + rel(st.run.at) + (pending ? " · " + pending + " change" + (pending === 1 ? "" : "s") + " waiting" : "")));
       if (h && h.automatic_hunting === "running" && h.next_hunt_at) items.push(el("span", { class: "stat" }, el("span", { class: "dot ok" }), "Next search " + rel(h.next_hunt_at)));
-      if (h && h.email && h.email.enabled) items.push(el("span", { class: "stat", title: "Job emails go to " + (h.email.address_hint || "your address") }, el("span", { class: "dot " + (h.email.last_status === "failed" || h.email.last_status === "uncertain" ? "warn" : "ok") }), h.email.last_sent_at ? "Last email " + rel(h.email.last_sent_at) : "Email on, none sent yet"));
     } else items.push(el("span", { class: "stat" }, el("span", { class: "dot warn" }), st.loaded.run ? "Hunter hasn’t synced yet" : "Loading…"));
-    if (st.profile) {
-      items.push(el("button", { class: "btn", onclick: () => { const d = $("whoMore"); if (d) { d.open = !d.open; d.scrollIntoView({ block: "nearest" }); } } }, "Profile"));
-      items.push(el("button", { class: "btn", onclick: () => { st.prefsOpen = true; renderOverlay(); } }, "Preferences"));
-    }
-    r.replaceChildren(...items);
+    return items;
   }
-  function renderNotice() {
-    const box = $("notice"); let msg = null;
+  function noticeBlock() {
+    let msg = null;
     if (!st.db && !st.dbError) msg = ["Sign in to claude.ai to see your jobs", "This page shows your private Hunter data. It opens only for you, signed in."];
     else if (st.owner === false) msg = ["This is someone else’s dashboard", "Ask Hunter in your own Claude account to make yours: type /jobhunter."];
     else if (st.loaded.run && !st.run) msg = ["Nothing here yet", "Hunter fills this page after your first search. In Claude Code, type /jobhunter."];
-    box.hidden = !msg;
-    box.replaceChildren(...(msg ? [el("div", { class: "notice" }, el("h2", {}, msg[0]), el("p", {}, msg[1]))] : []));
+    return msg ? el("div", { class: "notice" }, el("h2", {}, msg[0]), el("p", {}, msg[1])) : null;
   }
-  /* ---------- profile line ---------- */
-  function renderWho() {
-    const p = st.profile; const box = $("who"); box.hidden = !p; if (!p) return;
-    const pr = p.prefs || {};
-    const arrangement = { required: "Remote only", preferred: "Remote preferred", no_preference: "Remote, hybrid or office" }[pr.remote] || null;
-    const modes = (pr.work_modes || []).length && (pr.work_modes || []).length < 3 ? (pr.work_modes || []).map((m) => ({ remote: "remote", hybrid: "hybrid", onsite: "office" }[m] || m)).join(" or ") : null;
-    const line = [pr.location, pr.countries_text ? "can work in " + pr.countries_text : null, modes || arrangement, p.years_text].filter(Boolean).join(" · ");
-    const pendingPrefs = st.actions.get("_prefs") && Number(st.actions.get("_prefs").rev) > Number(p.prefs_synced_rev || 0);
-    box.replaceChildren(
-      el("div", { style: "min-width:0" }, el("h1", {}, p.headline || "Your profile"), el("div", { class: "line" }, line, pendingPrefs ? el("span", { class: "pill p-pending", style: "margin-left:8px" }, "new preferences: Hunter next run") : null)),
-      el("div", { class: "acts" }, el("button", { class: "btn sm", onclick: () => { const d = $("whoMore"); d.open = !d.open; } }, "View profile"), el("button", { class: "btn sm", onclick: () => { st.cvsOpen = true; renderOverlay(); } }, "My CVs" + ((p.cvs || []).filter((c) => !c.archived).length > 1 ? " (" + (p.cvs || []).filter((c) => !c.archived).length + ")" : "")), el("button", { class: "btn sm", onclick: () => { st.prefsOpen = true; renderOverlay(); } }, "Edit preferences")),
-      el("details", { id: "whoMore" }, el("summary", {}, "Profile"), el("div", { class: "more" },
-        p.summary ? el("p", {}, p.summary) : null,
-        (p.roles || []).length ? [el("div", {}, el("b", {}, "Paid work: "), p.roles.join(" · "))] : null,
-        (p.projects || []).length ? [el("div", {}, el("b", {}, "Projects (not paid work): "), p.projects.join(" · "))] : null,
-        (p.certifications || []).length ? [el("div", {}, el("b", {}, "Certifications and courses: "), p.certifications.join(" · "))] : null,
-        (p.skills || []).length ? el("div", { class: "chips" }, p.skills.map((s) => el("span", { class: "chip" }, s))) : null,
-        el("div", { class: "foot" }, "Every fact comes from your CV, your LinkedIn PDF or your own words. To correct it, tell Hunter in Claude Code: /jobhunter profile." + (p.approved_at ? " Approved " + rel(p.approved_at) + "." : "")))));
-  }
-  /* ---------- metrics ---------- */
-  /* ---------- Today: five groups, one action each, straight from Hunter's document ---------- */
-  function renderToday() {
-    const sec = $("today"); const t = st.today;
-    if (!t || !st.run) { sec.hidden = true; return; }
-    sec.hidden = false;
-    const a = t.automation || {};
-    $("todayNote").textContent = a.mode === "prepare_best" ? "Hunter prepares your best matches: " + (a.prepared_today || 0) + " today (max " + ((a.limits || {}).preparations_per_day || 0) + "), " + (a.unopened_ready || 0) + " waiting for you" : "Hunter prepares what you ask for";
-    const out = [];
-    for (const g of (t.groups || [])) {
-      if (!g.items || !g.items.length) continue;
-      const cls = g.id === "attention" ? "attn-i" : (g.id === "ready" ? "ready-i" : "");
-      out.push(el("div", { class: "grp" }, el("h3", {}, g.title + " (" + g.items.length + ")"), ...g.items.map((it) => {
-        const key = it.action && it.action.key && st.jobs.has(it.action.key) ? it.action.key : null;
-        const cmd = it.action && it.action.command;
-        const btn = key ? el("button", { class: "btn sm primary", onclick: () => { select(key); if (g.id === "ready" || g.id === "needs_answer" || g.id === "changed") { st.section = "app"; renderOverlay(); } } }, it.action.label || "Open")
-          : (cmd ? el("button", { class: "btn sm", title: "In Claude: " + cmd, onclick: (ev) => { copyText("/jobhunter " + cmd.replace(/^jobhunter /, "")); ev.target.textContent = "Copied for Claude"; setTimeout(() => { ev.target.textContent = it.action.label || "Open"; }, 1500); } }, it.action.label || "Open") : null);
-        return el("div", { class: "item " + cls }, el("span", {}, it.text), btn);
-      })));
-    }
-    if (!out.length) out.push(el("div", { class: "empty" }, t.empty_text || "Nothing waiting for you today."));
-    if (t.weekly && t.weekly.text) out.push(el("div", { class: "grp" }, el("h3", {}, "This week"), el("div", { class: "item" }, el("span", {}, t.weekly.text), el("span", { class: "foot", title: t.weekly.rule || "" }, "from your own records"))));
-    $("todayList").replaceChildren(...out);
-  }
-  function markOpened(k) {
-    const w = work(k); const e = act(k) || {};
-    // Seen means the person went to My application (from Today, "Continue application" or the section tab), not that the job page was glanced at.
-    if (st.section !== "app" || !w || !w.package || w.state !== "prepared" || e.opened_at || !can() || (st.openedSent && st.openedSent[k])) return;
-    (st.openedSent = st.openedSent || {})[k] = true;
-    doField(k, "opened_at", new Date().toISOString());
-  }
-  function renderMetrics() {
-    const t = Core.tabsFor(st.jobs, st.actions, st.run);
-    const m = [["recommended", "Recommended", t.recommended.length], ["favorites", "Favorites", t.favorites.length], ["saved", "Saved", t.saved.length], ["applied", "Applied", t.applied.length]];
-    $("metrics").replaceChildren(...m.map(([k, l, v]) => el("button", { class: "metric", onclick: () => setTab(k, true) }, el("b", {}, st.loaded.board ? v : "–"), el("span", {}, l))));
-  }
-  /* ---------- top picks ---------- */
-  function pickCard(k) {
-    const j = st.jobs.get(k) || {}; const e = eff(k);
-    return el("article", { class: "pick" },
-      el("div", { class: "t" }, j.title || "Untitled job"),
-      el("div", { class: "s" }, [j.employer, j.location_label || where(j)].filter(Boolean).join(" · ")),
-      el("div", { class: "s" }, [j.salary || "Pay not stated", j.freshness_label].filter(Boolean).join(" · "), " ", el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "")),
-      j.why ? el("div", { class: "why" }, el("b", {}, "Why: "), j.why) : null,
-      j.check ? el("div", { class: "why" }, el("b", {}, "Check: "), j.check) : null,
-      el("div", { class: "acts" },
-        el("button", { class: "btn sm primary", onclick: () => select(k) }, "View job"),
-        el("button", { class: "btn sm" + (e.favorite ? " on" : ""), disabled: !can(), "aria-pressed": String(e.favorite), onclick: () => doFlag(k, "favorite", !e.favorite) }, e.favorite ? "★ Favorite" : "☆ Favorite"),
-        el("button", { class: "btn sm" + (e.saved ? " on" : ""), disabled: !can(), "aria-pressed": String(e.saved), onclick: () => doFlag(k, "saved", !e.saved) }, e.saved ? "Saved" : "Save")));
-  }
-  function renderPicks() {
-    const sec = $("picks"); if (!st.loaded.board || !st.run) { sec.hidden = true; return; }
-    const t = Core.tabsFor(st.jobs, st.actions, st.run);
-    const picks = Core.topPicks(t.recommended, st.jobs, 5);
-    sec.hidden = !picks.length;
-    $("picksNote").textContent = picks.length ? "best " + picks.length + " of " + t.recommended.length + ", different employers first" : "";
-    $("picksList").replaceChildren(...picks.map(pickCard));
-  }
-  /* ---------- attention ---------- */
-  function renderAttention() {
-    const sec = $("attn"); const items = [];
-    const pending = Core.pendingCount(st.jobs, st.actions, st.profile);
-    if (pending) items.push({ kind: "pending", text: pending + " change" + (pending === 1 ? "" : "s") + " you made here " + (pending === 1 ? "waits" : "wait") + " for Hunter’s next run." });
-    for (const a of ((st.run && st.run.attention) || [])) items.push(a);
-    sec.hidden = !items.length || !st.run;
-    $("attnList").replaceChildren(...items.map((a) => {
-      const cls = a.kind === "new_good" ? "good" : (a.kind === "hunt_failed" || a.kind === "digest_failed" ? "bad" : "");
-      const target = a.key && st.jobs.has(a.key) ? a.key : (a.keys && a.keys.find((k) => st.jobs.has(k)));
-      return el("div", { class: "item " + cls }, a.text, target ? el("button", { class: "btn sm", onclick: () => (a.kind === "new_good" ? setTab("good", true) : select(target)) }, a.kind === "new_good" ? "See them" : "Open") : null);
-    }));
-  }
-  /* ---------- list ---------- */
-  function setTab(k, scroll) { st.tab = k; try { localStorage.setItem("hunter.tab", k); } catch {} render(); if (scroll) $("all").scrollIntoView({ behavior: "smooth", block: "start" }); }
-  function renderTools() {
-    const t = Core.tabsFor(st.jobs, st.actions, st.run);
-    $("chips").replaceChildren(...CHIPS.map(([k, label]) => el("button", { class: "fchip", role: "tab", "aria-selected": String(st.tab === k), onclick: () => setTab(k) }, label, el("span", { class: "n" }, t[k].length))));
-    const sel = $("fsel"); sel.replaceChildren(...CHIPS.map(([k, label]) => el("option", { value: k, selected: st.tab === k }, label + " (" + t[k].length + ")")));
-    sel.onchange = () => setTab(sel.value);
-    $("q").oninput = (ev) => { st.q = ev.target.value; renderList(); };
-  }
+
+  /* ---------- job rows ---------- */
   function rowFor(k) {
     const j = st.jobs.get(k) || {}; const e = eff(k);
     const marks = el("div", { class: "marks" });
-    if (e.favorite) marks.append(el("span", { class: "star", title: "Favorite" }, "★"));
+    if (e.favorite) marks.append(el("span", { class: "star", title: "Favorite", "aria-label": "Favorite" }, "★"));
+    if (e.saved) marks.append(el("span", { title: "Saved", "aria-label": "Saved", style: "color:var(--muted)" }, "🔖"));
     if (e.applied_at) marks.append(el("span", { class: "pill p-applied" }, "Applied"));
-    else if (Core.mainAction(st.work.get(k), st.actions.get(k)).kind === "continue") marks.append(el("span", { class: "pill p-fresh" }, "In progress"));
+    else if (Core.mainAction(work(k), act(k)).kind === "continue") marks.append(el("span", { class: "pill p-fresh" }, "In progress"));
     if (e.dismissed && st.tab !== "dismissed") marks.append(el("span", { class: "pill p-dismissed" }, "Not interested"));
-    if (e.pending) marks.append(el("span", { class: "pill p-pending", title: "Hunter reads this on its next run" }, "waiting for Hunter"));
-    if (j.freshness_label && /last 2 days|today|yesterday/i.test(j.freshness_label)) marks.append(el("span", { class: "pill p-fresh" }, "New"));
-    marks.append(el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"));
+    const tags = (j.tags || []).slice(0, 4).map((t, i) => el("span", { class: "tag" + (i === 0 ? " role" : "") }, t));
     return el("button", { class: "row", role: "listitem", "data-key": k, "aria-current": String(st.sel === k), onclick: () => select(k) },
+      CompanyLogo(j),
       el("div", { style: "min-width:0" }, el("div", { class: "t" }, j.title || "Untitled job"),
-        el("div", { class: "s" }, [j.employer, j.location_label || where(j), j.salary || null, j.freshness_label].filter(Boolean).join(" · ")),
-        j.why ? el("div", { class: "why" }, el("b", {}, "Why: "), j.why) : null),
-      marks);
+        el("div", { class: "s" }, [j.employer, j.location_short || where(j)].filter(Boolean).join(" · ")),
+        tags.length ? el("div", { class: "tags" }, tags) : null),
+      el("div", { class: "rside" }, el("span", {}, ageWords(j) || (isNew(j) ? "New" : ""), " ", el("span", { class: "chev", "aria-hidden": "true" }, "›")), el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"), marks.childNodes.length ? marks : null));
+  }
+  /* ---------- Today ---------- */
+  function renderTodayView() {
+    const out = [];
+    out.push(el("div", { class: "colhead" }, el("div", {}, el("h1", {}, "Today"), el("div", { class: "sub" }, st.profile && st.profile.headline ? st.profile.headline + " · " + (st.profile.years_text || "") : "Your job hunt")), el("div", { class: "right" }, ...statusChips())));
+    const n = noticeBlock(); if (n) out.push(n);
+    if (!st.loaded.board || !st.run) { out.push(el("div", { class: "empty" }, st.loaded.run ? "Hunter fills this page after your first search." : "Loading your jobs…")); return out; }
+    const t = Core.tabsFor(st.jobs, st.actions, st.run);
+    const picks = Core.topPicks(t.recommended, st.jobs, 5);
+    out.push(el("section", { class: "block", "aria-label": "Top picks" },
+      el("div", { class: "pickhead" }, el("h2", { style: "font-size:16px;text-transform:none;letter-spacing:0;color:var(--ink);font-family:var(--display);font-weight:800;margin:0" }, "Top picks for you"), el("span", { class: "foot" }, picks.length ? "Best matches on your profile and preferences" : "")),
+      picks.length ? el("div", { class: "list", role: "list" }, picks.map(rowFor)) : el("div", { class: "empty" }, "Nothing to recommend right now. Hunter adds jobs after each search."),
+      el("div", { class: "viewall" }, el("button", { class: "btn sm", onclick: () => { st.tab = "recommended"; setView("jobs", true); } }, "View all jobs (" + t.recommended.length + ")"))));
+    // Needs your attention: only real, actionable items from Hunter's Today document, plus edits that wait for Hunter.
+    const items = [];
+    const pending = Core.pendingCount(st.jobs, st.actions, st.profile);
+    for (const g of ((st.today && st.today.groups) || [])) for (const it of (g.items || [])) items.push({ g: g.id, it });
+    if (items.length || pending) out.push(el("section", { class: "block" }, el("h2", {}, "Needs your attention"), el("div", { class: "items" },
+      items.slice(0, 8).map(({ g, it }) => {
+        const key = it.action && it.action.key && st.jobs.has(it.action.key) ? it.action.key : null;
+        const cmd = it.action && it.action.command;
+        const cls = g === "attention" ? "warn" : (g === "ready" ? "good" : "");
+        const btn = key ? el("button", { class: "btn sm primary", onclick: () => { select(key, g === "ready" || g === "needs_answer"); } }, it.action.label || "Open")
+          : (cmd ? el("button", { class: "btn sm", title: "In Claude: " + cmd, onclick: (ev) => { copyText("/jobhunter " + cmd.replace(/^jobhunter /, "")); ev.target.textContent = "Copied for Claude"; setTimeout(() => { ev.target.textContent = it.action.label || "Open"; }, 1500); } }, it.action.label || "Open") : null);
+        return el("div", { class: "item " + cls }, el("span", {}, it.text), btn);
+      }),
+      pending ? el("div", { class: "item" }, el("span", {}, pending + " change" + (pending === 1 ? "" : "s") + " you made here " + (pending === 1 ? "waits" : "wait") + " for Hunter’s next run.")) : null)));
+    // Recent activity: small facts.
+    const fresh = t.recommended.filter((k) => isNew(st.jobs.get(k) || {})).length;
+    const since = Date.now() - 7 * 86400000;
+    const appliedWeek = t.applied.filter((k) => Date.parse(eff(k).applied_at || "") > since).length;
+    const changed = ((st.today && st.today.groups) || []).find((g) => g.id === "changed"); const changedN = changed ? changed.items.filter((i) => i.kind === "watch_change").length : 0;
+    const a = (st.today && st.today.automation) || {};
+    const facts = [];
+    if (fresh) facts.push(fresh + " new job" + (fresh === 1 ? "" : "s") + " in the last two days");
+    if (appliedWeek) facts.push(appliedWeek + " application" + (appliedWeek === 1 ? "" : "s") + " sent this week");
+    if (changedN) facts.push(changedN + " saved job" + (changedN === 1 ? "" : "s") + " changed");
+    if (a.mode === "prepare_best" && a.prepared_today) facts.push("Hunter prepared " + a.prepared_today + " today");
+    if (st.today && st.today.weekly && st.today.weekly.text) facts.push(st.today.weekly.text);
+    if (facts.length) out.push(el("section", { class: "block" }, el("h2", {}, "Recent activity"), el("div", { class: "activity" }, facts.map((f) => el("span", { class: "stat" }, f)))));
+    return out;
+  }
+  /* ---------- Jobs ---------- */
+  function renderJobsView() {
+    const out = []; const t = Core.tabsFor(st.jobs, st.actions, st.run);
+    out.push(el("div", { class: "colhead" }, el("div", {}, el("h1", {}, "Jobs"), el("div", { class: "sub" }, st.run ? t.recommended.length + " recommended" + (st.run.counts && st.run.counts.recommended_total > t.recommended.length ? " (showing " + t.recommended.length + " of " + st.run.counts.recommended_total + ")" : "") : "")), el("div", { class: "right" }, ...statusChips())));
+    const n = noticeBlock(); if (n) out.push(n);
+    const sel = el("select", { class: "fsel", "aria-label": "Which jobs", onchange: (ev) => { st.tab = ev.target.value; try { localStorage.setItem("hunter.tab", st.tab); } catch {} render(); } });
+    for (const [k, label] of FILTERS) sel.append(el("option", { value: k, selected: st.tab === k }, label + " (" + (t[k] || []).length + ")"));
+    const q = el("input", { type: "search", id: "q", placeholder: "Search title, company or place", "aria-label": "Search jobs", "data-keep": true, value: st.q, oninput: (ev) => { st.q = ev.target.value; renderList(); } });
+    out.push(el("div", { class: "tools" }, q, sel));
+    out.push(el("div", { class: "list", id: "list", role: "list" }));
+    return out;
   }
   function renderList() {
-    const box = $("list");
+    const box = $("list"); if (!box) return;
     if (!can()) { box.replaceChildren(el("div", { class: "empty" }, "Your jobs appear here once you are signed in to your own account.")); return; }
-    if (!st.loaded.board) return;
+    if (!st.loaded.board) { box.replaceChildren(el("div", { class: "empty" }, "Loading your jobs…")); return; }
     const t = Core.tabsFor(st.jobs, st.actions, st.run);
     let keys = t[st.tab] || [];
     if (st.q) keys = keys.filter((k) => Core.matches(st.jobs.get(k) || {}, st.q));
-    const totalRec = st.run && st.run.counts && Number(st.run.counts.recommended_total);
-    const more = st.tab === "recommended" && !st.q && totalRec > keys.length ? " (showing " + keys.length + " of " + totalRec + ")" : "";
-    $("allNote").textContent = keys.length ? keys.length + " job" + (keys.length === 1 ? "" : "s") + more : "";
     if (!keys.length) {
-      const msg = st.q ? "Nothing matches your search." : { recommended: st.run ? "Nothing to recommend right now. Hunter adds jobs after each search." : "Hunter hasn’t synced yet.", good: "No good matches right now.", worth_a_shot: "Nothing worth a shot right now.", backup: "No backup options right now.", favorites: "No favorites yet. Star a job you like.", saved: "Nothing saved yet.", applied: "No applications recorded yet. Press “Mark applied” on a job after you applied.", uncertain: "Nothing needs checking. Jobs land here when Hunter can’t tell where they allow you to be.", old: "No older matches. Jobs posted more than 14 days ago land here.", dismissed: "Nothing marked as not interested.", all: "No jobs yet." }[st.tab];
+      const msg = st.q ? "Nothing matches your search." : { recommended: st.run ? "Nothing to recommend right now. Hunter adds jobs after each search." : "Hunter hasn’t synced yet.", good: "No good matches right now.", worth_a_shot: "Nothing worth a shot right now.", backup: "No backup options right now.", favorites: "No favorites yet. Star a job you like.", saved: "Nothing saved yet.", applied: "No applications recorded yet. Press “I applied” on a job after you applied.", uncertain: "Nothing needs checking. Jobs land here when Hunter can’t tell where they allow you to be.", old: "No older matches. Jobs posted more than 14 days ago land here.", dismissed: "Nothing marked as not interested.", all: "No jobs yet." }[st.tab];
       box.replaceChildren(el("div", { class: "empty" }, msg)); return;
     }
     if (st.tab === "recommended") {
@@ -557,26 +658,72 @@ const Core = (() => {
     }
     box.replaceChildren(...keys.map(rowFor));
   }
-  /* ---------- drawer: the job page and its application workspace ---------- */
+  /* ---------- Applications: a simple pipeline ---------- */
+  function renderApplicationsView() {
+    const out = []; const STAGES = [["preparing", "Preparing"], ["ready", "Ready"], ["applied", "Applied"], ["interview", "Interview"], ["closed", "Closed"]];
+    const keys = new Set();
+    for (const [k, w] of st.work) if (st.jobs.has(k) && (w.package || w.application || (w.requests && w.requests.prepare))) keys.add(k);
+    for (const [k, a] of st.actions) if (st.jobs.has(k) && (a.applied_at || (a.requests && a.requests.prepare))) keys.add(k);
+    const rows = [...keys].map((k) => ({ k, stage: Core.pipelineStage(work(k), act(k)) }));
+    out.push(el("div", { class: "colhead" }, el("div", {}, el("h1", {}, "Applications"), el("div", { class: "sub" }, rows.length ? rows.length + " in your pipeline" : "Nothing in your pipeline yet")), el("div", { class: "right" }, ...statusChips())));
+    if (!rows.length) { out.push(el("div", { class: "empty" }, "Open a job and press “Prepare my application”. Applications you confirmed with “I applied” are tracked here too.")); return out; }
+    for (const [id, label] of STAGES) {
+      const rs = rows.filter((r) => r.stage === id); if (!rs.length) continue;
+      out.push(el("section", { class: "block" }, el("h2", {}, label, el("small", {}, rs.length)), el("div", { class: "list", role: "list" }, rs.map(({ k }) => {
+        const j = st.jobs.get(k) || {}; const w = work(k); const e = eff(k); const s = Core.appStatus(w, act(k)); const app = w && w.application;
+        const cv = app && app.submitted_cv && app.submitted_cv.label ? app.submitted_cv.label + " v" + app.submitted_cv.version : (w && w.cv && w.cv.selected ? w.cv.selected.label + " v" + w.cv.selected.version : null);
+        const when = e.applied_at ? "Applied " + fmtDay(e.applied_at) : (w && w.package && w.package.created_at ? "Prepared " + fmtDay(w.package.created_at) : "Requested");
+        const fu = w && w.followup && w.followup.due ? "Follow-up " + fmtDay(w.followup.due) : null;
+        const next = { none: "Prepare", preparing: "Hunter is preparing", needs_answer: "Answer a question", needs_review: "Prepare again", failed: "Try again", ready: e.applied_at ? "" : "Review and apply", applied: fu ? "Follow up" : "Set a follow-up" }[s.id] || "";
+        return el("button", { class: "approw", role: "listitem", "data-key": k, onclick: () => select(k, s.id !== "none") },
+          RoleIcon(j.role), el("div", { style: "min-width:0" }, el("div", { class: "t" }, (j.employer || "Unknown employer") + " · " + (j.title || "")), el("div", { class: "s" }, [when, cv ? "CV: " + cv : null, fu, app && app.stage_label && id === "interview" ? app.stage_label : null].filter(Boolean).join(" · "))),
+          el("div", { class: "next" }, next || s.label));
+      }))));
+    }
+    return out;
+  }
+  /* ---------- Profile ---------- */
+  function renderProfileView() {
+    const out = []; const p = st.profile;
+    out.push(el("div", { class: "colhead" }, el("div", {}, el("h1", {}, "Profile"), el("div", { class: "sub" }, p ? (p.headline || "") + (p.approved_at ? " · approved " + fmtDay(p.approved_at) : "") : "")), el("div", { class: "right" }, ...statusChips())));
+    if (!p) { out.push(el("div", { class: "empty" }, "No approved profile on this page yet. In Claude Code: /jobhunter profile.")); return out; }
+    const pr = p.prefs || {};
+    out.push(el("section", { class: "block prof" }, el("h2", {}, "Approved candidate profile"), el("div", { class: "card" },
+      p.summary ? el("p", { style: "margin:0 0 8px" }, p.summary) : null,
+      el("div", { class: "kv" }, el("span", {}, "Direction"), el("span", {}, p.headline || ""), el("span", {}, "Experience"), el("span", {}, p.years_text || ""),
+        (p.roles || []).length ? [el("span", {}, "Paid work"), el("span", {}, p.roles.join(" · "))] : null,
+        (p.projects || []).length ? [el("span", {}, "Projects"), el("span", {}, p.projects.join(" · ") + " (not paid work)")] : null,
+        (p.certifications || []).length ? [el("span", {}, "Courses"), el("span", {}, p.certifications.join(" · "))] : null),
+      (p.skills || []).length ? el("div", { class: "chips", style: "margin-top:8px" }, p.skills.map((s) => el("span", { class: "chip" }, s))) : null,
+      el("p", { class: "foot", style: "margin:8px 0 0" }, "Every fact comes from your CV, your LinkedIn PDF or your own words. To correct one, tell Hunter in Claude Code: /jobhunter profile."))));
+    out.push(el("section", { class: "block", id: "sec-prefs" }, el("h2", {}, "Preferences"), el("div", { class: "card" }, renderPrefsForm())));
+    out.push(el("section", { class: "block", id: "sec-cvs" }, el("h2", {}, "My CVs"), el("div", { class: "card" }, ...renderCvsBody())));
+    const h = (st.run && st.run.hunter) || {}; const a = (st.today && st.today.automation) || h.automation || {};
+    const em = h.email || {};
+    out.push(el("section", { class: "block", id: "sec-settings" }, el("h2", {}, "Connected services and Hunter settings"), el("div", { class: "card" },
+      el("div", { class: "kv" },
+        el("span", {}, "Job emails"), el("span", {}, em.configured ? ("To " + (em.address_hint || "your address") + (em.last_sent_at ? " · last sent " + rel(em.last_sent_at) : " · none sent yet")) : "Off. Set it up in Claude Code: /jobhunter email."),
+        el("span", {}, "Automation"), el("span", {}, (a.mode_label || "On request") + (a.mode === "prepare_best" ? " · at most " + ((a.limits || {}).preparations_per_day || 3) + " a day, " + ((a.limits || {}).unopened_ready || 5) + " waiting" : "")),
+        el("span", {}, "Nightly runs"), el("span", {}, h.routine && h.routine.verified ? "Last run " + rel(h.routine.last_run_at) + " (" + h.routine.last_status + ")" : (h.automatic_hunting === "running" ? "Running on your computer" : "Not set up. In Claude Code: /jobhunter nightly.")),
+        el("span", {}, "Direct line"), el("span", {}, h.channel && h.channel.id ? "On (" + (h.channel.label || h.channel.kind) + ")" : "Not set: Hunter picks up your requests on its next run."),
+        el("span", {}, "Last search"), el("span", {}, h.last_successful_hunt_at ? rel(h.last_successful_hunt_at) : "none yet")),
+      el("p", { class: "foot", style: "margin:8px 0 0" }, "These are changed in Claude Code (/jobhunter automation, /jobhunter email, /jobhunter nightly); this page shows what is really set."))));
+    return out;
+  }
+  /* ---------- the job detail ---------- */
   function saveLine(k, echo) {
-    // One live status line per job (role=status, in the overview); the notes block repeats its text without the role.
+    // One live status line per job (role=status); the notes block repeats its text without the role.
     const s = st.saving[k]; const e = eff(k); const attrs = echo ? {} : { role: "status" };
-    if (!s || (s.status === "saved" && !e.pending)) return el("div", Object.assign({ class: "save " + (e.pending ? "warn" : "ok") }, attrs), e.pending ? "Waiting for Hunter: it reads this on its next run." : (st.actions.has(k) ? "Synced with Hunter." : ""));
+    if (!s) return echo ? null : el("div", Object.assign({ class: "save" }, attrs));
+    if (s.status === "saved" && !e.pending) return el("div", Object.assign({ class: "save ok" }, attrs), st.actions.has(k) ? "Synced with Hunter." : "");
     const cls = { saving: "", saved: "ok", conflict: "warn", busy: "warn", error: "err" }[s.status] || "";
-    const txt = { saving: "Saving…", saved: "Saved to your dashboard. Waiting for Hunter: it reads this on its next run.", conflict: "Changed in another tab or device. Nothing was overwritten.", busy: "Another tab is saving. Nothing was lost.", error: "Couldn't save (" + (s.code || "error") + "). Your change is still on screen." }[s.status];
+    const txt = { saving: "Saving…", saved: "Saved to your dashboard. Waiting for Hunter’s next run to apply it.", conflict: "Changed in another tab or device. Nothing was overwritten.", busy: "Another tab is saving. Nothing was lost.", error: "Couldn't save (" + (s.code || "error") + "). Your change is still on screen." }[s.status];
     const retry = !echo && (s.status === "error" || s.status === "busy") && s.retry ? el("button", { class: "btn sm", style: "margin-left:8px", onclick: () => s.retry() }, "Retry") : null;
     return el("div", Object.assign({ class: "save " + cls }, attrs), txt, retry);
   }
-  const work = (k) => st.work.get(k) || null;
-  const act = (k) => st.actions.get(k) || null;
-  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const fmtDay = (iso) => { if (!iso) return ""; const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + "T12:00:00") : new Date(iso); return isFinite(d) ? d.getDate() + " " + MONTHS[d.getMonth()] + " " + d.getFullYear() : String(iso).slice(0, 10); };
-  const todayIso = () => new Date().toISOString().slice(0, 10);
-  const plusDays = (iso, n) => { const d = new Date(iso || Date.now()); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
   function copyBtn(text, label) { return el("button", { class: "btn sm", type: "button", onclick: (ev) => { copyText(text); ev.target.textContent = "Copied"; setTimeout(() => { ev.target.textContent = label || "Copy"; }, 1500); } }, label || "Copy"); }
-  /* The request chain. A request is written to the page's database first (it is never lost), then Hunter is reached
-     directly when this page has a line to it (the mcp capability and a channel Hunter set); otherwise the person
-     continues in Claude with the request id. Every state is shown; nothing waits silently. */
+  /* The request chain: a request is written to the page's database first (never lost), then Hunter is reached directly
+     when this page has a line to it; otherwise the person continues in Claude. Shown only once a task was started. */
   function requestLine(k, kind, labels) {
     const r = Core.requestState(work(k), act(k), kind); const local = (st.reqStatus[k] || {})[kind];
     if (!r) return null;
@@ -584,116 +731,134 @@ const Core = (() => {
     if (r.state === "requested") {
       if (local && local.status === "sent") parts.push(el("div", { class: "save ok", role: "status" }, "Sent to Hunter in your Claude account (" + local.text + "). This page updates when it is done."));
       else if (local && local.status === "sending") parts.push(el("div", { class: "save", role: "status" }, "Reaching Hunter…"));
-      else parts.push(el("div", { class: "save warn", role: "status" }, "Saved. Hunter does this on its next run." + (local && local.code ? " Direct line: " + local.code + "." : "")),
-        el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm primary", type: "button", onclick: () => continueInClaude(r.id) }, "Continue in Claude now"), el("span", { class: "foot", style: "align-self:center" }, "Copies “/jobhunter continue " + r.id + "” and opens Claude; paste it there.")));
+      else parts.push(el("div", { class: "save warn", role: "status" }, "Saved. Hunter picks this up on its next run." + (local && local.code ? " Direct line: " + local.code + "." : "")),
+        el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", type: "button", onclick: () => continueInClaude(r.id) }, "Continue this request in Claude")));
     } else if (r.state === "running") parts.push(el("div", { class: "save", role: "status" }, "Hunter is working on this…"));
     else if (r.state === "needs_input") parts.push(el("div", { class: "save warn", role: "status" }, "Hunter needs something from you: " + (r.message || "")), el("button", { class: "btn sm", type: "button", style: "margin-top:6px", onclick: () => doRequest(k, kind) }, "Ask again"));
     else if (r.state === "failed") parts.push(el("div", { class: "save err", role: "status" }, "Hunter could not do this: " + (r.message || "unknown error")), el("button", { class: "btn sm", type: "button", style: "margin-top:6px", onclick: () => doRequest(k, kind) }, "Try again"));
     else if (r.state === "ready" && labels && labels.ready) parts.push(el("div", { class: "save ok", role: "status" }, labels.ready));
     return parts.length ? el("div", {}, ...parts) : null;
   }
-  function mainActionButton(k, compact) {
+  function mainActionButton(k, cls) {
     const w = work(k); const a = act(k); const m = Core.mainAction(w, a);
     const busy = st.saving[k] && st.saving[k].status === "saving";
-    return el("button", { class: "btn primary" + (compact ? " sm" : ""), disabled: busy || !can(), onclick: () => { if (m.kind === "prepare") doRequest(k, "prepare"); else { st.section = "app"; renderOverlay(); const s = $("sec-app"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); } } }, m.label);
+    return el("button", { class: cls || "btn primary lg", disabled: busy || !can(), onclick: () => { if (m.kind === "prepare") doRequest(k, "prepare"); else { st.ws = true; renderDetail(); } } }, m.kind === "prepare" ? ico("sparkle") : null, m.label);
   }
-  function renderDrawer() {
-    const k = st.sel; const j = k && st.jobs.get(k); if (!j) return null;
-    const e = eff(k); const busy = st.saving[k] && st.saving[k].status === "saving";
-    const flag = (field, on, labelOn, labelOff) => el("button", { class: "btn" + (on ? " on" : ""), disabled: busy || !can(), "aria-pressed": String(on), onclick: () => doFlag(k, field, !on) }, on ? labelOn : labelOff);
+  const GENERIC_FIT = /kind of (work|job) you are looking for|is infrastructure work/i;
+  function fitLists(j) {
+    const reasons = (j.reasons || []).filter(Boolean).flatMap((r) => r.split(/;\s+(?=[A-Z])/)).map((r) => r.trim().replace(/^([a-z])/, (m) => m.toUpperCase())).map((r) => /[.!?]$/.test(r) ? r : r + ".");
+    const specific = reasons.filter((r) => !GENERIC_FIT.test(r));
+    const why = (specific.length ? specific : reasons).slice(0, 3);
+    const check = (j.gaps || []).filter((g) => !/almost no text/i.test(g)).slice(0, 3);
+    return { why, check };
+  }
+  function renderJob(k, j) {
+    const e = eff(k); const w = work(k); const busy = st.saving[k] && st.saving[k].status === "saving";
     const links = j.links || {}; const direct = safeUrl(links.direct) || safeUrl(links.apply) || safeUrl(links.discovery);
-    const openBtn = (cls) => direct ? el("a", { class: cls, style: "text-align:center;text-decoration:none", href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application") : el("span", { class: cls, disabled: true }, "No link available");
-    const w = work(k);
-    const secs = [["overview", "Overview"], ["app", "My application"], ["people", "People & notes"]];
-    const body = el("div", { class: "dbody", id: "dbody" },
-      el("div", { class: "sec", id: "sec-overview" }, el("h3", {}, "Overview"),
-        el("div", { class: "kv" }, el("span", {}, "Where"), el("span", {}, where(j) || "Not stated"), el("span", {}, "Pay"), el("span", {}, j.salary || "Not listed"), el("span", {}, "Posted"), el("span", {}, [j.freshness_label, j.verification].filter(Boolean).join(" · ")), el("span", {}, "Type"), el("span", {}, j.employment_type || "Not stated"), el("span", {}, "Work authorization"), el("span", {}, j.authorization || "Not stated in the posting.")),
-        el("h3", { style: "margin-top:12px" }, "Why it fits"),
-        el("ul", { class: "r" }, (j.reasons || []).map((r) => el("li", {}, r))),
-        (j.gaps || []).length ? [el("h3", { style: "margin-top:10px" }, "Check before you apply"), el("ul", { class: "r" }, j.gaps.map((g) => el("li", {}, g)))] : null,
-        j.next_step ? el("p", { class: "s", style: "margin:8px 0 0;color:var(--ink-2)" }, el("b", {}, "Next step: "), j.next_step) : null,
-        el("div", { class: "actions", style: "margin-top:10px" }, openBtn("btn"), mainActionButton(k),
-          flag("favorite", e.favorite, "★ Favorite", "☆ Favorite"), flag("saved", e.saved, "Saved", "Save for later"),
-          el("button", { class: "btn" + (e.applied_at ? " on" : ""), disabled: busy || !can(), onclick: () => { if (e.applied_at) doFlag(k, "applied", false); else { st.askApplied = k; st.section = "app"; renderOverlay(); } } }, e.applied_at ? "Applied ✓ (undo)" : "I applied"),
-          flag("dismissed", e.dismissed, "Not interested", "Not interested?")),
-        saveLine(k),
-        el("h3", { style: "margin-top:12px" }, "Description"), el("div", { class: "desc" }, j.description || "No description. Open the listing."),
-        el("div", { class: "links", style: "margin-top:10px" },
-          safeUrl(links.direct) ? el("a", { href: safeUrl(links.direct), target: "_blank", rel: "noopener noreferrer" }, "Employer’s listing") : null,
-          safeUrl(links.apply) && links.apply !== links.direct ? el("a", { href: safeUrl(links.apply), target: "_blank", rel: "noopener noreferrer" }, "Apply page") : null,
-          safeUrl(links.discovery) && links.discovery !== links.apply && links.discovery !== links.direct ? el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it") : null)),
-      el("div", { class: "sec", id: "sec-app" }, el("h3", {}, "My application"), renderApplication(k, j, w, e)),
-      el("div", { class: "sec", id: "sec-people" }, el("h3", {}, "People & notes"), renderPeople(k, j, w), renderNotes(k, e)));
-    const salary = j.salary ? " · " + j.salary : "";
-    const drawer = el("aside", { class: "drawer" + (st.wide ? " wide" : ""), role: "dialog", "aria-label": j.title || "Job" },
-      el("header", {}, el("div", { style: "min-width:0;flex:1" }, el("h2", {}, j.title || "Untitled job"), el("div", { class: "sub" }, [j.employer, j.location_label || where(j)].filter(Boolean).join(" · ") + salary), el("div", { style: "margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center" }, el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"), e.applied_at ? el("span", { class: "pill p-applied" }, "Applied " + fmtDay(e.applied_at)) : null, w && w.application && w.application.stage && w.application.stage !== "applied" && w.application.stage !== "prepared" ? el("span", { class: "pill p-pending" }, w.application.stage_label) : null)),
-        el("div", { class: "hacts" }, mainActionButton(k, true), openBtn("btn sm"), el("button", { class: "btn sm", "aria-label": st.wide ? "Narrow" : "Expand", title: st.wide ? "Narrow" : "Expand", onclick: () => { st.wide = !st.wide; try { localStorage.setItem("hunter.wide", st.wide ? "1" : ""); } catch {} renderOverlay(); } }, st.wide ? "⇥" : "⇤"), el("button", { class: "btn sm", "aria-label": "Close", onclick: () => { st.sel = null; st.askApplied = null; render(); } }, "Close"))),
-      el("nav", { class: "secnav" }, secs.map(([id, label]) => el("button", { "aria-current": String(st.section === id), onclick: () => { st.section = id; const s = $("sec-" + id); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); renderOverlay(); } }, label))),
-      body);
-    return [el("div", { class: "scrim", onclick: () => { st.sel = null; st.askApplied = null; render(); } }), drawer];
+    const openBtn = (cls) => direct ? el("a", { class: cls, href: direct, target: "_blank", rel: "noopener noreferrer" }, "Open application", ico("ext")) : el("span", { class: cls + " btn", "aria-disabled": "true", style: "opacity:.6" }, "No link available");
+    const flag = (field, on, labelOn, labelOff, icon) => el("button", { class: "btn sm" + (on ? " on" : ""), disabled: busy || !can(), "aria-pressed": String(on), onclick: () => doFlag(k, field, !on) }, ico(icon), on ? labelOn : labelOff);
+    const employerLink = safeUrl(links.direct);
+    const status = Core.appStatus(w, act(k));
+    const { why, check } = fitLists(j);
+    const places = j.locations || [];
+    const head = el("div", { class: "dhead" },
+      el("div", { class: "top" }, RoleIcon(j.role, true),
+        el("div", { class: "ttl" }, el("h2", {}, j.title || "Untitled job"),
+          el("div", { class: "co" }, CompanyLogo(j, true), employerLink ? el("a", { href: employerLink, target: "_blank", rel: "noopener noreferrer", title: "Employer’s own listing" }, j.employer || "Unknown employer") : el("b", {}, j.employer || "Unknown employer"), el("span", {}, j.location_short || where(j) || "Location not stated"), el("span", { class: "pill " + groupClass(j.group) }, j.group_label || "Not checked"), e.applied_at ? el("span", { class: "pill p-applied" }, "Applied " + fmtDay(e.applied_at)) : null)),
+        el("div", { class: "hacts" }, flag("favorite", e.favorite, "★ Favorite", "☆ Favorite", "star"), flag("saved", e.saved, "Saved", "Save for later", "bookmark"), el("button", { class: "btn sm", "aria-label": "Close", onclick: closeDetail }, ico("x"), "Close"))),
+      el("div", { class: "facts" }, j.employment_type ? el("span", {}, ico("brief"), j.employment_type) : null, el("span", {}, ico("cal"), j.freshness_label || "Posting date unknown"), j.verification ? el("span", {}, svg(I.dot, { style: "stroke:var(--good)" }), j.verification) : null, el("span", {}, ico("coins"), j.salary || "Pay not listed")),
+      saveLine(k));
+    const help = el("div", { class: "help" },
+      el("div", {}, el("h3", {}, "Get help with this application"), el("p", {}, "Hunter can research the company, prepare your application and help you apply."),
+        el("ul", {}, el("li", {}, "Research the company and role"), el("li", {}, "Suggest the best existing CV and proof"), el("li", {}, "Draft application answers"), el("li", {}, "Optional introduction or cover letter"))),
+      el("div", { class: "cta" }, mainActionButton(k), openBtn("btn lg"), requestLine(k, "prepare")));
+    const overview = el("div", { class: "card" }, el("h3", {}, ico("brief"), "Job overview"),
+      el("div", { class: "kv" }, el("span", {}, "Company"), el("span", {}, j.employer || "Unknown employer"),
+        el("span", {}, "Location"), el("span", {}, places.length > 1 ? [el("span", {}, places[0] + " + " + (places.length - 1) + " more "), el("details", { class: "sub", style: "margin:2px 0 0" }, el("summary", {}, "View all locations"), el("div", { class: "foot" }, places.join(" · ")))] : (j.location || "Not stated")),
+        el("span", {}, "Work mode"), el("span", {}, remoteWords(j) || "Not stated"),
+        el("span", {}, "Type"), el("span", {}, j.employment_type || "Not stated"),
+        el("span", {}, "Pay"), el("span", {}, j.salary || "Not listed"),
+        el("span", {}, "Work authorization"), el("span", {}, j.authorization || "Not stated in the posting"),
+        el("span", {}, "Posted"), el("span", {}, [j.freshness_label, j.verification].filter(Boolean).join(" · ") || "Unknown"),
+        el("span", {}, "Listing"), el("span", {}, employerLink ? el("a", { href: employerLink, target: "_blank", rel: "noopener noreferrer" }, "Employer’s own listing") : (safeUrl(links.discovery) ? el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it") : "No link"))));
+    const fit = el("div", { class: "card fit" }, el("h3", {}, ico("bulb"), "Why this could be a good fit"),
+      why.length ? el("ul", { class: "fitl" }, why.map((r) => el("li", {}, r))) : el("p", { class: "foot", style: "margin:0" }, j.explanation || "Hunter has no specific evidence for this one yet."),
+      check.length ? [el("h4", {}, ico("warn"), "Things to check"), el("ul", { class: "fitl check" }, check.map((g) => el("li", {}, g)))] : null);
+    const descFull = j.description || ""; const lead = j.description_lead || descFull.slice(0, 360);
+    const desc = el("div", { class: "card" }, el("h3", {}, ico("doc"), "Job description"),
+      el("div", { class: "desc" + (st.descOpen ? "" : " lead") }, st.descOpen ? (descFull || "No description. Open the listing.") : (lead || "No description. Open the listing.")),
+      descFull.length > lead.length ? el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn sm", "aria-expanded": String(st.descOpen), onclick: () => { st.descOpen = !st.descOpen; renderDetail(); } }, st.descOpen ? "Show less" : "Show full description")) : null,
+      el("div", { class: "links" }, safeUrl(links.apply) && links.apply !== links.direct ? el("a", { href: safeUrl(links.apply), target: "_blank", rel: "noopener noreferrer" }, "Apply page") : null, safeUrl(links.discovery) && links.discovery !== links.apply && links.discovery !== links.direct ? el("a", { href: safeUrl(links.discovery), target: "_blank", rel: "noopener noreferrer" }, "Where Hunter found it") : null));
+    const app = el("div", { class: "card sec" }, el("h3", {}, ico("check"), "Your application"),
+      el("div", { class: "status" }, el("b", {}, status.label), w && w.package && w.package.origin === "auto" && !e.applied_at ? el("span", { class: "foot" }, "Hunter prepared this after a search; nothing was sent.") : null),
+      status.id === "needs_review" ? el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "prepare") }, "Prepare again (keeps your wording)")) : null,
+      status.id !== "applied" && status.id !== "none" ? el("div", { class: "actions", style: "margin-top:8px" }, mainActionButton(k, "btn sm primary")) : null,
+      renderApplied(k, w, e));
+    const notes = el("div", { class: "card sec" }, renderNotes(k, e));
+    return [head, el("div", { class: "dbody", id: "dbody" }, help, el("div", { class: "two" }, overview, fit), desc, app, notes)];
   }
-  /* ----- My application ----- */
-  function renderApplication(k, j, w, e) {
-    const pkg = w && w.package; const out = [];
-    const prep = Core.requestState(w, act(k), "prepare");
+  /* ---------- the application workspace: a focused, stepped view ---------- */
+  function renderWorkspace(k, j) {
+    const w = work(k); const e = eff(k); const pkg = w && w.package; const links = j.links || {}; const direct = safeUrl((pkg && pkg.route && pkg.route.apply_url) || links.direct || links.apply || links.discovery);
+    const head = el("div", { class: "dhead" }, el("div", { class: "top" },
+      el("button", { class: "btn sm", onclick: () => { st.ws = false; renderDetail(); } }, ico("back"), "Back to job"),
+      el("div", { class: "ttl" }, el("h2", { style: "font-size:18px" }, "Your application"), el("div", { class: "co" }, el("span", {}, (j.title || "") + " · " + (j.employer || "")))),
+      el("div", { class: "hacts" }, el("button", { class: "btn sm", "aria-label": "Close", onclick: closeDetail }, ico("x"), "Close"))));
+    const body = el("div", { class: "dbody ws", id: "dbody" });
     if (!pkg) {
-      out.push(el("p", { class: "s", style: "margin:0 0 8px;color:var(--ink-2)" }, "Hunter prepares: a short brief of the company and the role with its sources, where to apply, your strongest case from your own facts, and draft answers you edit in your words. You apply yourself; Hunter never sends anything."));
-      if (!prep || prep.state === "ready") out.push(el("div", { class: "actions" }, mainActionButton(k)));
-      out.push(requestLine(k, "prepare"));
-      out.push(renderCvChoice(k, w));
-      out.push(renderApplied(k, w, e));
-      return out;
+      body.append(el("div", { class: "card" }, el("div", { class: "status" }, el("b", {}, Core.appStatus(w, act(k)).label)), el("p", { class: "foot" }, "Hunter is preparing: a brief of the company and role with sources, where to apply, your strongest case from your own facts, and draft answers you edit in your words."), requestLine(k, "prepare"), el("div", { class: "actions", style: "margin-top:8px" }, mainActionButton(k, "btn sm primary"))));
+      body.append(el("div", { class: "step" }, el("h3", {}, el("span", { class: "num" }, "1"), "Your CV"), renderCvChoice(k, w)));
+      body.append(el("div", { class: "step" }, el("h3", {}, el("span", { class: "num" }, "4"), "Optional extras"), el("div", { class: "opt" }, el("div", { class: "tier" }, el("b", {}, "People"), el("span", { class: "foot" }, " · only real contacts, never a guessed address")), renderPeople(k, j, w))));
+      body.append(el("div", { class: "step" }, el("h3", {}, el("span", { class: "num" }, "5"), "Applied already?"), renderApplied(k, w, e)));
+      return [head, body];
     }
     markOpened(k);
-    const rd = pkg.readiness || null;
-    if (rd) out.push(el("div", { class: "save " + (rd.state === "ready_to_submit" ? "ok" : ""), role: "status" }, el("b", {}, rd.label + ". "), pkg.origin === "auto" ? "Hunter prepared this for you after a search; nothing was sent. " : "", rd.state === "ready_to_submit" ? "Everything on the checklist is in place. You apply on the employer’s page yourself." : (rd.missing || []).join(" ")));
-    if (pkg.needs_review && pkg.needs_review.length) out.push(el("div", { class: "conflict", role: "status" }, el("b", {}, "Needs review. "), pkg.needs_review.join(" "), el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "prepare") }, "Prepare again (keeps your wording)"))));
-    out.push(requestLine(k, "prepare", { ready: "Prepared " + rel(pkg.created_at) + " (version " + pkg.version + ")." }));
-    out.push(renderCvChoice(k, w));
-    // A. Company and role brief
-    const b = pkg.brief || {};
+    const rd = pkg.readiness || {}; const cvSel = w.cv && w.cv.selected;
+    body.append(el("div", { class: "status", style: "padding:2px 2px 0" }, el("b", {}, rd.label || "Ready for review"), el("span", { class: "foot" }, "Prepared " + rel(pkg.created_at) + " (version " + pkg.version + ")" + (pkg.origin === "auto" ? " by Hunter after a search" : "")), requestLine(k, "prepare", { ready: "" })));
+    if (pkg.needs_review && pkg.needs_review.length) body.append(el("div", { class: "conflict", role: "status" }, el("b", {}, "Needs review. "), pkg.needs_review.join(" "), el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "prepare") }, "Prepare again (keeps your wording)"))));
+    // 1. CV
+    body.append(el("div", { class: "step" + (cvSel ? " done" : "") }, el("h3", {}, el("span", { class: "num" }, "1"), "Your CV"),
+      cvSel ? el("div", { class: "status" }, el("b", {}, cvSel.label + " v" + cvSel.version), el("span", { class: "foot" }, cvSel.choice === "suggested" ? "Suggested for this role." : cvSel.choice === "student" ? "Your choice for this job." : "Your default CV."), cvSel.file_available === false ? el("span", { class: "pill p-pending" }, "file not on Hunter’s computer: add it again before you apply") : null) : null,
+      renderCvChoice(k, w)));
+    // 2. Strongest case (+ brief)
+    const c = pkg.case || {}; const b = pkg.brief || {};
     const tier = (title, lines) => lines && lines.length ? [el("div", { class: "tier" }, el("b", {}, title)), el("ul", { class: "r" }, lines.map((x) => el("li", {}, x)))] : null;
-    out.push(el("details", { class: "part", open: true }, el("summary", {}, "Company and role brief"),
-      b.confidential ? el("p", { class: "s" }, "The employer is not named in the posting, so Hunter says nothing about the company.") : null,
-      tier("The vacancy says", b.vacancy_says), tier("The company describes itself", b.company_describes), tier("Hunter’s reading", b.interpretation),
-      el("details", { class: "sub" }, el("summary", {}, "Sources"), el("ul", { class: "r" }, (b.sources || []).map((s) => el("li", {}, safeUrl(s.url) ? el("a", { href: safeUrl(s.url), target: "_blank", rel: "noopener noreferrer" }, s.label || s.url) : (s.label || "source"), " · checked " + fmtDay(s.checked_at) + (s.certainty ? " · " + s.certainty : "")))), b.uncertainty ? el("p", { class: "foot" }, b.uncertainty) : null, el("p", { class: "foot" }, "Brief version " + (b.version || 1) + ", " + (b.created_by === "claude" ? "written by Claude from pages it read" : "from the posting only") + ".")),
-      el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "research") }, "Refresh the brief")), requestLine(k, "research", { ready: "" })));
-    // B. The vacancy and where to apply
-    const r = pkg.route || {};
-    out.push(el("details", { class: "part", open: true }, el("summary", {}, "The vacancy and where to apply"),
-      el("div", { class: "kv" }, el("span", {}, "Status"), el("span", {}, r.availability_label || ""), el("span", {}, "Last checked"), el("span", {}, r.last_checked_at ? fmtDay(r.last_checked_at) + " (" + rel(r.last_checked_at) + ")" : "unknown"), r.requisition_id ? [el("span", {}, "Reference"), el("span", {}, r.requisition_id)] : null),
-      r.note ? el("p", { class: "foot" }, r.note) : null,
-      r.capability ? el("p", { class: "foot" }, el("b", {}, r.capability.label.split(":")[0] + ". "), r.capability.note + (r.capability.id === "assisted_fill" || r.capability.id === "reviewed_submit" ? " On your computer: “/jobhunter assisted " + (j.key || k) + "”." : "")) : null,
-      el("div", { class: "links", style: "margin-top:6px" }, safeUrl(r.apply_url) ? el("a", { href: safeUrl(r.apply_url), target: "_blank", rel: "noopener noreferrer" }, "Apply here (opens the employer’s page)") : null, safeUrl(r.employer_url) && r.employer_url !== r.apply_url ? el("a", { href: safeUrl(r.employer_url), target: "_blank", rel: "noopener noreferrer" }, "Employer’s own listing") : null),
-      (r.other_listings || []).length ? el("details", { class: "sub" }, el("summary", {}, "Other listings (" + r.other_listings.length + ")"), el("ul", { class: "r" }, r.other_listings.map((o) => el("li", {}, safeUrl(o.url) ? el("a", { href: safeUrl(o.url), target: "_blank", rel: "noopener noreferrer" }, o.source) : o.source, " · seen " + fmtDay(o.seen_at))))) : null));
-    // C. Your strongest case
-    const c = pkg.case || {};
-    out.push(el("details", { class: "part", open: true }, el("summary", {}, "Your strongest case"),
+    body.append(el("div", { class: "step done" }, el("h3", {}, el("span", { class: "num" }, "2"), "Your strongest case"),
       (c.items || []).length ? el("table", { class: "case" }, el("thead", {}, el("tr", {}, el("th", {}, "They ask for"), el("th", {}, "Your profile"), el("th", {}, "Your CV says it"))),
-        el("tbody", {}, c.items.map((i) => el("tr", {}, el("td", {}, i.requirement), el("td", {}, i.profile_supports ? el("span", {}, el("b", {}, "Yes, " + (i.evidence_type || "")), i.evidence ? el("div", { class: "foot" }, i.evidence) : null) : el("span", {}, "Not in your profile yet")), el("td", {}, i.profile_supports ? (i.cv_communicates ? "Yes" : "Not in so many words") : "–"))))) : el("p", { class: "s" }, "The posting names no specific tools; your case is your story."),
-      el("ul", { class: "r" }, (c.items || []).filter((i) => i.gap || i.note).map((i) => el("li", {}, i.gap || i.note))),
+        el("tbody", {}, c.items.map((i) => el("tr", {}, el("td", {}, i.requirement), el("td", {}, i.profile_supports ? el("span", {}, el("b", {}, "Yes, " + (i.evidence_type || "")), i.evidence ? el("div", { class: "foot" }, i.evidence) : null) : el("span", {}, "Not in your profile yet")), el("td", {}, i.profile_supports ? (i.cv_communicates ? "Yes" : "Not in so many words") : "–"))))) : el("p", { class: "foot" }, "The posting names no specific tools; your case is your story."),
+      (c.items || []).some((i) => i.gap || i.note) ? el("ul", { class: "r" }, c.items.filter((i) => i.gap || i.note).map((i) => el("li", {}, i.gap || i.note))) : null,
       (c.examples || []).length ? [el("div", { class: "tier" }, el("b", {}, "Examples you can tell")), el("ul", { class: "r" }, c.examples.map((x) => el("li", {}, x.text, " ", el("span", { class: "foot" }, "(" + x.kind + ")"))))] : null,
-      c.note ? el("p", { class: "foot" }, c.note) : null));
-    // D. Answers
-    out.push(el("details", { class: "part", open: true }, el("summary", {}, "Application answers"), renderAnswers(k, w)));
-    // E. Optional texts
-    out.push(el("details", { class: "part" }, el("summary", {}, "Short introduction and cover letter (optional)"), renderOptional(k, w, "intro", "short introduction", "about 60 to 100 words"), renderOptional(k, w, "letter", "cover letter", "about 180 to 250 words")));
-    // F. Checklist, I applied, follow-up, hand-off
-    out.push(el("details", { class: "part", open: true }, el("summary", {}, "Before you send"),
+      el("details", { class: "part" }, el("summary", {}, "Company and role brief"),
+        b.confidential ? el("p", { class: "foot" }, "The employer is not named in the posting, so Hunter says nothing about the company.") : null,
+        tier("The vacancy says", b.vacancy_says), tier("The company describes itself", b.company_describes), tier("Hunter’s reading", b.interpretation),
+        el("details", { class: "sub" }, el("summary", {}, "Sources"), el("ul", { class: "r" }, (b.sources || []).map((s) => el("li", {}, safeUrl(s.url) ? el("a", { href: safeUrl(s.url), target: "_blank", rel: "noopener noreferrer" }, s.label || s.url) : (s.label || "source"), " · checked " + fmtDay(s.checked_at) + (s.certainty ? " · " + s.certainty : "")))), b.uncertainty ? el("p", { class: "foot" }, b.uncertainty) : null, el("p", { class: "foot" }, "Brief version " + (b.version || 1) + ", " + (b.created_by === "claude" ? "written by Claude from pages it read" : "from the posting only") + ".")),
+        el("div", { class: "actions", style: "margin-top:6px" }, el("button", { class: "btn sm", onclick: () => doRequest(k, "research") }, "Refresh the brief")), requestLine(k, "research", { ready: "" }))));
+    // 3. Questions
+    const answered = rd.answered || 0, total = rd.form_questions || 0;
+    body.append(el("div", { class: "step" + (total && answered >= total ? " done" : "") }, el("h3", {}, el("span", { class: "num" }, "3"), "Application questions", el("span", { class: "foot", style: "font-weight:400" }, total ? answered + " of " + total + " in your words" : "paste the form’s questions; Hunter’s examples are optional")), ...renderAnswers(k, w)));
+    // 4. Optional extras
+    body.append(el("div", { class: "step" }, el("h3", {}, el("span", { class: "num" }, "4"), "Optional extras"),
+      renderOptional(k, w, "intro", "short introduction", "about 60 to 100 words"), renderOptional(k, w, "letter", "cover letter", "about 180 to 250 words"),
+      el("div", { class: "opt" }, el("div", { class: "tier" }, el("b", {}, "People"), el("span", { class: "foot" }, " · only real contacts, never a guessed address")), renderPeople(k, j, w))));
+    // 5. Ready?
+    const cap = pkg.route && pkg.route.capability;
+    body.append(el("div", { class: "step" + (rd.state === "ready_to_submit" ? " done" : "") }, el("h3", {}, el("span", { class: "num" }, "5"), "Ready?"),
       el("ul", { class: "check" }, (pkg.checklist || []).map((i) => el("li", { class: i.done ? "done" : "" }, (i.done ? "✓ " : "○ ") + i.text))),
-      el("p", { class: "foot" }, "A guide, not a gate. " + (pkg.reminder || ""))));
-    out.push(renderApplied(k, w, e));
-    return out;
+      (rd.missing || []).length ? el("ul", { class: "r", style: "margin-top:6px;color:var(--ink-2)" }, rd.missing.map((m) => el("li", {}, m))) : null,
+      el("div", { class: "kv", style: "margin-top:8px" }, el("span", {}, "Destination"), el("span", {}, direct ? el("a", { href: direct, target: "_blank", rel: "noopener noreferrer" }, direct.replace(/^https?:\/\//, "").slice(0, 70)) : "No link known"), cap ? [el("span", {}, "How you apply"), el("span", {}, cap.label.split(":")[0] + ". " + cap.note + (cap.id === "assisted_fill" || cap.id === "reviewed_submit" ? " On your computer: “/jobhunter assisted " + k + "”." : ""))] : null),
+      el("div", { class: "actions", style: "margin-top:10px" }, direct ? el("a", { class: "btn primary lg", href: direct, target: "_blank", rel: "noopener noreferrer" }, cap && cap.id === "reviewed_submit" ? "Review application" : "Open application", ico("ext")) : el("span", { class: "btn", "aria-disabled": "true" }, "No link available")),
+      renderApplied(k, w, e)));
+    return [head, body];
   }
   function renderCvChoice(k, w) {
     const cv = w && w.cv; const a = act(k) || {};
     const options = (cv && cv.options) || ((st.profile && st.profile.cvs) || []).filter((c) => !c.archived).map((c) => ({ key: c.key, label: c.label, version: c.version, default: c.default }));
-    if (!options.length) return el("p", { class: "foot" }, "No CV on file yet.");
+    if (!options.length) return el("p", { class: "foot" }, "No CV on file yet. Give one to Hunter in Claude.");
     const selectedKey = a.cv_variant || (cv && cv.selected && cv.selected.key) || (options.find((o) => o.default) || options[0]).key;
     const sel = el("select", { id: "cv-select", "aria-label": "CV for this application", disabled: !can(), onchange: (ev) => doField(k, "cv_variant", ev.target.value, { cv_choice: cv && cv.suggestion && cv.suggestion.key === ev.target.value ? "suggested" : "student" }) });
     for (const o of options) sel.append(el("option", { value: o.key, selected: o.key === selectedKey }, o.label + " (version " + o.version + ")" + (o.default ? " · default" : "")));
-    const sug = cv && cv.suggestion && cv.suggestion.key !== selectedKey ? el("p", { class: "s", style: "margin:4px 0 0;color:var(--ink-2)" }, "Hunter suggests “" + cv.suggestion.label + "”: " + cv.suggestion.reason + " ", el("button", { class: "btn sm", onclick: () => doField(k, "cv_variant", cv.suggestion.key, { cv_choice: "suggested" }) }, "Use it for this job")) : null;
-    return el("div", { class: "cvpick" }, el("label", {}, "CV for this application (this job only)", sel), sug, a.cv_variant && (!cv || !cv.selected || cv.selected.key !== a.cv_variant) ? el("div", { class: "foot" }, "Chosen here; Hunter uses it on its next run.") : null);
+    const sug = cv && cv.suggestion && cv.suggestion.key !== selectedKey ? el("p", { class: "foot", style: "margin:4px 0 0" }, "Hunter suggests “" + cv.suggestion.label + "”: " + cv.suggestion.reason + " ", el("button", { class: "btn sm", onclick: () => doField(k, "cv_variant", cv.suggestion.key, { cv_choice: "suggested" }) }, "Use it for this job")) : null;
+    return el("div", { class: "cvpick" }, el("div", { class: "actions", style: "align-items:end" }, el("label", { style: "flex:1 1 220px" }, "Choose another (this job only)", sel), el("button", { class: "btn sm", type: "button", onclick: () => { setView("profile"); const s = $("sec-cvs"); if (s) s.scrollIntoView({ block: "start" }); } }, "Preview")), sug, a.cv_variant && (!cv || !cv.selected || cv.selected.key !== a.cv_variant) ? el("div", { class: "foot" }, "Chosen here; Hunter uses it on its next run.") : null);
   }
   function answerValue(k, a) {
     const d = (st.answerDrafts[k] || {})[a.id]; if (d !== undefined) return d;
@@ -708,30 +873,30 @@ const Core = (() => {
       const saved = ((act(k) || {}).answers || {})[a.id];
       const st_ = (st.answerStatus[k] || {})[a.id];
       items.push(el("div", { class: "ans" },
-        el("div", { class: "q" }, a.question, a.needs_user ? el("span", { class: "pill p-pending", style: "margin-left:6px" }, a.custom ? "your words" : "only you can answer") : null),
-        a.suggested ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (from your facts only):"), el("div", {}, a.suggested), el("div", { class: "actions", style: "grid-template-columns:auto auto;justify-content:start;margin-top:4px" }, copyBtn(a.suggested, "Copy draft"), el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.suggested; renderOverlay(); } }, "Use as my starting point"))) : null,
+        el("div", { class: "q" }, a.question, a.needs_user ? el("span", { class: "pill p-pending", style: "margin-left:6px" }, a.custom ? "your words" : "only you can answer") : (a.example ? el("span", { class: "pill g-backup", style: "margin-left:6px" }, "example") : null)),
+        a.suggested ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (from your facts only):"), el("div", {}, a.suggested), el("div", { class: "actions", style: "margin-top:4px" }, copyBtn(a.suggested, "Copy draft"), el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.suggested; renderDetail(); } }, "Edit as mine"))) : null,
         a.note ? el("div", { class: "foot" }, a.note) : null,
-        a.library && !val ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Your earlier answer, from " + a.library.from + " (" + fmtDay(a.library.saved_at) + "). Check it still fits before you use it:"), el("div", {}, a.library.text), el("div", { class: "actions", style: "grid-template-columns:auto;justify-content:start;margin-top:4px" }, el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.library.text; renderOverlay(); } }, "Use my earlier answer"))) : null,
-        el("textarea", { id: "ans-" + a.id, "aria-label": "Your answer: " + a.question, placeholder: a.needs_user ? "Only you can answer this. Write it here so it is saved with the application." : "Your own wording", oninput: (ev) => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = ev.target.value; const c = $("cnt-" + a.id); if (c) c.textContent = ev.target.value.length + (limit ? " / " + limit : "") + " characters"; } }, val),
-        el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr;align-items:center" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doAnswer(k, a.id, $("ans-" + a.id).value) }, "Save my wording"), copyBtn(val, "Copy"), el("span", { class: "foot", id: "cnt-" + a.id, style: limit && n > limit ? "color:var(--bad)" : "" }, n + (limit ? " / " + limit : "") + " characters")),
+        a.library && !val ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Your earlier answer, from " + a.library.from + " (" + fmtDay(a.library.saved_at) + "). Check it still fits before you use it:"), el("div", {}, a.library.text), el("div", { class: "actions", style: "margin-top:4px" }, el("button", { class: "btn sm", type: "button", onclick: () => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = a.library.text; renderDetail(); } }, "Use my earlier answer"))) : null,
+        el("textarea", { id: "ans-" + a.id, "aria-label": "Your answer: " + a.question, placeholder: a.needs_user ? "Only you can answer this. Write it here so it is saved with the application." : "Your own wording", oninput: (ev) => { (st.answerDrafts[k] = st.answerDrafts[k] || {})[a.id] = ev.target.value; const c = $("cnt-" + a.id); if (c) c.textContent = ev.target.value.length + (limit ? " / " + limit : "") + " " + (a.limit_unit === "words" ? "characters (limit in words)" : "characters"); } }, val),
+        el("div", { class: "actions" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doAnswer(k, a.id, $("ans-" + a.id).value) }, "Save my wording"), copyBtn(val, "Copy"), el("span", { class: "foot", id: "cnt-" + a.id, style: limit && n > limit ? "color:var(--bad)" : "" }, n + (limit ? " / " + limit : "") + " characters")),
         st_ ? el("div", { class: "save " + (st_.ok ? "ok" : "err"), role: "status" }, st_.text) : (saved && saved.rev > Number((a.user && a.user.rev) || 0) ? el("div", { class: "save warn", role: "status" }, "Saved here; Hunter keeps it on its next run.") : null)));
     }
     const qbox = el("textarea", { id: "newq", "data-keep": true, placeholder: "Paste a question from the application form, one per line. Add a limit like “(500)” at the end of a line.", "aria-label": "Questions from the form" });
-    items.push(el("div", { class: "ans" }, el("div", { class: "q" }, "Questions from the application form"), qbox, el("div", { class: "actions", style: "grid-template-columns:auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => { const qs = Core.parseQuestions(qbox.value); if (qs.length) doRequest(k, "prepare", { questions: qs }); } }, "Add these questions"), el("span", { class: "foot" }, "Hunter adds them to this list; sensitive ones stay yours to answer."))));
+    items.push(el("div", { class: "ans" }, el("div", { class: "q" }, "Questions from the application form"), qbox, el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => { const qs = Core.parseQuestions(qbox.value); if (qs.length) doRequest(k, "prepare", { questions: qs }); } }, "Add these questions"), el("span", { class: "foot" }, "Pay, visa and personal questions stay yours to answer."))));
     return items;
   }
   function renderOptional(k, w, kind, name, target) {
     const o = ((w.package || {}).optional || {})[kind]; const a = act(k) || {}; const mine = (a.texts || {})[kind];
     const latest = o && o.latest; const user = o && o.user_text;
     const val = (st.textDrafts[k] || {})[kind] !== undefined ? st.textDrafts[k][kind] : (mine && Number(mine.rev) > Number((user && user.rev) || 0) ? mine.text : (user && user.text) || (latest && latest.text) || "");
-    const parts = [el("div", { class: "tier" }, el("b", {}, name[0].toUpperCase() + name.slice(1)), el("span", { class: "foot" }, " · " + target + ", only if you want one"))];
-    if (!latest) parts.push(el("div", { class: "actions", style: "grid-template-columns:auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, kind) }, "Draft a " + name)), requestLine(k, kind));
+    const parts = [el("div", { class: "tier" }, el("b", {}, name[0].toUpperCase() + name.slice(1)), el("span", { class: "foot" }, " · " + target + ", only if the form asks for one"))];
+    if (!latest) parts.push(el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, kind) }, "Draft a " + name)), requestLine(k, kind));
     else {
       parts.push(requestLine(k, kind, { ready: "" }));
       if (latest.problems && latest.problems.length && !latest.text) parts.push(el("div", { class: "save err", role: "status" }, "Hunter did not write this draft: " + latest.problems.join("; ")));
       parts.push(el("textarea", { id: "txt-" + kind, "aria-label": "Your " + name, style: "min-height:140px", oninput: (ev) => { (st.textDrafts[k] = st.textDrafts[k] || {})[kind] = ev.target.value; } }, val));
-      parts.push(el("div", { class: "actions", style: "grid-template-columns:auto auto auto 1fr;align-items:center" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doText(k, kind, $("txt-" + kind).value) }, "Save my version"), copyBtn(val, "Copy"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, kind) }, "New draft (keeps yours)"), el("span", { class: "foot" }, (o.versions || 1) + " Hunter version" + (o.versions === 1 ? "" : "s") + " · " + val.split(/\s+/).filter(Boolean).length + " words")));
-      parts.push(el("details", { class: "sub" }, el("summary", {}, "Facts used in Hunter’s draft"), (latest.facts_used || []).length ? el("ul", { class: "r" }, latest.facts_used.map((f) => el("li", {}, f.text + " (" + f.kind + ")"))) : el("p", { class: "foot" }, "Hunter’s draft names nothing beyond the role and the employer."), el("p", { class: "foot" }, "Hunter’s draft uses only facts from your approved profile. Dates, pay, legal questions and numbers are never invented; what you type here is yours.")));
+      parts.push(el("div", { class: "actions" }, el("button", { class: "btn sm primary", type: "button", disabled: !can(), onclick: () => doText(k, kind, $("txt-" + kind).value) }, "Save my version"), copyBtn(val, "Copy"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, kind) }, "New draft (keeps yours)"), el("span", { class: "foot" }, (o.versions || 1) + " Hunter version" + (o.versions === 1 ? "" : "s") + " · " + val.split(/\s+/).filter(Boolean).length + " words")));
+      parts.push(el("details", { class: "sub" }, el("summary", {}, "Facts used in Hunter’s draft"), (latest.facts_used || []).length ? el("ul", { class: "r" }, latest.facts_used.map((f) => el("li", {}, f.text + " (" + f.kind + ")"))) : el("p", { class: "foot" }, "Hunter’s draft names nothing beyond the role and the employer."), el("p", { class: "foot" }, "Only facts from your approved profile. Dates, pay, legal questions and numbers are never invented; what you type here is yours.")));
       const s_ = (st.textStatus[k] || {})[kind]; if (s_) parts.push(el("div", { class: "save " + (s_.ok ? "ok" : "err"), role: "status" }, s_.text));
     }
     return el("div", { class: "opt" }, ...parts);
@@ -740,12 +905,12 @@ const Core = (() => {
     const parts = []; const app = w && w.application; const a = act(k) || {};
     if (e.applied_at) {
       const sub = app && app.submitted_cv; const pendingCv = a.applied_cv && (!sub || sub.choice === "unknown" && a.applied_cv !== "unknown");
-      parts.push(el("div", { class: "tier" }, el("b", {}, "Applied " + fmtDay(e.applied_at))), el("div", { class: "s" }, sub && sub.label ? "CV sent: " + sub.label + " (version " + sub.version + ")" : (a.applied_cv === "unknown" || (sub && sub.choice === "unknown") ? "CV sent: not sure" : (pendingCv ? "CV sent: noted here; Hunter records it on its next run." : "CV sent: not recorded"))));
+      parts.push(el("div", { class: "s", style: "margin-top:6px" }, el("b", {}, "Applied " + fmtDay(e.applied_at)), " · ", sub && sub.label ? "CV sent: " + sub.label + " (version " + sub.version + ")" : (a.applied_cv === "unknown" || (sub && sub.choice === "unknown") ? "CV sent: not sure" : (pendingCv ? "CV sent: noted here; Hunter records it on its next run" : "CV sent: not recorded"))));
       parts.push(renderFollowup(k, w, e));
-      if (app && (app.stage === "interview" || app.stage === "offer") || true) parts.push(el("div", { class: "actions", style: "grid-template-columns:auto 1fr;margin-top:8px" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "handoff") }, "Prepare for interview"), el("span", { class: "foot" }, "Hunter writes a hand-off for InterviewOS: the vacancy as seen, the brief with sources, the exact CV sent, what was sent and what stayed a draft, and the timeline.")), requestLine(k, "handoff", { ready: w && w.handoff ? "Hand-off written " + rel(w.handoff.at) + ". Ask Hunter in Claude for the file." : "" }));
+      parts.push(el("div", { class: "actions", style: "margin-top:8px" }, w && w.package ? el("button", { class: "btn sm", type: "button", onclick: () => { st.ws = true; renderDetail(); } }, "View submitted materials") : null, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "handoff") }, "Prepare for interview"), el("button", { class: "btn sm ghost", type: "button", disabled: !can(), onclick: () => doFlag(k, "applied", false) }, "Undo “I applied”")), requestLine(k, "handoff", { ready: w && w.handoff ? "Hand-off written " + rel(w.handoff.at) + ". Ask Hunter in Claude for the file." : "" }));
       return el("div", { class: "applied" }, ...parts);
     }
-    if (st.askApplied !== k) return el("div", { class: "actions", style: "grid-template-columns:auto 1fr;margin-top:8px" }, el("button", { class: "btn", disabled: !can(), onclick: () => { st.askApplied = k; renderOverlay(); const n = $("applied-when"); if (n) n.focus(); } }, "I applied"), el("span", { class: "foot" }, "Press this after you applied on the employer’s page. Hunter records the date and which CV you sent; opening or copying never counts."));
+    if (st.askApplied !== k) return el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn sm", disabled: !can(), onclick: () => { st.askApplied = k; renderDetail(); const n = $("applied-when"); if (n) n.focus(); } }, ico("check"), "I applied"), el("span", { class: "foot" }, "Press this after you applied on the employer’s page."));
     const cv = w && w.cv; const options = (cv && cv.options) || ((st.profile && st.profile.cvs) || []).filter((c) => !c.archived);
     const prepared = (cv && cv.selected) || null; const chosenKey = a.cv_variant || (prepared && prepared.key);
     const preparedLabel = options.find((o) => o.key === chosenKey);
@@ -757,7 +922,7 @@ const Core = (() => {
       el("label", { class: "radio" }, el("input", { type: "radio", name: "cv", value: "prepared", id: "applied-cv-prepared", "data-keep": true, checked: true }), preparedLabel ? "The one prepared here: " + preparedLabel.label + " (version " + preparedLabel.version + ")" : "The CV prepared here"),
       el("label", { class: "radio" }, el("input", { type: "radio", name: "cv", value: "other", id: "applied-cv-other", "data-keep": true }), "Another CV: ", other),
       el("label", { class: "radio" }, el("input", { type: "radio", name: "cv", value: "unknown", id: "applied-cv-unknown", "data-keep": true }), "Not sure"),
-      el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Record it"), el("button", { class: "btn", type: "button", onclick: () => { st.askApplied = null; renderOverlay(); } }, "Not yet")));
+      el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Record it"), el("button", { class: "btn", type: "button", onclick: () => { st.askApplied = null; renderDetail(); } }, "Not yet")));
     return form;
   }
   function renderFollowup(k, w, e) {
@@ -769,20 +934,17 @@ const Core = (() => {
     const input = el("input", { type: "date", id: "fu-when", "data-keep": true, "aria-label": "Follow-up date", value: due || plusDays(e.applied_at, 7), min: todayIso() });
     const line = due ? el("div", { class: "s" }, "Follow-up reminder: " + fmtDay(due) + (f && f.overdue && !pend ? " · due now" : "") + (pend ? " · Hunter keeps it on its next run" : "")) : el("div", { class: "s" }, "No reminder set." + (eff_ && eff_.action === "stop" ? " Reminders stopped." : eff_ && eff_.action === "done" ? " Last follow-up done." : ""));
     return el("div", { class: "fu" }, line,
-      el("div", { class: "actions", style: "grid-template-columns:1fr auto;align-items:end" }, el("label", {}, due ? "Change the date" : "Remind me to follow up on", input), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "set", input.value) }, due ? "Change" : "Remind me")),
-      due ? el("div", { class: "actions", style: "grid-template-columns:auto auto auto auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "followup_draft") }, "Draft follow-up"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "snooze", plusDays(due, 3)) }, "Snooze 3 days"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "done") }, "Done"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "stop") }, "Stop reminding")) : null,
-      requestLine(k, "followup_draft", { ready: "Follow-up message drafted; ask Hunter in Claude to show it, then send it yourself." }),
-      el("p", { class: "foot" }, "Reminders show here. They stop by themselves after a reply, an interview, a rejection or a withdrawal. Email reminders are a separate preference."));
+      el("div", { class: "actions", style: "align-items:end" }, el("label", {}, due ? "Change the date" : "Remind me to follow up on", input), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "set", input.value) }, due ? "Change" : "Remind me")),
+      due ? el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "followup_draft") }, "Draft follow-up"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "snooze", plusDays(due, 3)) }, "Snooze 3 days"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "done") }, "Done"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doFollowup(k, "stop") }, "Stop reminding")) : null,
+      requestLine(k, "followup_draft", { ready: "Follow-up message drafted; ask Hunter in Claude to show it, then send it yourself." }));
   }
-  /* ----- People & notes ----- */
   function renderPeople(k, j, w) {
     const a = act(k) || {}; const contacts = (w && w.contacts) || []; const parts = [];
-    parts.push(el("p", { class: "s", style: "margin:0 0 6px;color:var(--ink-2)" }, "Only real contacts: someone the posting names, someone on a public team page Hunter read, or someone you know. Hunter never guesses an email address and never messages anyone."));
     const line = requestLine(k, "contact", { ready: "" });
-    parts.push(el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "contact") }, "Find a contact"), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = st.addContact === k ? null : k; renderOverlay(); } }, "Add someone you know")), line);
+    parts.push(el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "contact") }, "Find a contact"), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = st.addContact === k ? null : k; renderDetail(); } }, "Add someone you know")), line);
     if (st.addContact === k) parts.push(el("form", { class: "applied", onsubmit: (ev) => { ev.preventDefault(); const fd = new FormData(ev.target); doAddContact(k, { name: String(fd.get("name") || "").trim(), role: String(fd.get("role") || "").trim(), route: String(fd.get("route") || "").trim() }); } },
       el("label", {}, "Name", el("input", { type: "text", name: "name", id: "ct-name", "data-keep": true, required: true, maxlength: "120" })), el("label", {}, "Their role (optional)", el("input", { type: "text", name: "role", id: "ct-role", "data-keep": true, maxlength: "120" })), el("label", {}, "A public link or address you have (optional)", el("input", { type: "text", name: "route", id: "ct-route", "data-keep": true, maxlength: "400", placeholder: "https://… or name@company" })),
-      el("div", { class: "actions" }, el("button", { class: "btn primary sm", type: "submit", disabled: !can() }, "Keep this contact"), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = null; renderOverlay(); } }, "Cancel"))));
+      el("div", { class: "actions" }, el("button", { class: "btn primary sm", type: "submit", disabled: !can() }, "Keep this contact"), el("button", { class: "btn sm", type: "button", onclick: () => { st.addContact = null; renderDetail(); } }, "Cancel"))));
     const pendingNew = (a.contacts_new || []).filter((c) => !contacts.some((x) => x.type === "connection" && x.name === c.name));
     for (const c of pendingNew) parts.push(el("div", { class: "contact" }, el("div", { class: "q" }, c.name, el("span", { class: "pill p-pending", style: "margin-left:6px" }, "Your connection · Hunter keeps it on its next run")), c.role ? el("div", { class: "s" }, c.role) : null));
     for (const c of contacts) {
@@ -790,37 +952,31 @@ const Core = (() => {
       parts.push(el("div", { class: "contact" },
         el("div", { class: "q" }, c.name || "Unnamed", el("span", { class: "pill " + (c.type === "connection" ? "p-fresh" : "g-worth_a_shot"), style: "margin-left:6px" }, c.type_label || c.type)),
         c.role ? el("div", { class: "s" }, c.role) : null,
-        el("div", { class: "foot" }, c.relevance || "", c.source_url && safeUrl(c.source_url) ? [" · ", el("a", { href: safeUrl(c.source_url), target: "_blank", rel: "noopener noreferrer" }, "source")] : null, c.checked_at ? " · checked " + fmtDay(c.checked_at) : null),
+        el("div", { class: "foot" }, c.relevance || "", c.source_url && safeUrl(c.source_url) ? [" · ", el("a", { href: safeUrl(c.source_url), target: "_blank", rel: "noopener noreferrer" }, "source")] : null, c.checked_at ? " · checked " + fmtDay(c.checked_at) : null, c.type === "team" ? " · Involvement in this vacancy is not confirmed." : null),
         c.route ? el("div", { class: "s" }, "Public route: " + c.route) : el("div", { class: "foot" }, "No public contact route was given; Hunter does not guess one."),
-        c.message ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (you send it, if you want to):"), el("div", { style: "white-space:pre-wrap" }, c.message), el("div", { class: "actions", style: "grid-template-columns:auto 1fr" }, copyBtn(c.message, "Copy message"))) : null,
-        done ? el("div", { class: "save ok", role: "status" }, "You contacted them " + fmtDay(done) + ".") : el("div", { class: "actions", style: "grid-template-columns:auto auto 1fr" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "message", { contact: cref }) }, c.message ? "New draft message" : "Draft a short message"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doContacted(k, cref) }, "I contacted them")),
+        c.message ? el("div", { class: "sug" }, el("div", { class: "foot" }, "Hunter’s draft (you send it, if you want to):"), el("div", { style: "white-space:pre-wrap" }, c.message), el("div", { class: "actions" }, copyBtn(c.message, "Copy message"))) : null,
+        done ? el("div", { class: "save ok", role: "status" }, "You contacted them " + fmtDay(done) + ".") : el("div", { class: "actions" }, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doRequest(k, "message", { contact: cref }) }, c.message ? "New draft message" : "Draft a short message"), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doContacted(k, cref) }, "I contacted them")),
         requestLine(k, "message", { ready: "" })));
-    }
-    if (!contacts.length && !pendingNew.length) {
-      const r = Core.requestState(w, a, "contact");
-      if (!r) parts.push(el("p", { class: "foot" }, "No contacts yet."));
     }
     return el("div", { class: "people" }, ...parts);
   }
   function renderNotes(k, e) {
     const savedText = (e.note && e.note.text) || "";
     const busy = st.saving[k] && st.saving[k].status === "saving";
-    const ta = el("textarea", { id: "note", "aria-label": "Private note", placeholder: "A private note, only for you",
+    const ta = el("textarea", { id: "note", "aria-label": "Private note", placeholder: "Add a private note…", style: "min-height:70px",
       onfocus: () => { if (!(k in st.noteBase)) st.noteBase[k] = (e.note && Number(e.note.rev)) || 0; },
       oninput: (ev) => { if (ev.target.value === savedText) delete st.drafts[k]; else st.drafts[k] = ev.target.value; } });
     ta.value = st.conflicts[k] ? st.conflicts[k].mine : (k in st.drafts ? st.drafts[k] : savedText);
     const conflict = st.conflicts[k] ? el("div", { class: "conflict", role: "alert" }, "This note changed somewhere else after you started editing. Nothing was overwritten.",
       el("div", { class: "theirs" }, "Saved version: " + (st.conflicts[k].theirs || "(empty)")),
       el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => { const c = st.conflicts[k]; delete st.conflicts[k]; st.noteBase[k] = c.theirsRev; doNote(k, c.mine); } }, "Keep mine"),
-        el("button", { class: "btn", onclick: () => { delete st.conflicts[k]; delete st.noteBase[k]; renderOverlay(); } }, "Use saved version"))) : null;
-    return el("div", { class: "notes", style: "margin-top:12px" }, el("div", { class: "tier" }, el("b", {}, "My notes")), conflict, ta,
-      el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn primary", disabled: busy || !can(), onclick: () => doNote(k, $("note").value) }, "Save note"),
-        el("button", { class: "btn", disabled: busy || !can() || !(e.note && e.note.text), onclick: () => doNote(k, null) }, "Delete note")),
-      saveLine(k, true),
-      el("div", { class: "foot" }, "Notes stay with the job through every search and update, and go into the interview hand-off."));
+        el("button", { class: "btn", onclick: () => { delete st.conflicts[k]; delete st.noteBase[k]; renderDetail(); } }, "Use saved version"))) : null;
+    return [el("h3", {}, ico("doc"), "My notes"), conflict, ta,
+      el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "btn sm primary", disabled: busy || !can(), onclick: () => doNote(k, $("note").value) }, "Save note"),
+        el("button", { class: "btn sm ghost", disabled: busy || !can() || !(e.note && e.note.text), onclick: () => doNote(k, null) }, "Delete note"), saveLine(k, true))];
   }
-  /* ----- My CVs (under Profile) ----- */
-  function renderCvs() {
+  /* ----- My CVs and Preferences (Profile) ----- */
+  function renderCvsBody() {
     const p = st.profile || {}; const cur = st.actions.get("_cvs") || {}; const edits = (cur.variants || {});
     const list = (p.cvs || []).map((c) => Object.assign({}, c, edits[c.key] || {}));
     const pending = Number(cur.rev || 0) > Number(p.cvs_synced_rev || 0);
@@ -830,70 +986,99 @@ const Core = (() => {
       const req = cur.requests && cur.requests.cv_file; const mine = req && req.params && req.params.cv === c.key; const known = mine && (p.cv_requests || {})[req.id];
       let fstate = null;
       if (known) fstate = { ok: known.state === "ready", text: (known.state === "ready" ? "Hunter has the file, unchanged: " : known.state === "needs_input" ? "" : "Hunter: ") + (known.message || known.state) + (known.state === "ready" ? " Ask Hunter in Claude to hand it to you." : "") };
-      else fstate = (st.reqStatus._cvs || {})[c.key] || (mine ? { ok: true, text: "Asked Hunter for the file (request " + req.id + "). In Claude: “/jobhunter continue " + req.id + "”." } : null);
+      else fstate = (st.reqStatus._cvs || {})[c.key] || (mine ? { ok: true, text: "Asked Hunter for the file. In Claude: “/jobhunter continue " + req.id + "”." } : null);
       return el("div", { class: "cvrow" + (c.archived ? " off" : "") },
         el("div", { class: "q" }, c.label, c.default ? el("span", { class: "pill p-applied", style: "margin-left:6px" }, "default") : null, c.profile_cv ? el("span", { class: "pill g-backup", style: "margin-left:6px" }, "your profile was built from this") : null, c.archived ? el("span", { class: "pill p-dismissed", style: "margin-left:6px" }, "archived") : null),
-        el("div", { class: "s" }, [c.filename, "version " + c.version, c.uploaded_at ? "uploaded " + fmtDay(c.uploaded_at) : null, c.file_available ? "file on Hunter’s computer" : "file not on Hunter’s computer"].filter(Boolean).join(" · ")),
+        el("div", { class: "s foot" }, [c.filename, "version " + c.version, c.uploaded_at ? "uploaded " + fmtDay(c.uploaded_at) : null, c.file_available ? "file on Hunter’s computer" : "file not on Hunter’s computer"].filter(Boolean).join(" · ")),
         (c.review || []).length ? el("div", { class: "conflict", role: "status" }, el("b", {}, "Check: "), c.review.join(" ")) : null,
-        el("div", { class: "actions", style: "grid-template-columns:1fr 1fr auto" }, label, tags, el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvEdit(c.key, { label: label.value.trim() || c.label, tags: tags.value.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean) }) }, "Save name")),
-        el("div", { class: "actions", style: "grid-template-columns:auto auto auto auto 1fr" },
+        el("div", { class: "actions" }, el("span", { style: "flex:1 1 140px" }, label), el("span", { style: "flex:1 1 140px" }, tags), el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvEdit(c.key, { label: label.value.trim() || c.label, tags: tags.value.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean) }) }, "Save name")),
+        el("div", { class: "actions" },
           c.default || c.archived ? null : el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvEdit(c.key, { default: true }) }, "Make default"),
           el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvEdit(c.key, { archived: !c.archived }) }, c.archived ? "Bring back" : "Archive"),
-          el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvFile(c.key) }, "Preview / download"),
-          el("span", { class: "foot" }, "To upload a new version, give the file to Hunter in Claude: “new version of " + c.label + "”.")),
+          el("button", { class: "btn sm", type: "button", disabled: !can(), onclick: () => doCvFile(c.key) }, "Preview / download")),
         fstate ? el("div", { class: "save " + (fstate.ok ? "ok" : "warn"), role: "status" }, fstate.text) : null);
     });
-    const box = el("div", { class: "box", style: "width:min(680px,100%)" }, el("h2", {}, "My CVs"),
-      el("p", { class: "s", style: "margin:0;color:var(--muted)" }, "One factual profile; several ways to present it. Hunter never rewrites a CV. Each upload is kept exactly as you sent it; a new version never replaces an old one, and applications remember which version you sent."),
-      pending ? el("div", { class: "save warn", role: "status" }, "Changes you made here wait for Hunter’s next run.") : null,
-      rows.length ? rows : el("p", { class: "s" }, "No CV on file yet."),
-      el("p", { class: "foot" }, "Add another CV: give the file to Hunter in Claude (drag it into the chat) and say what to call it, for example “Platform — English”. Files stay on the computer where Hunter runs, never on this page."),
-      el("div", { class: "actions" }, el("label", { class: "radio" }, el("input", { type: "checkbox", checked: st.cvsArchived, onchange: (ev) => { st.cvsArchived = ev.target.checked; renderOverlay(); } }), "Show archived"), el("button", { class: "btn", type: "button", onclick: () => { st.cvsOpen = false; renderOverlay(); } }, "Close")));
-    return [el("div", { class: "modal" }, box)];
+    return [pending ? el("div", { class: "save warn", role: "status" }, "Changes you made here wait for Hunter’s next run.") : null,
+      rows.length ? rows : el("p", { class: "foot" }, "No CV on file yet."),
+      el("p", { class: "foot", style: "margin:8px 0 0" }, "Hunter never rewrites a CV; every upload is kept exactly as sent and applications remember which version went out. To add a CV or a new version, give the file to Hunter in Claude."),
+      el("div", { class: "actions", style: "margin-top:6px" }, el("label", { class: "radio" }, el("input", { type: "checkbox", checked: st.cvsArchived, onchange: (ev) => { st.cvsArchived = ev.target.checked; render(); } }), "Show archived"))];
   }
-  function renderPrefs() {
+  function renderPrefsForm() {
     const p = st.profile || {}; const pr = p.prefs || {}; const cur = st.actions.get("_prefs") || {};
     const val = (k, fallback) => (k in st.prefsDraft ? st.prefsDraft[k] : (cur[k] != null ? cur[k] : fallback));
     const keep = (ev) => { st.prefsDraft[ev.target.name] = ev.target.value; };
     const modeText = (pr.remote === "required") ? "remote only" : (pr.work_modes && pr.work_modes.length === 2 && !pr.work_modes.includes("onsite")) ? "remote preferred, hybrid ok, never fully on-site" : (pr.remote === "preferred") ? "remote preferred" : (pr.remote === "no_preference") ? "don't mind" : "";
-    const form = el("form", { onsubmit: (ev) => { ev.preventDefault(); doPrefs(new FormData(ev.target)); } },
-      el("div", { class: "box" }, el("h2", {}, "Preferences"),
-        el("p", { class: "s", style: "margin:0;color:var(--muted)" }, "Hunter applies these on its next run and re-checks every job."),
-        el("label", {}, "Where you live", el("input", { type: "text", name: "location", id: "pf-location", value: val("location", pr.location || ""), oninput: keep })),
-        el("label", {}, "Countries you can work in", el("input", { type: "text", name: "countries", id: "pf-countries", placeholder: "for example: Netherlands, Germany or EU", value: val("countries", pr.countries_text || ""), oninput: keep })),
-        el("label", {}, "Lowest pay you’d be happy with (leave empty to skip)", el("input", { type: "text", name: "salary", id: "pf-salary", placeholder: "for example: 55000 EUR a year", value: val("salary", pr.salary_text || ""), oninput: keep })),
-        el("label", {}, "Remote work", (() => { const s = el("select", { name: "remote", id: "pf-remote", onchange: keep }); for (const o of ["remote only", "remote preferred, hybrid ok, never fully on-site", "remote preferred", "hybrid ok, never fully on-site", "don't mind"]) s.append(el("option", { value: o, selected: val("remote", modeText) === o }, o)); return s; })()),
-        st.prefsStatus ? el("div", { class: "save " + (st.prefsStatus.ok ? "ok" : "err"), role: "status" }, st.prefsStatus.text) : null,
-        el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Save"), el("button", { class: "btn", type: "button", onclick: () => { st.prefsOpen = false; st.prefsStatus = null; st.prefsDraft = {}; renderOverlay(); } }, "Close"))));
-    return [el("div", { class: "modal" }, form)];
+    const pendingPrefs = Number(cur.rev || 0) > Number(p.prefs_synced_rev || 0);
+    return el("form", { onsubmit: (ev) => { ev.preventDefault(); doPrefs(new FormData(ev.target)); }, style: "display:grid;gap:10px" },
+      el("label", {}, "Where you live", el("input", { type: "text", name: "location", id: "pf-location", "data-keep": true, value: val("location", pr.location || ""), oninput: keep })),
+      el("label", {}, "Countries you can work in", el("input", { type: "text", name: "countries", id: "pf-countries", "data-keep": true, placeholder: "for example: Netherlands, Germany or EU", value: val("countries", pr.countries_text || ""), oninput: keep })),
+      el("label", {}, "Lowest pay you’d be happy with (leave empty to skip)", el("input", { type: "text", name: "salary", id: "pf-salary", "data-keep": true, placeholder: "for example: 55000 EUR a year", value: val("salary", pr.salary_text || ""), oninput: keep })),
+      el("label", {}, "Remote work", (() => { const s = el("select", { name: "remote", id: "pf-remote", "data-keep": true, onchange: keep }); for (const o of ["remote only", "remote preferred, hybrid ok, never fully on-site", "remote preferred", "hybrid ok, never fully on-site", "don't mind"]) s.append(el("option", { value: o, selected: val("remote", modeText) === o }, o)); return s; })()),
+      st.prefsStatus ? el("div", { class: "save " + (st.prefsStatus.ok ? "ok" : "err"), role: "status" }, st.prefsStatus.text) : (pendingPrefs ? el("div", { class: "save warn", role: "status" }, "New preferences saved; Hunter applies them on its next run.") : null),
+      el("div", { class: "actions" }, el("button", { class: "btn primary", type: "submit", disabled: !can() }, "Save"), el("span", { class: "foot" }, "Hunter re-checks every job with these on its next run.")));
   }
-  function renderOverlay() {
-    const o = $("overlay");
+  /* ---------- detail column, focus and keyboard ---------- */
+  function renderDetail() {
+    const o = $("detailCol"); const k = st.sel; const j = k && st.jobs.get(k);
     const active = document.activeElement; const keep = active && o.contains(active) && active.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
-    const body = $("dbody"); const scroll = body ? body.scrollTop : 0;
-    // What the person typed into a form that is not yet saved survives a re-render (a snapshot from Hunter, a status line).
+    const body = $("dbody"); const scroll = body ? body.scrollTop : 0; const colScroll = o.scrollTop;
     const kept = {}; for (const n of o.querySelectorAll("[data-keep][id]")) kept[n.id] = n.type === "radio" || n.type === "checkbox" ? { checked: n.checked } : { value: n.value };
-    const parts = st.prefsOpen ? renderPrefs() : st.cvsOpen ? renderCvs() : (renderDrawer() || []);
-    o.replaceChildren(...parts);
+    $("app").classList.toggle("has-sel", !!j);
+    if (!j) { o.replaceChildren(el("div", { class: "detail placeholder", "aria-label": "No job selected" }, el("div", {}, el("div", { style: "font-family:var(--display);font-weight:700;font-size:16px;color:var(--ink-2)" }, "Pick a job"), el("div", { class: "foot", style: "margin-top:4px" }, "You will see what it is, why it matters and what to do next.")))); return; }
+    const parts = st.ws ? renderWorkspace(k, j) : renderJob(k, j);
+    o.replaceChildren(el("aside", { class: "detail", role: "dialog", "aria-modal": "false", "aria-label": (st.ws ? "Your application: " : "") + (j.title || "Job"), id: "detail" }, ...parts));
     for (const n of o.querySelectorAll("[data-keep][id]")) { const v = kept[n.id]; if (!v) continue; if ("checked" in v) n.checked = v.checked; else if (n.value !== v.value) n.value = v.value; }
-    document.body.style.overflow = parts.length ? "hidden" : "";
-    const nb = $("dbody"); if (nb && scroll) nb.scrollTop = scroll;
+    const nb = $("dbody"); if (nb && scroll) nb.scrollTop = scroll; if (colScroll) o.scrollTop = colScroll;
     if (keep) { const n = $(keep.id); if (n) { n.focus({ preventScroll: true }); if (typeof keep.start === "number" && n.setSelectionRange) { try { n.setSelectionRange(keep.start, keep.end); } catch {} } } }
+  }
+  function select(k, workspace) {
+    const row = document.activeElement && document.activeElement.closest && document.activeElement.closest(".row,.approw");
+    st.lastRow = k; st.sel = k; st.ws = !!workspace && Core.mainAction(work(k), act(k)).kind !== "prepare"; st.descOpen = false; st.askApplied = null; st.addContact = null;
+    render();
+    const d = $("detailCol"); d.scrollTop = 0;
+    if (row || window.matchMedia("(max-width:900px)").matches) { const h = d.querySelector(".dhead h2, .dhead button"); if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); } }
+  }
+  function closeDetail() {
+    const k = st.sel; st.sel = null; st.ws = false; st.askApplied = null; render();
+    const row = k ? document.querySelector(".row[data-key='" + k + "'],.approw[data-key='" + k + "']") : null;
+    if (row) row.focus();
+  }
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape" || !st.sel) return;
+    const t = ev.target; if (t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && t.type === "text")) && t.value && t.closest(".conflict")) return;
+    if (st.ws) { st.ws = false; renderDetail(); const b = $("detailCol").querySelector(".dhead button"); if (b) b.focus(); } else closeDetail();
+  });
+  function markOpened(k) {
+    const w = work(k); const e = act(k) || {};
+    if (!st.ws || !w || !w.package || w.state !== "prepared" || e.opened_at || !can() || (st.openedSent && st.openedSent[k])) return;
+    (st.openedSent = st.openedSent || {})[k] = true;
+    doField(k, "opened_at", new Date().toISOString());
   }
   window.addEventListener("beforeunload", (ev) => {
     const dirty = Object.keys(st.drafts).length > 0 || Object.keys(st.conflicts).length > 0 || Object.keys(st.prefsDraft).length > 0
       || Object.values(st.answerDrafts).some((d) => Object.keys(d).length) || Object.values(st.textDrafts).some((d) => Object.keys(d).length);
     if (dirty) { ev.preventDefault(); ev.returnValue = "You have unsaved text."; }
   });
-  function render() { renderBar(); renderNotice(); renderWho(); renderToday(); renderMetrics(); renderPicks(); renderAttention(); renderTools(); renderList(); renderOverlay(); }
-  function select(k) { st.sel = k; st.prefsOpen = false; st.cvsOpen = false; st.askApplied = null; st.addContact = null; st.section = "overview"; render(); }
+  function renderListCol() {
+    const o = $("listCol");
+    const active = document.activeElement; const keep = active && o.contains(active) && active.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
+    const kept = {}; for (const n of o.querySelectorAll("[data-keep][id]")) kept[n.id] = n.type === "radio" || n.type === "checkbox" ? { checked: n.checked } : { value: n.value };
+    const scroll = o.scrollTop;
+    const parts = { today: renderTodayView, jobs: renderJobsView, applications: renderApplicationsView, profile: renderProfileView }[st.view]();
+    o.replaceChildren(...parts.flat().filter(Boolean));
+    if (st.view === "jobs") renderList();
+    for (const n of o.querySelectorAll("[data-keep][id]")) { const v = kept[n.id]; if (!v) continue; if ("checked" in v) n.checked = v.checked; else if (n.value !== v.value) n.value = v.value; }
+    o.scrollTop = scroll;
+    if (keep) { const n = $(keep.id); if (n) { n.focus({ preventScroll: true }); if (typeof keep.start === "number" && n.setSelectionRange) { try { n.setSelectionRange(keep.start, keep.end); } catch {} } } }
+  }
+  function render() { renderNav(); renderListCol(); renderDetail(); }
   async function copyText(text) { try { await navigator.clipboard.writeText(text); } catch {} }
 
-  /* ---------- writes ---------- */
+  /* ---------- writes: every control uses Hunter's real documents and services ---------- */
   const nextOp = (k) => (st.ops[k] = (st.ops[k] || 0) + 1);
   async function doFlag(k, field, value) {
     const op = nextOp(k);
-    st.saving[k] = { status: "saving" }; renderOverlay();
+    st.saving[k] = { status: "saving" }; renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.setFlag(k, field, value, eff(k)), TAB_ID, { blank: Core.blankAction(k) });
     if (st.ops[k] !== op) return;  // a newer operation owns the status line now
     if (res.status === "saved") st.actions.set(k, res.doc);  // what the database now holds; the snapshot confirms it
@@ -902,7 +1087,7 @@ const Core = (() => {
   async function doNote(k, text) {
     const op = nextOp(k);
     const e = eff(k); const base = k in st.noteBase ? st.noteBase[k] : ((e.note && Number(e.note.rev)) || 0);
-    st.saving[k] = { status: "saving" }; renderOverlay();
+    st.saving[k] = { status: "saving" }; renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.saveNote(k, base, text, e), TAB_ID, { blank: Core.blankAction(k) });
     if (st.ops[k] !== op) return;
     if (res.status === "conflict") { const n = (res.current && res.current.note) || null; st.conflicts[k] = { mine: text || "", theirs: n && n.text, theirsRev: (n && n.rev) || 0 }; }
@@ -913,13 +1098,12 @@ const Core = (() => {
     const fields = { location: String(fd.get("location") || "").slice(0, 200), countries: String(fd.get("countries") || "").slice(0, 200), salary: String(fd.get("salary") || "").slice(0, 100), remote: String(fd.get("remote") || "").slice(0, 100) };
     const res = await Core.commit(st.db, "actions/_prefs", Core.setPrefs(fields), TAB_ID, { blank: { job_key: "_prefs", rev: 0 } });
     if (res.status === "saved") { st.prefsDraft = {}; st.actions.set("_prefs", res.doc); }
-    st.prefsStatus = res.status === "saved" ? { ok: true, text: "Saved to your dashboard. Waiting for Hunter: it applies this on its next run." } : { ok: false, text: "Couldn't save (" + (res.code || res.status) + "). Your changes are still on screen; try again." };
+    st.prefsStatus = res.status === "saved" ? { ok: true, text: "Saved to your dashboard. Hunter applies this on its next run." } : { ok: false, text: "Couldn't save (" + (res.code || res.status) + "). Your changes are still on screen; try again." };
     render();
   }
-  /* ---------- workspace writes ---------- */
   async function doField(k, field, value, extra) {
     const op = nextOp(k);
-    st.saving[k] = { status: "saving" }; renderOverlay();
+    st.saving[k] = { status: "saving" }; renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.setFields(k, Object.assign({ [field]: value }, extra || {}), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
     if (st.ops[k] !== op) return;
     if (res.status === "saved") st.actions.set(k, res.doc);
@@ -927,7 +1111,7 @@ const Core = (() => {
   }
   async function doRequest(k, kind, params) {
     const id = Core.requestId(kind);
-    st.reqStatus[k] = Object.assign({}, st.reqStatus[k], { [kind]: { status: "sending" } }); renderOverlay();
+    st.reqStatus[k] = Object.assign({}, st.reqStatus[k], { [kind]: { status: "sending" } }); renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.setRequest(k, kind, id, params, eff(k)), TAB_ID, { blank: Core.blankAction(k) });
     if (res.status !== "saved") { st.reqStatus[k][kind] = { status: "error", code: res.code || res.status }; st.saving[k] = { status: res.status, code: res.code, retry: () => doRequest(k, kind, params) }; render(); return; }
     st.actions.set(k, res.doc);
@@ -948,7 +1132,7 @@ const Core = (() => {
   async function doAnswer(k, aid, text) {
     const base = Number((((act(k) || {}).answers || {})[aid] || {}).rev || 0);
     const wa = ((((work(k) || {}).package || {}).answers) || []).find((x) => x.id === aid); const theirs = Number(((wa && wa.user) || {}).rev || 0);
-    (st.answerStatus[k] = st.answerStatus[k] || {})[aid] = { ok: true, text: "Saving…" }; renderOverlay();
+    (st.answerStatus[k] = st.answerStatus[k] || {})[aid] = { ok: true, text: "Saving…" }; renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.saveAnswer(k, aid, text, Math.max(base, theirs), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
     if (res.status === "saved") { st.actions.set(k, res.doc); if (st.answerDrafts[k]) delete st.answerDrafts[k][aid]; st.answerStatus[k][aid] = { ok: true, text: "Saved to your dashboard. Hunter keeps it on its next run." }; }
     else if (res.status === "conflict") st.answerStatus[k][aid] = { ok: false, text: "This answer changed in another tab or device. Nothing was overwritten; copy your text, reload, and paste it again." };
@@ -958,7 +1142,7 @@ const Core = (() => {
   async function doText(k, kind, text) {
     const base = Number((((act(k) || {}).texts || {})[kind] || {}).rev || 0);
     const w = work(k); const theirs = Number(((((w && w.package && w.package.optional) || {})[kind] || {}).user_text || {}).rev || 0);
-    (st.textStatus[k] = st.textStatus[k] || {})[kind] = { ok: true, text: "Saving…" }; renderOverlay();
+    (st.textStatus[k] = st.textStatus[k] || {})[kind] = { ok: true, text: "Saving…" }; renderDetail();
     const res = await Core.commit(st.db, "actions/" + k, Core.saveText(k, kind, text, Math.max(base, theirs), eff(k)), TAB_ID, { blank: Core.blankAction(k) });
     if (res.status === "saved") { st.actions.set(k, res.doc); if (st.textDrafts[k]) delete st.textDrafts[k][kind]; st.textStatus[k][kind] = { ok: true, text: "Saved to your dashboard. Hunter keeps it on its next run." }; }
     else st.textStatus[k][kind] = { ok: false, text: res.status === "conflict" ? "Changed in another tab or device. Nothing was overwritten." : "Couldn't save (" + (res.code || res.status) + "). Your text is still here." };
@@ -986,16 +1170,16 @@ const Core = (() => {
     const res = await Core.commit(st.db, "actions/_cvs", Core.setCv(key, fields), TAB_ID, { blank: { job_key: "_cvs", variants: {}, rev: 0 } });
     if (res.status === "saved") st.actions.set("_cvs", res.doc);
     (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = res.status === "saved" ? { ok: true, text: "Saved to your dashboard. Hunter applies it on its next run." } : { ok: false, text: "Couldn't save (" + (res.code || res.status) + ")." };
-    renderOverlay();
+    render();
   }
   async function doCvFile(key) {
     const id = Core.requestId("cv_file");
     const res = await Core.commit(st.db, "actions/_cvs", Core.setCvRequest(key, id), TAB_ID, { blank: { job_key: "_cvs", variants: {}, rev: 0 } });
-    if (res.status !== "saved") { (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = { ok: false, text: "Couldn't save the request (" + (res.code || res.status) + ")." }; renderOverlay(); return; }
+    if (res.status !== "saved") { (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = { ok: false, text: "Couldn't save the request (" + (res.code || res.status) + ")." }; render(); return; }
     st.actions.set("_cvs", res.doc);
     const reached = await reachHunter(id);
     (st.reqStatus._cvs = st.reqStatus._cvs || {})[key] = reached.status === "sent" ? { ok: true, text: "Asked Hunter for the file. It hands it to you in Claude (the file never goes on this page)." } : { ok: true, text: "Files stay with Hunter. In Claude, say “/jobhunter continue " + id + "” and Hunter hands you the original file, or tells you to add it again if it is not on that computer." };
-    renderOverlay();
+    render();
   }
   function rebuildJobs() {
     const n = st.run ? Number(st.run.shards) : Infinity; const jobs = new Map();
@@ -1021,3 +1205,5 @@ const Core = (() => {
   boot();
 })();
 </script>
+</body>
+</html>

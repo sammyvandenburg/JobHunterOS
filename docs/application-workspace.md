@@ -37,6 +37,18 @@ homepage stays about finding jobs; the work of applying starts from a job.
    default, Archive, rename; **Preview / download** asks Hunter for the original bytes (hash checked), which
    Hunter hands over in Claude; a file that is not on that computer gets "Add this CV again".
 
+## The dashboard layout (2026-10-25 redesign)
+A dark navigation rail with four destinations (Today, Jobs, Applications, Profile; Settings opens the profile's
+settings section), the job list on the left and the selected job beside it on a desktop, full screen on a phone.
+Rows carry the employer's mark (its own favicon from a verified domain, otherwise initials), a short place and
+work-mode label, the posting age, the match badge and two to four role and tool tags; the role icon library
+(`jobhunter/services/roles.py`, twenty families) and the company mark are recognition aids with no influence on
+matching. The job detail has Favorite, Save and Close at the top, one primary action with Open application beside
+it, Job overview next to "Why this could be a good fit", the description folded, the application state and the
+notes. The application workspace is a stepped view behind **Continue application** (CV, strongest case, questions,
+optional extras with people, Ready?). Logos are requested only from the employer's verified domain and cached by
+the browser; a missing logo never blocks a job.
+
 ## The page reaches Hunter
 Published-page action → the request is in the page's database (never lost) → Hunter reads it in its next sync
 (`board import`), runs it (`work run`), writes the result (`board export`) → the same page updates (its `work`

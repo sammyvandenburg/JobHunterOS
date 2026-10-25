@@ -92,23 +92,25 @@ def test_prepare_application_from_the_page_reaches_hunter_and_comes_back_to_the_
         context, page, errors = _open(browser, site["url"])
         _open_job(page, nw)
         dialog = page.get_by_role("dialog")
-        assert dialog.get_by_role("button", name="Prepare application").count() >= 1
+        assert dialog.get_by_role("button", name="Prepare my application").count() >= 1
         assert dialog.get_by_role("link", name="Open application").count() >= 1  # always there
-        dialog.get_by_role("button", name="Prepare application").first.click()
+        dialog.get_by_role("button", name="Prepare my application").first.click()
         assert _wait(lambda: (((fake.doc(f"actions/{nw}") or {}).get("requests") or {}).get("prepare") or {}).get("id", "").startswith("prepare:"))
         req_id = fake.doc(f"actions/{nw}")["requests"]["prepare"]["id"]
         # No direct line on this page: the request is saved and the person can continue in Claude now; never silent.
-        assert _wait(lambda: "Hunter does this on its next run" in dialog.inner_text())
-        assert dialog.get_by_role("button", name="Continue in Claude now").count() == 1
+        assert _wait(lambda: "Hunter picks this up on its next run" in dialog.inner_text())
+        assert dialog.get_by_role("button", name="Continue this request in Claude").count() == 1  # only after a task was started
         assert dialog.get_by_role("button", name="Continue application").count() >= 1
         # Hunter runs (read, do, write): the same open page shows the preparation.
         res, done, _ = _sync(ctx, db, site, 1)
         assert res["applied"][0]["changes"] == ["request:prepare"] and done[0]["request_id"] == req_id and done[0]["state"] == "ready"
-        assert _wait(lambda: "Company and role brief" in dialog.inner_text() and "Your strongest case" in dialog.inner_text())
+        assert _wait(lambda: dialog.get_by_role("button", name="Continue this request in Claude").count() == 0)
+        dialog.get_by_role("button", name="Continue application").first.click()  # the focused application workspace
+        assert _wait(lambda: "Your strongest case" in dialog.inner_text())
+        dialog.get_by_text("Company and role brief").click()
         text = dialog.inner_text()
-        assert "The vacancy says" in text and "Sources" in text and "They ask for" in text and "Application answers" in text
+        assert "The vacancy says" in text and "Sources" in text and "They ask for" in text and "Application questions" in text
         assert "Prepared " in text and "version 1" in text
-        assert dialog.get_by_role("button", name="Continue in Claude now").count() == 0
         assert page.locator(f"button.row[data-key='{nw}']").inner_text().find("In progress") >= 0
         # The CV picker: default preselected, Hunter's one-line suggestion for the platform CV.
         assert "Hunter suggests “Platform — English”" in text and page.locator("#cv-select").input_value() != ""
@@ -156,7 +158,7 @@ def test_i_applied_records_the_cv_and_the_follow_up_has_a_changeable_date(site, 
         _open_job(page, nw)
         dialog = page.get_by_role("dialog")
         assert _wait(lambda: "Continue application" in dialog.inner_text())
-        # Opening the listing and copying never count as applied.
+        # Opening the job and copying never count as applied (nothing is written by looking).
         assert fake.doc(f"actions/{nw}") is None
         dialog.get_by_role("button", name="I applied").first.click()
         form = dialog.locator("form.applied")
@@ -197,11 +199,14 @@ def test_contacts_are_found_on_request_named_by_the_person_and_only_confirmed_by
     from playwright.sync_api import sync_playwright
 
     fake, nw, jid = site["fake"], site["nw"], site["jid"]
+    workspace.run_request(ctx, db, workspace.request(db, jid, "prepare", {}, request_id="prepare:seed")["request_id"])
+    _sync(ctx, db, site, 0)
     with sync_playwright() as p:
         browser = _browser(p)
         context, page, errors = _open(browser, site["url"])
         _open_job(page, nw)
         dialog = page.get_by_role("dialog")
+        dialog.get_by_role("button", name="Continue application").first.click()  # people live in the application workspace
         dialog.get_by_role("button", name="Find a contact").click()
         assert _wait(lambda: (((fake.doc(f"actions/{nw}") or {}).get("requests") or {}).get("contact") or {}).get("id"))
         res, done, _ = _sync(ctx, db, site, 1)
@@ -242,15 +247,15 @@ def test_my_cvs_under_profile_edits_reach_hunter_and_files_stay_with_hunter(site
     with sync_playwright() as p:
         browser = _browser(p)
         context, page, errors = _open(browser, site["url"])
-        page.get_by_role("button", name="My CVs (2)").click()
-        box = page.locator("#overlay .box")
+        page.get_by_role("button", name="Profile", exact=True).click()
+        box = page.locator("#sec-cvs")
         text = box.inner_text()
         assert "My CV" in text and "Platform — English" in text and "default" in text and "version 1" in text and "your profile was built from this" in text
         plat = next(c for c in fake.doc("meta/profile")["cvs"] if c["label"] == "Platform — English")
         box.get_by_role("button", name="Make default").click()
         assert _wait(lambda: (((fake.doc("actions/_cvs") or {}).get("variants") or {}).get(plat["key"]) or {}).get("default") is True)
         page.locator(f"#cvt-{plat['key']}").fill("platform, english, kubernetes")
-        page.locator(f"#cvl-{plat['key']}").locator("xpath=following-sibling::*[2]").click()  # Save name
+        page.locator(f"#cvt-{plat['key']}").locator("xpath=ancestor::div[contains(@class,'cvrow')]").get_by_role("button", name="Save name").click()
         assert _wait(lambda: (((fake.doc("actions/_cvs") or {}).get("variants") or {}).get(plat["key"]) or {}).get("tags") == ["platform", "english", "kubernetes"])
         assert "wait for Hunter" in box.inner_text()
         box.get_by_role("button", name="Preview / download").first.click()
@@ -278,17 +283,18 @@ def test_a_direct_line_sends_the_request_to_hunter_and_a_refused_line_falls_back
         context, page, errors = _open(browser, site["url"], extra_script=MCP_STUB)
         _open_job(page, nw)
         dialog = page.get_by_role("dialog")
-        dialog.get_by_role("button", name="Prepare application").first.click()
+        dialog.get_by_role("button", name="Prepare my application").first.click()
         assert _wait(lambda: "Sent to Hunter in your Claude account" in dialog.inner_text())
         calls = page.evaluate("window.__mcpCalls")
         req_id = fake.doc(f"actions/{nw}")["requests"]["prepare"]["id"]
         assert calls == [{"server": "Claude Code Remote", "tool": "fire_trigger", "input": {"trigger_id": "trig_01TEST", "text": "/jobhunter continue " + req_id}}]
-        assert dialog.get_by_role("button", name="Continue in Claude now").count() == 0
+        assert dialog.get_by_role("button", name="Continue this request in Claude").count() == 0
         # The connector refuses: the request is still saved and the page says so, with the way to continue.
         page.evaluate("window.__mcpFail = 'server_not_connected'")
+        dialog.get_by_role("button", name="Continue application").first.click()
         dialog.get_by_role("button", name="Find a contact").click()
         assert _wait(lambda: "Direct line: server_not_connected" in dialog.inner_text())
-        assert dialog.get_by_role("button", name="Continue in Claude now").count() == 1
+        assert dialog.get_by_role("button", name="Continue this request in Claude").count() == 1
         assert (fake.doc(f"actions/{nw}")["requests"]["contact"]["id"]).startswith("contact:")
         assert not errors, errors
         context.close()
@@ -312,10 +318,12 @@ def test_the_same_page_works_at_phone_and_desktop_widths(site, ctx, db):
             assert box["width"] <= width + 1 and (width > 860 or box["width"] >= width - 1)
             assert dialog.get_by_role("button", name="Continue application").first.is_visible()
             assert dialog.get_by_role("link", name="Open application").first.is_visible()
-            for label in ("Overview", "My application", "People & notes"):
-                dialog.locator(".secnav").get_by_role("button", name=label).click()
-            assert dialog.locator("#sec-app").is_visible() and "Company and role brief" in dialog.inner_text()
+            assert dialog.locator(".secnav").count() == 0  # no tabs inside the job
+            dialog.get_by_role("button", name="Continue application").first.click()
+            assert _wait(lambda d=dialog: "Your strongest case" in d.inner_text())
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+            dialog.get_by_role("button", name="Back to job").click()
+            assert _wait(lambda d=dialog: "Job overview" in d.inner_text())
             assert not errors, (width, errors)
             context.close()
         browser.close()
@@ -336,14 +344,14 @@ def test_today_shows_what_hunter_prepared_and_opening_it_counts_as_seen(site, ct
     with sync_playwright() as p:
         browser = _browser(p)
         context, page, errors = _open(browser, site["url"])
-        sec = page.locator("#today")
-        assert _wait(lambda: not sec.is_hidden() and "Ready to review (1)" in sec.inner_text())
+        sec = page.locator("#listCol")
+        assert _wait(lambda: "needs your attention" in sec.inner_text().lower() and "Hunter prepared" in sec.inner_text())
         text = sec.inner_text()
-        assert "Hunter prepares your best matches: 1 today" in text and "1 waiting for you" in text and "Hunter prepared" in text
+        assert ("ready for review" in text or "ready to submit" in text) and "Hunter prepared 1 today" in text
         assert sec.get_by_role("button", name="Open").count() == 1
         sec.get_by_role("button", name="Open").click()
         dialog = page.get_by_role("dialog")
-        assert _wait(lambda: "Hunter prepared this for you after a search; nothing was sent." in dialog.inner_text())
+        assert _wait(lambda: "by Hunter after a search" in dialog.inner_text())
         assert "Ready to submit" in dialog.inner_text() or "Ready for review" in dialog.inner_text()
         assert _wait(lambda: bool((fake.doc(f"actions/{key}") or {}).get("opened_at")))
         res, _, _ = _sync(ctx, db, site, 7)

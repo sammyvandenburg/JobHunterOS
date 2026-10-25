@@ -76,30 +76,30 @@ to allow the connector. `board channel none` removes it. Never claim the line wo
 the page came back `ready` on the page.
 
 ## What the page does on its own
-- Shows a one-line profile (headline, where, arrangement, years from dated paid work), four counters, Top
-  picks (best five, different employers first, each with "Why" and "Check"), what needs attention (only what
-  the data shows), and the full list with search and chips: Good matches, Worth a shot, Backup options,
-  Needs checking, Older, Favorites, Saved, Applied, Not interested. A job opens in a drawer with
-  Opportunity, Why it fits, Next actions, My notes (add, edit, delete) and the description with links.
-- Its bar says when the last search finished, when Hunter last synced, how many changes wait for Hunter,
-  the next search only when a worker is really running, and whether email is on.
-- "Edit preferences" on the page writes `actions/_prefs` (where they live, countries, lowest pay, remote).
-  `board import` applies it through the same parser as setup and reports "rejected: …" when it cannot;
-  tell them in one line what changed. Until the next sync the page shows "new preferences: Hunter next run".
-- Favorite, Save, Not interested, and a private note per job: saved immediately, marked "waiting for Hunter"
-  until the next sync applies them.
-- One job page with three sections, Overview, My application, People & notes, and one main action: **Prepare
-  application** → **Continue application** → **View application**; "Open application" is always there. My
-  application holds the CV choice for this job (default preselected, one-reason suggestion), the company and
-  role brief with its Sources, the vacancy and where to apply, Your strongest case, the answers in the student's
-  own wording (Save my wording, Copy, limits, questions pasted from the form), the optional introduction and
-  cover letter with "Facts used", the checklist, **I applied** (date and which CV: prepared, another, not sure),
-  the follow-up reminder (date, Snooze, Done, Stop) and "Prepare for interview". People & notes: Find a contact,
-  Add someone you know, a drafted message, "I contacted them", and the notes.
-- **My CVs** under Profile: each CV's name, tags, version, default, whether the file is on Hunter's computer;
-  Make default, Archive, rename, Preview / download (Hunter hands the file over in Claude; files never go on the page).
-- Survives closing and reopening: the data lives in the page's database, not in the browser.
-- Works for the owner only. Signed-out visitors see a sign-in message; others see nothing.
+- Four destinations in a dark rail (Today, Jobs, Applications, Profile; Settings opens the profile's
+  settings): the job list on the left, the selected job beside it on a desktop, full screen on a phone.
+- **Today** opens first: Top picks (three to five, best first, different employers first among equals),
+  Needs your attention (only real items from `meta/today`: ready to review, a question only they can answer,
+  a follow-up due, a saved job that changed, a failed task) and a line of recent activity.
+- **Jobs**: search and one filter (All recommended, Good matches, Worth a shot, Backup options, Needs
+  checking, Older, Favorites, Saved, Applied, Not interested, Everything). Each row: the employer's mark (its
+  own favicon from a verified domain, else initials), title, employer, a short place and work-mode label,
+  posting age, the match badge and two to four role and tool tags. No matching paragraphs in the list.
+- **A job**: role icon, title, employer, place, match badge; Favorite, Save and Close together at the top;
+  then "Get help with this application" with one main action (**Prepare my application** → **Continue
+  application** → **View application**) and **Open application** beside it, visible without scrolling; Job
+  overview and "Why this could be a good fit" side by side (reasons from evidence, things to check); the
+  description folded; "Your application" (state, CV sent, follow-up, **I applied**); My notes. No tabs.
+- **Continue application** opens the focused workspace: 1 Your CV, 2 Your strongest case (with the brief),
+  3 Application questions, 4 Optional extras (introduction, cover letter, people), 5 Ready? (checklist,
+  destination, Open application). Back to job returns; Escape closes.
+- **Applications**: one pipeline (Preparing, Ready, Applied, Interview, Closed) with the CV used, dates,
+  the follow-up and the next action. **Profile**: the approved profile, Preferences (writes `actions/_prefs`),
+  My CVs (writes `actions/_cvs`), connected services and Hunter settings as they really are.
+- Favorite, Save, a private note, I applied, follow-ups, answers, CV choice and every request are saved to
+  the page's own database at once and marked as waiting until the next sync applies them. A request shows
+  "Continue this request in Claude" only when the page has no direct line to Hunter.
+- Its status chips say when Hunter last synced, how many changes wait, and a running search, never more.
 
 ## If something is off
 - "Hunter hasn't synced yet" on the page: run a sync.

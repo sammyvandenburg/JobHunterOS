@@ -233,7 +233,7 @@ def test_unsaved_preference_edits_survive_a_snapshot(site):
     with sync_playwright() as p:
         browser = _browser(p)
         context, page, errors = _open(browser, site["url"])
-        page.get_by_role("button", name="Preferences").first.click()
+        page.get_by_role("button", name="Profile", exact=True).click()
         page.wait_for_selector("input#pf-salary")
         page.locator("input#pf-salary").fill("75000 EUR a year")
         page.locator("input#pf-location").fill("Groningen, Netherlands")
@@ -243,7 +243,7 @@ def test_unsaved_preference_edits_survive_a_snapshot(site):
         time.sleep(0.5)
         assert page.locator("input#pf-salary").input_value() == "75000 EUR a year"
         assert page.locator("input#pf-location").input_value() == "Groningen, Netherlands"
-        page.locator("#overlay").get_by_role("button", name="Save", exact=True).click()
+        page.locator("#sec-prefs").get_by_role("button", name="Save", exact=True).click()
         assert _wait(lambda: (fake.doc("actions/_prefs") or {}).get("salary") == "75000 EUR a year")
         assert not errors, errors
         context.close()

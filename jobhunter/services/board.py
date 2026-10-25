@@ -190,15 +190,41 @@ def _canonical(db: Database, job_id: int) -> str:
     return row["canonical_key"] if row else str(job_id)
 
 
-def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[str], which: str = "recommended") -> dict:
-    row = db.fetchone("SELECT canonical_key, description_text, country_codes_json, employment_type FROM jobs WHERE id = ?", (it["id"],))
+def _tags(title: str | None, description: str | None, profile_skills: set[str], role_tag: str) -> list[str]:
+    """Two to four small tags for a card: the role family, then the tools the posting names (the ones in the
+    person's profile first). Recognition only, never a score."""
+    from jobhunter.services.matching.scoring import tool_label
+    from jobhunter.services.matching.skills import extract_skills
+
+    found = extract_skills(f"{title or ''}\n{(description or '')[:4000]}", implied=False)
+    mine = [t for t in sorted(found) if t in profile_skills]
+    rest = [t for t in sorted(found) if t not in profile_skills]
+    tools = [tool_label(t) for t in (mine + rest)][:3]
+    out = [role_tag] + [t for t in tools if t.lower() != role_tag.lower()]
+    return out[:4]
+
+
+def _doc(db: Database, it: dict, synced: dict[str, dict], recommended_keys: set[str], which: str = "recommended", profile_skills: set[str] | None = None) -> dict:
+    from jobhunter.services import roles
+
+    row = db.fetchone("SELECT canonical_key, description_text, country_codes_json, employment_type, direct_url, direct_url_status, employer_confidential FROM jobs WHERE id = ?", (it["id"],))
     key = job_key(row["canonical_key"])
     note = notes.latest_for_job(db, it["id"])
+    role = roles.role_family(it["title"])
+    short, places = roles.short_location(it.get("location"), it.get("remote_type_label"), it.get("remote_restriction"))
+    desc = row.get("description_text") or ""
+    lead = next((p.strip() for p in re.split(r"\n\s*\n", desc) if p.strip()), "")
     return {
         "key": key,
         "list": which,
         "title": it["title"],
         "employer": it["employer"],
+        "role": role,
+        "tags": _tags(it["title"], desc, profile_skills or set(), role["tag"]),
+        "logo": roles.company_mark(it["employer"], row.get("direct_url"), row.get("direct_url_status"), bool(row.get("employer_confidential"))),
+        "location_short": short,
+        "locations": places,
+        "description_lead": truncate(lead, 360),
         "location": it["location"],
         "remote_type": it.get("remote_type"),
         "remote_label": it.get("remote_type_label") or "",
@@ -480,7 +506,11 @@ def export(ctx: AppContext, db: Database, out_dir: str | Path, limit: int = RECO
     synced = {r["job_key"]: r for r in db.fetchall("SELECT * FROM board_sync")}
     items, recommended, lists = _selected(db, limit)
     rec_set = set(recommended)
-    docs = [_doc(db, it, synced, rec_set, lists.get(it["id"], "acted")) for it in items]
+    prof = profile_svc.approved(db)
+    from jobhunter.services.matching.skills import extract_skills
+
+    profile_skills = extract_skills("\n".join(f.text for f in (prof["facts"] if prof else []) if f.status != "rejected"), implied=False) if prof else set()
+    docs = [_doc(db, it, synced, rec_set, lists.get(it["id"], "acted"), profile_skills) for it in items]
     shards = [docs[i : i + SHARD_SIZE] for i in range(0, len(docs), SHARD_SIZE)] or [[]]
     run = _run_doc(db, recommended, docs, len(shards))
     writes = []
